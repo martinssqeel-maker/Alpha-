@@ -23,6 +23,7 @@ publish:
   provider: github
   owner: martinssqeel-maker
   repo: Alpha-
+  releaseType: release
 nsis:
   oneClick: false
   perMachine: false

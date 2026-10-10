@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from './store/useApp'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
+import Splash from './components/Splash'
 import Inspector from './components/Inspector'
 import Toasts from './components/Toasts'
 import ApprovalDialog from './components/ApprovalDialog'
@@ -21,11 +22,24 @@ export default function App() {
   const inspectorWidth = useApp((s) => s.inspectorWidth)
   const setInspectorWidth = useApp((s) => s.setInspectorWidth)
   const [startupError, setStartupError] = useState<string | null>(null)
+  const [splashPhase, setSplashPhase] = useState<'show' | 'leaving' | 'done'>('show')
   const dragging = useRef(false)
 
   useEffect(() => {
     init().catch((e) => setStartupError((e as Error).message))
   }, [init])
+
+  useEffect(() => {
+    if (!ready || splashPhase !== 'show') return
+    const hold = 1200
+    const fade = 450
+    const t1 = setTimeout(() => setSplashPhase('leaving'), hold)
+    const t2 = setTimeout(() => setSplashPhase('done'), hold + fade)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [ready, splashPhase])
 
   useEffect(() => {
     const onMove = (e: MouseEvent): void => {
@@ -108,6 +122,7 @@ export default function App() {
       </div>
       <Toasts />
       <ApprovalDialog />
+      {splashPhase !== 'done' && <Splash leaving={splashPhase === 'leaving'} />}
     </div>
   )
 }

@@ -5,8 +5,6 @@ import {
   Github,
   LifeBuoy,
   MessageSquarePlus,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plug,
   Search,
   Settings as SettingsIcon,
@@ -23,34 +21,9 @@ const NAV: { view: View; label: string; icon: typeof Boxes }[] = [
 ]
 
 export default function Sidebar() {
-  const collapsed = useApp((s) => s.sidebarCollapsed)
-  const toggle = useApp((s) => s.toggleSidebar)
   const setView = useApp((s) => s.setView)
   const view = useApp((s) => s.view)
   const [query, setQuery] = useState('')
-
-  if (collapsed) {
-    return (
-      <div className="sidebar collapsed items-center py-3 gap-2">
-        <button className="btn ghost icon" title="Expand sidebar" onClick={toggle}>
-          <PanelLeftOpen size={16} />
-        </button>
-        <button className="btn ghost icon" title="New chat" onClick={() => newChat()}>
-          <MessageSquarePlus size={16} />
-        </button>
-        {NAV.map((n) => (
-          <button
-            key={n.view}
-            className={`btn ghost icon ${view === n.view ? 'primary' : ''}`}
-            title={n.label}
-            onClick={() => setView(n.view)}
-          >
-            <n.icon size={16} />
-          </button>
-        ))}
-      </div>
-    )
-  }
 
   const list = useApp((s) => s.conversations)
   const activeId = useApp((s) => s.activeConversationId)
@@ -158,10 +131,6 @@ export default function Sidebar() {
             <span className="label text-xs">{n.label}</span>
           </button>
         ))}
-        <button className="nav-item" onClick={toggle} title="Collapse sidebar">
-          <PanelLeftClose size={16} />
-          <span className="label text-xs">Collapse</span>
-        </button>
       </div>
     </div>
   )

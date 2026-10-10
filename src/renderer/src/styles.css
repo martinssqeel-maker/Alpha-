@@ -141,9 +141,6 @@ select {
   border-right: 1px solid var(--border);
   min-height: 0;
 }
-.sidebar.collapsed {
-  width: 60px;
-}
 .sidebar-scroll {
   overflow-y: auto;
   flex: 1;

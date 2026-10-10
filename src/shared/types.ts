@@ -145,7 +145,6 @@ export interface AppSettings {
   defaultModelId?: string | null
   ollamaUrl: string
   layout: {
-    sidebarCollapsed: boolean
     inspectorOpen: boolean
     inspectorWidth: number
     inspectorTab: InspectorTab

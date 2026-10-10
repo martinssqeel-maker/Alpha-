@@ -61,7 +61,6 @@ interface State {
   inspectorTab: InspectorTab
   inspectorOpen: boolean
   inspectorWidth: number
-  sidebarCollapsed: boolean
 
   conversations: Conversation[]
   activeConversationId: string | null
@@ -97,7 +96,6 @@ interface State {
   setInspectorTab: (t: InspectorTab) => void
   setInspectorOpen: (open: boolean) => void
   setInspectorWidth: (w: number) => void
-  toggleSidebar: () => void
   applyTheme: () => void
   saveSettings: (patch: Record<string, unknown>) => Promise<void>
 
@@ -146,7 +144,6 @@ export const useApp = create<State>((set, get) => ({
   inspectorTab: 'explorer',
   inspectorOpen: true,
   inspectorWidth: 420,
-  sidebarCollapsed: false,
 
   conversations: [],
   activeConversationId: null,
@@ -184,8 +181,7 @@ export const useApp = create<State>((set, get) => ({
       settings,
       inspectorOpen: layout.inspectorOpen,
       inspectorWidth: layout.inspectorWidth,
-      inspectorTab: layout.inspectorTab,
-      sidebarCollapsed: layout.sidebarCollapsed
+      inspectorTab: layout.inspectorTab
     })
     get().applyTheme()
 
@@ -217,11 +213,6 @@ export const useApp = create<State>((set, get) => ({
     void persistLayout(get)
   },
   setInspectorWidth: (inspectorWidth) => set({ inspectorWidth }),
-  toggleSidebar: () => {
-    set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }))
-    void persistLayout(get)
-  },
-
   applyTheme: () => {
     const theme = get().settings?.theme ?? 'dark'
     document.documentElement.setAttribute('data-theme', theme)
@@ -565,9 +556,9 @@ async function refreshMessages(
 }
 
 function persistLayout(get: () => State): Promise<void> {
-  const { inspectorOpen, inspectorWidth, inspectorTab, sidebarCollapsed } = get()
+  const { inspectorOpen, inspectorWidth, inspectorTab } = get()
   return api.settings
-    .set({ layout: { inspectorOpen, inspectorWidth, inspectorTab, sidebarCollapsed } })
+    .set({ layout: { inspectorOpen, inspectorWidth, inspectorTab } })
     .then(() => undefined)
     .catch(() => undefined)
 }

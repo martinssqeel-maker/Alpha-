@@ -31,8 +31,8 @@ export default function App() {
 
   useEffect(() => {
     if (!ready || splashPhase !== 'show') return
-    const hold = 1200
-    const fade = 450
+    const hold = 1600
+    const fade = 500
     const t1 = setTimeout(() => setSplashPhase('leaving'), hold)
     const t2 = setTimeout(() => setSplashPhase('done'), hold + fade)
     return () => {

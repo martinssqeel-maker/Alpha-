@@ -19,7 +19,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultModelId: null,
   ollamaUrl: DEFAULT_OLLAMA_URL,
   layout: {
-    sidebarCollapsed: false,
     inspectorOpen: true,
     inspectorWidth: 420,
     inspectorTab: 'explorer'

@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Alpha AI Workspace — Your local-first AI development cockpit</title>
+    <meta
+      name="description"
+      content="Alpha AI Workspace is a premium, local-first Windows desktop AI development environment. Bring your own models (Ollama + cloud), edit real projects, run commands, and manage Git/GitHub — all behind an explicit permission model."
+    />
+    <meta name="theme-color" content="#0b0d12" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Alpha AI Workspace" />
+    <meta
+      property="og:description"
+      content="A local-first AI development cockpit for Windows. Private by default, agentic when you allow it."
+    />
+    <meta property="og:image" content="assets/icon.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="preconnect" href="https://api.github.com" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="#top">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#workflow">How it works</a>
+        <a href="#requirements">Requirements</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn ghost hide-sm" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.94c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.36-3.88-1.36-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.75.4-1.27.73-1.56-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
+          GitHub
+        </a>
+        <a class="btn primary" href="#download">Download</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="pill">
+          <span class="dot"></span> Windows · Local-first · v<span data-version>1.0.0</span>
+        </div>
+        <h1>
+          Your AI development cockpit,
+          <span class="grad">on your own machine.</span>
+        </h1>
+        <p class="lede">
+          Alpha AI Workspace connects to your existing <strong>Ollama</strong> models (and optional
+          cloud providers), opens real project folders, makes controlled edits, runs commands, and
+          manages Git/GitHub — all behind an explicit permission and approval model.
+        </p>
+
+        <div class="cta-row">
+          <a class="btn primary xl" data-download href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4 3.3 3.3V3h2Z"/><path d="M5 19h14v2H5z"/></svg>
+            Download for Windows
+          </a>
+          <a class="btn xl" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">
+            View source
+          </a>
+        </div>
+        <p class="micro">
+          Free · <span data-size-hint>~116 MB</span> installer · Windows 10/11 (x64) ·
+          <a href="#requirements">runs offline with Ollama</a>
+        </p>
+
+        <div class="trust">
+          <span>Private by default</span>
+          <span>Bring your own models</span>
+          <span>Permission-gated actions</span>
+          <span>Never force-pushes</span>
+        </div>
+      </section>
+
+      <section class="shots" aria-label="Screenshots">
+        <div class="window big">
+          <div class="win-bar"><span></span><span></span><span></span><em>Alpha AI Workspace</em></div>
+          <div class="win-body">
+            <aside class="fake-side">
+              <div class="row active"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+            </aside>
+            <div class="fake-main">
+              <div class="bubble user">Refactor the auth module and add tests.</div>
+              <div class="bubble ai">
+                <div class="line w80"></div><div class="line w92"></div><div class="line w70"></div>
+                <div class="tool"><span class="dot ok"></span> read_file <em>src/auth.ts</em></div>
+                <div class="tool"><span class="dot ok"></span> propose_patch <em>src/auth.ts</em></div>
+              </div>
+              <div class="composer"><div class="line w40"></div><span class="send"></span></div>
+            </div>
+            <aside class="fake-inspector">
+              <div class="tab"></div><div class="code"><div class="line w90"></div><div class="line w70"></div><div class="line w85"></div><div class="line w50"></div></div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Capabilities</p>
+          <h2>Everything a serious AI coding session needs</h2>
+          <p class="sub">A real workspace, not a chat box — with safety rails you control.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">◆</div>
+            <h3>Bring your own models</h3>
+            <p>Auto-discovers local Ollama models (streaming, thinking, native tool calls) and supports any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, DeepSeek, Together, LM Studio, custom.</p>
+          </article>
+          <article class="card">
+            <div class="ic">⛨</div>
+            <h3>Agentic, but safe</h3>
+            <p>Chat / Assist / Agent modes with per-capability <code>allow</code> / <code>ask</code> / <code>deny</code> levels gate every write, delete, command, install, network call, commit, and push.</p>
+          </article>
+          <article class="card">
+            <div class="ic">✓</div>
+            <h3>Approvals you control</h3>
+            <p>Risky actions surface an approval dialog and only run once you accept. Nothing mutates silently.</p>
+          </article>
+          <article class="card">
+            <div class="ic">⌘</div>
+            <h3>Project-aware</h3>
+            <p>File access is confined to the opened project root. Path traversal and symlink escapes are blocked; sensitive files are denied by default.</p>
+          </article>
+          <article class="card">
+            <div class="ic">≡</div>
+            <h3>Real editing</h3>
+            <p>Unified diffs, checkpoint/restore, atomic writes, and stale-file conflict detection — review before you apply.</p>
+          </article>
+          <article class="card">
+            <div class="ic">⑂</div>
+            <h3>Integrated Git &amp; GitHub</h3>
+            <p>Status, diff, stage, commit, branch, push/pull — never a force-push. Browse and create GitHub repos without leaving the app.</p>
+          </article>
+          <article class="card">
+            <div class="ic">▸</div>
+            <h3>Streaming terminal</h3>
+            <p>Run dev commands with live output and risk assessment. Destructive commands demand explicit approval.</p>
+          </article>
+          <article class="card">
+            <div class="ic">✎</div>
+            <h3>Attachments &amp; voice</h3>
+            <p>Drop in text, images, and PDFs; dictate prompts via a configured transcription provider, and hear replies read aloud.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">Three steps</p>
+          <h2>From install to shipping, fast</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <span class="num">1</span>
+            <h3>Open a project</h3>
+            <p>Point Alpha at a folder to grant controlled, root-confined access. Nothing outside it is touched.</p>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <h3>Pick a model &amp; mode</h3>
+            <p>Choose a local or cloud model, then Chat, Assist, or Agent depending on how much autonomy you want.</p>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <h3>Review &amp; ship</h3>
+            <p>Watch tool activity, approve changes, inspect diffs, then commit and push from the Git panel.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="requirements" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Requirements</p>
+          <h2>What you need</h2>
+        </div>
+        <div class="req-grid">
+          <div class="req">
+            <h3>System</h3>
+            <ul>
+              <li>Windows 10 or 11 (x64)</li>
+              <li>No admin rights required (per-user install)</li>
+              <li>~400 MB disk after install</li>
+            </ul>
+          </div>
+          <div class="req">
+            <h3>Models</h3>
+            <ul>
+              <li>Ollama running locally (default <code>127.0.0.1:11434</code>)</li>
+              <li>…or an API key for any OpenAI-compatible provider</li>
+            </ul>
+          </div>
+          <div class="req">
+            <h3>Optional</h3>
+            <ul>
+              <li>Git on <code>PATH</code> for source-control features</li>
+              <li>GitHub CLI for richer GitHub actions</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="download" class="section cta">
+        <div class="cta-card">
+          <img src="assets/icon.png" alt="" width="56" height="56" />
+          <h2>Download Alpha AI Workspace</h2>
+          <p>Version <strong data-version>1.0.0</strong> · Windows 10/11 (x64) · Free</p>
+          <a class="btn primary xl" data-download href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4 3.3 3.3V3h2Z"/><path d="M5 19h14v2H5z"/></svg>
+            Download for Windows
+          </a>
+          <p class="micro">
+            All releases on <a href="https://github.com/martinssqeel-maker/Alpha-/releases" target="_blank" rel="noopener">GitHub Releases</a>.
+            Unsigned build — if SmartScreen appears, choose <em>More info → Run anyway</em>.
+          </p>
+        </div>
+      </section>
+
+      <section id="faq" class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">FAQ</p>
+          <h2>Questions, answered</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>Is my code or data sent anywhere?</summary>
+            <p>Only if you choose a cloud model — then your prompts go to that provider. With local Ollama, nothing leaves your machine. File access is confined to the project you open, secrets are OS-encrypted, and logs are redacted.</p>
+          </details>
+          <details>
+            <summary>Do I need an account?</summary>
+            <p>No. Alpha is local-first and works fully offline with Ollama. (Accounts and licensing are planned for a future release.)</p>
+          </details>
+          <details>
+            <summary>Which models are supported?</summary>
+            <p>Anything Ollama can serve, plus any OpenAI-compatible endpoint. Tool-calling and vision are detected per model and surfaced as capability badges.</p>
+          </details>
+          <details>
+            <summary>Why does Windows warn on install?</summary>
+            <p>The installer is currently unsigned, so SmartScreen flags unknown publishers. Click <em>More info → Run anyway</em>. Code signing is on the roadmap.</p>
+          </details>
+          <details>
+            <summary>Does it update itself?</summary>
+            <p>Yes — packaged builds check GitHub Releases a few seconds after launch and can update from <em>Settings → Updates</em>.</p>
+          </details>
+          <details>
+            <summary>Is it free?</summary>
+            <p>The current build is free and MIT-licensed. Paid plans are planned for later; the core local-first experience stays.</p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="#features">Features</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-/releases" target="_blank" rel="noopener">Releases</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

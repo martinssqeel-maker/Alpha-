@@ -3,6 +3,7 @@ import { app, BrowserWindow, session, shell } from 'electron'
 import { APP_ID } from '@shared/types'
 import { buildContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
+import { getLogger } from './services/logger'
 
 let ctx: AppContext | null = null
 let mainWindow: BrowserWindow | null = null
@@ -121,6 +122,14 @@ if (!gotLock) {
       registerIpc(ctx)
     } catch (e) {
       // If context failed we still want a window to show the error.
+      try {
+        getLogger().error(
+          'app',
+          `context init failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`
+        )
+      } catch {
+        /* ignore */
+      }
       // eslint-disable-next-line no-console
       console.error('Failed to initialise application context', e)
     }

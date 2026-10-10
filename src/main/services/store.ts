@@ -46,9 +46,12 @@ function deepMerge<T>(base: T, patch: unknown): T {
   if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
     return (patch === undefined ? base : (patch as T))
   }
-  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
+  const baseObj = (
+    base !== null && typeof base === 'object' && !Array.isArray(base) ? base : {}
+  ) as Record<string, unknown>
+  const out: Record<string, unknown> = { ...baseObj }
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
-    out[k] = deepMerge((base as Record<string, unknown>)[k], v)
+    out[k] = deepMerge(baseObj[k], v)
   }
   return out as T
 }
@@ -60,6 +63,9 @@ export class SettingsRepo {
     const rows = this.db.all<{ key: string; value: string }>('SELECT key, value FROM settings')
     const raw: Record<string, unknown> = {}
     for (const r of rows) {
+      // 'root' is a redundant full snapshot written by set(); the per-key rows
+      // below carry the real data, so skip it to avoid re-merging a nested blob.
+      if (r.key === 'root') continue
       try {
         raw[r.key] = JSON.parse(r.value)
       } catch {

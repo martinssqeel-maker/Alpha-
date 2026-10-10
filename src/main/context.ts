@@ -1,0 +1,157 @@
+import path from 'node:path'
+import { safeStorage } from 'electron'
+import type { AppSettings } from '@shared/types'
+import { AttachmentService } from './services/attachments'
+import { ChatService } from './services/chat'
+import { CheckpointService } from './services/checkpoints'
+import { Db } from './services/db'
+import { EditService } from './services/editService'
+import { GitService } from './services/git'
+import { GithubService } from './services/github'
+import { getLogger, initLogger, type Logger } from './services/logger'
+import { ApprovalBroker, PermissionService } from './services/permissionService'
+import { ProjectService } from './services/projectService'
+import { ProviderRegistry } from './services/providers/registry'
+import { ObfuscationCipher, SecretStore, type Cipher } from './services/secrets'
+import {
+  ConversationsRepo,
+  ProjectsRepo,
+  ProvidersRepo,
+  SettingsRepo
+} from './services/store'
+import { TerminalService } from './services/terminal'
+import { UpdateService } from './services/updater'
+
+class SafeStorageCipher implements Cipher {
+  available(): boolean {
+    try {
+      return safeStorage.isEncryptionAvailable()
+    } catch {
+      return false
+    }
+  }
+  encrypt(plain: string): string {
+    return 'ss:' + safeStorage.encryptString(plain).toString('base64')
+  }
+  decrypt(payload: string): string {
+    if (payload.startsWith('ss:')) {
+      return safeStorage.decryptString(Buffer.from(payload.slice(3), 'base64'))
+    }
+    return payload
+  }
+}
+
+export interface AppPaths {
+  userData: string
+  dbPath: string
+  secretsPath: string
+  checkpointsDir: string
+  logsDir: string
+}
+
+export interface AppContext {
+  paths: AppPaths
+  logger: Logger
+  db: Db
+  settings: SettingsRepo
+  conversations: ConversationsRepo
+  projectsRepo: ProjectsRepo
+  providersRepo: ProvidersRepo
+  secrets: SecretStore
+  registry: ProviderRegistry
+  checkpoints: CheckpointService
+  projectService: ProjectService
+  editService: EditService
+  git: GitService
+  github: GithubService
+  terminal: TerminalService
+  permissions: PermissionService
+  broker: ApprovalBroker
+  attachments: AttachmentService
+  chat: ChatService
+  updates: UpdateService
+  emit: (channel: string, data: unknown) => void
+}
+
+export async function buildContext(
+  userData: string,
+  emit: (channel: string, data: unknown) => void
+): Promise<AppContext> {
+  const paths: AppPaths = {
+    userData,
+    dbPath: path.join(userData, 'alpha.db'),
+    secretsPath: path.join(userData, 'secrets.enc'),
+    checkpointsDir: path.join(userData, 'checkpoints'),
+    logsDir: path.join(userData, 'logs')
+  }
+  const logger = initLogger(paths.logsDir)
+  const db = await Db.open(paths.dbPath)
+  logger.info('app', `database opened at ${paths.dbPath}`)
+
+  const settings = new SettingsRepo(db)
+  const current = settings.get()
+  logger.setLevel(current.privacy.logLevel)
+
+  const conversations = new ConversationsRepo(db)
+  const projectsRepo = new ProjectsRepo(db)
+  const providersRepo = new ProvidersRepo(db)
+
+  const cipher: Cipher = new SafeStorageCipher().available() ? new SafeStorageCipher() : new ObfuscationCipher()
+  const secrets = new SecretStore(paths.secretsPath, cipher)
+  const registry = new ProviderRegistry(providersRepo, secrets)
+
+  const projectService = new ProjectService(projectsRepo)
+  const checkpoints = new CheckpointService(db, paths.checkpointsDir)
+  const editService = new EditService(projectService, checkpoints)
+  const git = new GitService(projectService)
+  const github = new GithubService(secrets)
+  const permissions = new PermissionService(settings)
+  const terminal = new TerminalService(projectService, permissions)
+  const broker = new ApprovalBroker()
+  const attachments = new AttachmentService()
+
+  registry.ensureLocalOllama(current.ollamaUrl)
+
+  const chat = new ChatService({
+    providers: registry,
+    conversations,
+    projects: projectService,
+    edits: editService,
+    git,
+    terminal,
+    permissions,
+    broker,
+    settings,
+    emit: (event) => emit('evt:chat', event)
+  })
+
+  const updates = new UpdateService(logger, (status) => emit('evt:update', status))
+
+  return {
+    paths,
+    logger,
+    db,
+    settings,
+    conversations,
+    projectsRepo,
+    providersRepo,
+    secrets,
+    registry,
+    checkpoints,
+    projectService,
+    editService,
+    git,
+    github,
+    terminal,
+    permissions,
+    broker,
+    attachments,
+    chat,
+    updates,
+    emit
+  }
+}
+
+export function applyLogLevel(ctx: AppContext, settings: AppSettings): void {
+  ctx.logger.setLevel(settings.privacy.logLevel)
+}

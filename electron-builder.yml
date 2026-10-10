@@ -1,0 +1,32 @@
+appId: com.alpha.aiworkspace
+productName: Alpha AI Workspace
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+# Auto-update channel. Publishing reads a GitHub token from the GH_TOKEN env var.
+publish:
+  provider: github
+  owner: martinssqeel-maker
+  repo: Alpha-
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Alpha AI Workspace

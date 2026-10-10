@@ -17,7 +17,7 @@
     "test:watch": "vitest",
     "dist": "electron-vite build && electron-builder --win nsis",
     "dist:dir": "electron-vite build && electron-builder --win --dir",
-    "release": "electron-vite build && electron-builder --win nsis --publish always"
+    "release": "electron-vite build && electron-builder --win nsis --publish always && node scripts/fix-release-yml.mjs"
   },
   "dependencies": {
     "diff": "^8.0.2",

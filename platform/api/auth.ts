@@ -59,7 +59,11 @@ authRoutes.post('/request', async (c) => {
     message: `We sent a sign-in code to ${email}.`,
     expiresInMinutes: ttlMinutes
   }
-  if (boolEnv('AUTH_DEV_ECHO_OTP')) {
+  // Dev-only convenience: echo the freshly minted code/token so a local UI can be
+  // driven without reading the mail log. Gated on NODE_ENV as well as the flag,
+  // because a deployed Function is reachable by anyone and would otherwise hand
+  // out a valid sign-in token for an arbitrary email address.
+  if (boolEnv('AUTH_DEV_ECHO_OTP') && getEnv('NODE_ENV') === 'development') {
     payload.devCode = code
     payload.devMagicToken = magic
   }
@@ -96,16 +100,18 @@ authRoutes.post('/verify', async (c) => {
           )
     ).rows[0]
 
-    if (!row) return { error: 'invalid_code' as const }
-    if (new Date(row.expires_at).getTime() < Date.now()) return { error: 'expired' as const }
-    if (row.attempts >= maxAttempts) return { error: 'too_many' as const }
+    if (!row) return { ok: false as const, error: 'invalid_code' as const }
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      return { ok: false as const, error: 'expired' as const }
+    }
+    if (row.attempts >= maxAttempts) return { ok: false as const, error: 'too_many' as const }
 
     const matches = token
       ? safeEqual(hashSecret(token), row.magic_hash)
       : safeEqual(hashSecret(code), row.code_hash)
     if (!matches) {
       await q.query('update public.auth_otps set attempts = attempts + 1 where id = $1', [row.id])
-      return { error: 'invalid_code' as const }
+      return { ok: false as const, error: 'invalid_code' as const }
     }
 
     await q.query('update public.auth_otps set consumed_at = now() where id = $1', [row.id])
@@ -123,15 +129,15 @@ authRoutes.post('/verify', async (c) => {
       )
     ).rows[0].id
 
-    return { uid, email: user?.email ?? row.email, sid, refresh }
+    return { ok: true as const, uid, email: user?.email ?? row.email, sid, refresh }
   })
 
-  if ('error' in result) {
-    const map: Record<string, { status: number; code: string; message: string }> = {
+  if (!result.ok) {
+    const map = {
       invalid_code: { status: 400, code: 'invalid_code', message: 'That code is not correct.' },
       expired: { status: 400, code: 'expired', message: 'That code has expired. Request a new one.' },
       too_many: { status: 429, code: 'too_many', message: 'Too many attempts. Request a new code.' }
-    }
+    } satisfies Record<string, { status: number; code: string; message: string }>
     const info = map[result.error]
     return c.json({ ok: false, error: { code: info.code, message: info.message } }, info.status as 400)
   }

@@ -72,22 +72,13 @@ export const supabase = {
 export async function rpc<T = unknown>(name: string, params?: Record<string, unknown>): Promise<T> {
   const s = getSession()
   if (!s) throw new Error('Not authenticated')
-  const args: unknown[] = []
-  // Try to pass params as positional? Admin API expects args array by signature.
-  // App passes named params; map by position based on common calls? Easier: flatten named to array in order used.
-  // But better: for now, pass as empty if no params, else try to construct by signature heuristics not needed.
-  // Most calls pass 0 or 1 param; inspect name? fallback: if params object, take values in insertion order? not reliable.
-  // Simpler: pass params as single arg if object given and signature length==1? Or build array.
-  if (params && typeof params === 'object') {
-    const keys = Object.keys(params)
-    // common patterns: p_limit, p_query, p_user etc; just push values in some order? but better to pass array in call site not here.
-    // alternatively, try to detect by name quickly.
-    args.push(...keys.map(k => (params as any)[k]))
-  }
+  // Parameters are sent by name; the server maps them onto the function signature
+  // with Postgres named-argument notation, so key order here is irrelevant and
+  // parameters with a server-side default can simply be omitted.
   const res = await fetch(`${apiBase}/admin/rpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.accessToken}` },
-    body: JSON.stringify({ fn: name, args })
+    body: JSON.stringify({ fn: name, params: params ?? {} })
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok || body.ok === false) {

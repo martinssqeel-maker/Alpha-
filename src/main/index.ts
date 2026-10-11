@@ -94,10 +94,23 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  const AUTH_SCHEME = 'alpha'
+  const DEFAULT_AUTH_SCHEME = 'alpha'
+  const AUTH_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/
+
+  /**
+   * Deep-link scheme used for sign-in, from Settings → Alpha Cloud
+   * (`authRedirectScheme`). Falls back to `alpha` when unset or malformed. The
+   * server must be configured to emit links for the same scheme; the installer
+   * also registers `alpha` via electron-builder.yml `protocols`.
+   */
+  function configuredAuthScheme(): string {
+    const raw = ctx?.platform.authScheme() ?? ''
+    return AUTH_SCHEME_PATTERN.test(raw) ? raw : DEFAULT_AUTH_SCHEME
+  }
 
   function handleDeepLink(rawUrl: string): void {
-    if (!/^alpha:\/\//.test(rawUrl)) return
+    const scheme = configuredAuthScheme().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (!new RegExp(`^${scheme}://`).test(rawUrl)) return
     const c = ctx
     if (!c) return
     void c.platform.handleRedirectUrl(rawUrl).then(() => {
@@ -107,8 +120,6 @@ if (!gotLock) {
       }
     })
   }
-
-  app.setAsDefaultProtocolClient(AUTH_SCHEME, process.execPath, isDev ? [path.resolve(process.argv[1] ?? '')] : [])
 
   app.on('second-instance', (_e, argv, _workingDirectory) => {
     if (mainWindow) {
@@ -155,6 +166,14 @@ if (!gotLock) {
       // eslint-disable-next-line no-console
       console.error('Failed to initialise application context', e)
     }
+    // Register after the context exists so the configured scheme is honoured.
+    // Changing the scheme while running takes effect on the next launch.
+    app.setAsDefaultProtocolClient(
+      configuredAuthScheme(),
+      process.execPath,
+      isDev ? [path.resolve(process.argv[1] ?? '')] : []
+    )
+
     await createWindow()
 
     void ctx?.platform.restore()

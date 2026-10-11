@@ -24,6 +24,8 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "platform/**/*.ts",
+    "neon.ts",
     "electron.vite.config.ts"
   ]
 }

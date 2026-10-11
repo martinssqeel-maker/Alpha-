@@ -5,9 +5,11 @@ import path from 'node:path'
 import {
   EncryptedSessionStorage,
   friendlyAuthError,
-  parseDeepLink
+  parseDeepLink,
+  PlatformService
 } from '../src/main/services/platform'
 import { ObfuscationCipher, SecretStore } from '../src/main/services/secrets'
+import type { AppSettings } from '../src/shared/types'
 
 describe('platform/deep-link parse', () => {
   it('parses fragment tokens from a custom-scheme URL', () => {
@@ -77,6 +79,69 @@ describe('platform/session storage', () => {
     expect(secrets.get('platform:session-store:test')).toContain('super-secret')
 
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('platform/status reflects live settings', () => {
+  /**
+   * The platform can be enabled or re-pointed from Settings while the app is
+   * running. Status must reflect that immediately instead of reporting the
+   * snapshot taken at startup (which made Account show "Alpha Cloud is
+   * disabled" right after the user enabled it).
+   */
+  function makeService(platform: AppSettings['platform']) {
+    const state = { platform: { ...platform } }
+    const service = new PlatformService({
+      settings: { get: () => ({ platform: state.platform }) } as never,
+      secrets: { get: () => null, set: () => undefined, delete: () => undefined } as never,
+      logger: { info: () => undefined, warn: () => undefined, error: () => undefined, debug: () => undefined } as never,
+      onStatus: () => undefined,
+      onActiveChange: () => undefined
+    })
+    return { service, state }
+  }
+
+  it('derives enabled/configured from current settings without a refresh', () => {
+    const { service, state } = makeService({ enabled: false, apiBaseUrl: '', authRedirectScheme: 'alpha' })
+    expect(service.status().enabled).toBe(false)
+    expect(service.status().configured).toBe(false)
+
+    state.platform = {
+      enabled: true,
+      apiBaseUrl: 'https://api.example.test',
+      authRedirectScheme: 'alpha'
+    }
+    expect(service.status().enabled).toBe(true)
+    expect(service.status().configured).toBe(true)
+    expect(service.isActive()).toBe(false)
+  })
+
+  it('is not configured until both the toggle and the API base URL are set', () => {
+    const { service, state } = makeService({ enabled: true, apiBaseUrl: '', authRedirectScheme: 'alpha' })
+    expect(service.status().configured).toBe(false)
+
+    state.platform = {
+      enabled: true,
+      apiBaseUrl: 'https://api.example.test/',
+      authRedirectScheme: 'alpha'
+    }
+    expect(service.apiBaseUrl()).toBe('https://api.example.test')
+    expect(service.status().configured).toBe(true)
+  })
+
+  it('keeps enabled in the cached snapshot after a refresh while signed out', async () => {
+    const { service, state } = makeService({ enabled: false, apiBaseUrl: '', authRedirectScheme: 'alpha' })
+    state.platform = {
+      enabled: true,
+      apiBaseUrl: 'https://api.example.test',
+      authRedirectScheme: 'alpha'
+    }
+
+    const status = await service.refresh()
+    expect(status.enabled).toBe(true)
+    expect(status.configured).toBe(true)
+    expect(status.authenticated).toBe(false)
+    expect(service.status().enabled).toBe(true)
   })
 })
 

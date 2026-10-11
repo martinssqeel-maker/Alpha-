@@ -1,0 +1,411 @@
+# Recovery Report — Alpha AI Workspace (Neon API migration)
+
+Author: coding agent (Buffy)
+Date: 2026-10-11
+Scope: validate the migration, restore a working desktop build, complete the automatable
+verification, and record what still needs a human.
+
+Every claim below is marked **verified**, **failed**, or **NOT RUN**.
+The supplied `HANDOVER_NOTE.md` and the professionalized handover report were treated as
+claims to test, not as facts.
+
+---
+
+## 1. Repository state (differs from the handover note)
+
+| Item | Handover claim | Actual (verified) |
+|---|---|---|
+| Branch | `main` | `main` ✅ |
+| Commit | `4c4321a` | `4c4321a` ✅ (`Migrate to Neon Function API: …`, 2026-10-11T01:15:27+01:00) |
+| Working tree | clean | **NOT clean** ❌ |
+| Tests | 43/43 | 43/43 before changes, 46/46 after ✅ |
+| Typecheck | passing | passing ✅ |
+| Build | passing | passing ✅ |
+
+Pre-existing, not created by this recovery:
+
+```
+ D "Ai agent upgrade.docx"
+ D premium-ai-workspace-master-prompt.md
+?? HANDOVER_NOTE.md
+?? docs/handover/
+```
+
+These were left untouched (nothing staged, stash, reset, or discarded).
+
+Repo root is `C:\Users\Martins\OneDrive\Documents\ALPHA`.
+Note: the tool workspace root is the `ALPHA/.agents` subdirectory, **not** the git root —
+paths in commands below are relative to `ALPHA`.
+
+---
+
+## 2. The "frozen desktop" — reported cause not reproduced
+
+**Reported cause:** old packaged build `v1.0.2` running against new code → IPC/platform
+contract mismatch → unresponsive UI.
+
+**Verdict: NOT REPRODUCED as described.** An old packaged build executes its own bundled
+code; it cannot be made to consume a newer renderer from the checkout. The stated mechanism
+is not coherent, and the symptom does not occur with the current build.
+
+Verified by launching the built app and reading the live renderer over the Chrome DevTools
+Protocol (`electron --remote-debugging-port=…` + `Runtime.evaluate`):
+
+```
+hasBody: true, alphaBridge: "object", hasAppShell: true,
+spinnerCount: 0, buttonCount: 29,
+showsStarting: false, showsStartupError: false
+```
+
+The UI renders fully (sidebar, model `qwen2.5:3b`, conversations, chat suggestions).
+No "Starting Alpha…" hang, no startup-error card, zero renderer exceptions.
+
+**What was actually true:** the shipped packaged artifacts are pre-migration (see §3), and a
+real in-session defect broke platform onboarding (see §4).
+
+---
+
+## 3. The packaged builds are stale — verified with evidence
+
+All files in `release/` were built 2026-10-10 21:34–21:35, i.e. **before** the migration
+commit (2026-10-11 01:15). Proof by content, not timestamps:
+
+| String searched | old `release/win-unpacked/resources/app.asar` | new `out/main/index.js` |
+|---|---|---|
+| `authRedirectScheme` | **0** | 2 |
+| `gateway/chat/completions` | **0** | 1 |
+| `platform/config` | **0** | 1 |
+| `Alpha Cloud` | **0** | 9 |
+
+The old asar also carries a `package.json` with the pre-migration dependency set (no
+`@neon/*`, `hono`, `jose`, `@supabase/supabase-js`).
+
+⚠️ `docs/platform/MANUAL-TODO.md` step 9 tells the operator to install the GitHub `v1.0.3`
+release. That asset is a **pre-migration** build. Installing it cannot work with the new
+platform contract.
+
+**Correct course taken:** rebuilt from the migrated (and fixed) source — see §7.
+
+---
+
+## 4. Real defect found and fixed — stale `PlatformStatus`
+
+### Symptom
+Enable **Settings → Alpha Cloud (platform)**, set the API base URL, open **Account** → the
+modal still says *"Alpha Cloud is disabled. Enable the platform and set the API base URL in
+Settings → Platform."* and never offers the sign-in form. The stored settings are correct at
+the same moment, so the UI contradicts itself and onboarding cannot proceed.
+
+### Root cause
+`PlatformService` cached a status snapshot at startup and never re-derived `enabled` /
+`configured` from live settings:
+
+- `refresh()`'s "configured but signed out" branch used `{ ...this.cached, configured: true, … }`
+  and **omitted `enabled`**, so it kept the startup value `false`.
+- `status()` returned the stale cache verbatim, and the renderer's post-save refresh only
+  calls `platform:status` (never `platform:refresh`), so nothing corrected it.
+- `isActive()` read the stale `cached.configured`, so disabling the platform mid-session did
+  not deactivate it.
+
+Evidence, before the fix (same process, settings changed in-session):
+
+```
+A. settings:set { platform: { enabled: true, apiBaseUrl: "<verified url>" } }   -> saved
+B. platform:status   -> {"enabled":false,"configured":false}   <-- stale, contradicts settings
+C. restart the app    -> platform:status -> {"enabled":true,"configured":true}  <-- same settings
+```
+
+That restart contrast isolates it as a cache bug, not a persistence bug.
+
+### Fix
+`src/main/services/platform.ts`:
+- `status()` now derives `enabled` and `configured` from the current settings and forces
+  `authenticated: false` whenever the platform is not configured (no contradictory states).
+- `isActive()` uses `this.isConfigured() && this.cached.authenticated`.
+- `refresh()`'s signed-out branch now also sets `enabled: cfg.enabled`.
+
+### Verification after the fix
+Same process, no restart, real UI controls:
+
+```
+enable toggle via UI  -> settings{enabled:true} ; status{enabled:true, configured:false}
+set URL + real blur   -> settings{enabled:true, apiBaseUrl:"…"} ; status{enabled:true, configured:true}
+Account modal         -> hasEmailInput:true, hasSendButton:true, saysDisabled:false, saysNotConfigured:false
+disable via UI        -> status{enabled:false, configured:false}   (previously stayed configured:true)
+cold restart          -> Account modal offers the sign-in form immediately
+```
+
+Regression tests added (`tests/platform.test.ts`, 3 new cases) covering: live re-derivation
+without refresh, "configured only when toggle **and** URL are set" (incl. trailing-slash
+trim), and `enabled` surviving a signed-out `refresh()`.
+
+---
+
+## 5. 🔴 CRITICAL, NOT FIXED — production auth bypass (server-side)
+
+The deployed Function echoes **live sign-in secrets to unauthenticated callers**.
+
+```
+POST https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/request
+Origin: https://example.vercel.app          (any origin; CORS reflects it)
+{"email":"nobody@example.invalid"}
+
+HTTP/1.1 200 OK
+{"ok":true,"message":"We sent a sign-in code to nobody@example.invalid.",
+ "expiresInMinutes":10,"devCode":"<redacted>","devMagicToken":"<redacted>"}
+```
+
+`platform/api/auth.ts` `/request`:
+
+```ts
+if (boolEnv('AUTH_DEV_ECHO_OTP')) {
+  payload.devCode = code
+  payload.devMagicToken = magic
+}
+```
+
+`/verify` accepts that `token` and returns `accessToken` + `refreshToken`. Chaining the two
+allows signing in **as any email address**, including the bootstrap admin (`provision_user`
+grants the owner role to the bootstrap admin email). `ALLOWED_ORIGINS` is unset, so
+`allowedOrigins()` returns `'*'` and the endpoint is reachable from any web page.
+
+The chain is proven by the live response plus the `/verify` source. I deliberately did **not**
+complete the exchange, to avoid creating a session against a real account.
+
+**Required operator action (cannot be done from this repository):**
+1. Set `AUTH_DEV_ECHO_OTP=0` (or remove it) on the deployed Neon Function, and redeploy.
+   Re-run the request above and confirm `devCode` / `devMagicToken` are absent.
+2. Set `ALLOWED_ORIGINS` to the real website/admin origins instead of leaving it `*`.
+3. Because a token was minted for a throwaway address during this test, treat any live
+   `auth_otps` rows for it as disposable (or expire them), and review `sessions`.
+4. `EMAIL_PROVIDER` still appears to be the `log` driver — the response claims an email was
+   sent when none was. Configure Resend before real users sign in.
+
+**Update (round 2):** `.env.local` was inspected for key *names only* and confirmed to contain
+both `AUTH_DEV_ECHO_OTP` (truthy) and `ALLOWED_ORIGINS=*`, which is the configuration behind
+this leak. A code-level guard was added as well (see §11.5): the echo now requires
+`NODE_ENV=development` in addition to the flag. **Neither change is live until the Function is
+redeployed**, so this remains open.
+
+Note that simply deleting `AUTH_DEV_ECHO_OTP` from `.env.local` does **not** clear it: `neon.ts`
+forwards only keys that are present, so a removed key is left untouched on the live Function.
+It must be set to `0`.
+
+---
+
+## 6. Smoke-test results
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Desktop launches without freezing | **PASS** | CDP: app shell rendered, 29 buttons, 0 spinners, 0 exceptions |
+| 2 | Basic UI responds (nav, settings, dialogs) | **PASS** | drove Chat/Settings/Account via real clicks; `.page-title` changed each time |
+| 3 | Platform settings save + read back | **PASS** | `settings:set` → `settings:get` round-trip; survives restart |
+| 4 | Contract `{enabled, apiBaseUrl, authRedirectScheme}` consistent | **PASS** | `Object.keys(settings.platform)` = exactly those three; identical in `types.ts`, `store.ts` defaults, IPC, preload allowlist, renderer |
+| 5 | Account offers OTP/magic-link after configuring | **PASS** | `hasEmailInput:true`, `hasSendButton:true` (packaged build too) |
+| 6 | Sign-in actually completes (inbox + deep link) | **NOT RUN** | needs the user's mailbox; see §8 |
+| 7 | Session persistence across restart | **PASS (partial)** | settings + status correct after cold start; no contradictory state. Not tested with a real signed-in session (blocked by #6) |
+| 8 | Authorized `/gateway/*` request | **NOT RUN** | needs a real session. Unauthenticated path verified: `/gateway/models` → 401 `Invalid or expired session.` |
+| 9 | Failure handling (bad input, network, expired) | **PASS** | invalid email → typed `invalid_email` rejection; unknown IPC channel → `Blocked IPC channel`; gateway 401 surfaces as an error, no hang |
+| 10 | Website account flow | **PASS (static) / NOT RUN (auth)** | serves 200, page renders the email form, `config.js` picked up (no "not configured" notice), CORS preflight 204 + reflected origin. Completing OTP needs a mailbox |
+| 11 | Admin dashboard authenticates + loads data | **NOT RUN** | builds + typechecks clean; needs admin credentials |
+| 12 | Regression: local Ollama + existing features | **PASS** | `providers:models` → `qwen2.5:3b`; conversations/projects/git providers all reachable via IPC |
+| 13 | Empty/normal build launches and behaves the same | **PASS** | packaged `release/win-unpacked/Alpha AI Workspace.exe` reports `appVersion 1.0.3`, same results as the unpacked build |
+
+### Backend reachability (verified)
+
+```
+GET  /health          -> 200  {"ok":true,"service":"alpha-platform-api","branch":"production"}
+GET  /                 -> 200
+GET  /platform/config -> 401  {"ok":false,"error":{"code":"unauthorized","message":"Missing bearer token."}}
+GET  /gateway/models  -> 401  {"ok":false,"error":{"code":"unauthorized","message":"Invalid or expired session."}}
+```
+
+The recorded API base URL
+`https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech` **is live and
+correct**; protected routes do enforce a bearer token.
+
+---
+
+## 7. Build, test and artifact evidence
+
+| Command | Result |
+|---|---|
+| `npx vitest run` | 6 files, 43 → **46 passed**, exit 0 |
+| `npm run typecheck` | `typecheck:node` + `typecheck:web`, exit 0 |
+| `npx electron-vite build` | exit 0 — `out/main/index.js` 170 kB, `out/preload/index.js`, renderer bundle |
+| `npx electron-builder --win --publish never` | exit 0 (~95 s) |
+| `admin: npx vite build` / `npx tsc --noEmit` | exit 0 / exit 0 |
+
+**Artifacts (version 1.0.3, rebuilt 2026-10-11 02:52):**
+
+- Installer: `release/Alpha AI Workspace-Setup-1.0.3.exe` (125,196,889 bytes)
+  — this **replaced** the stale pre-migration file of the same name.
+- Unpacked: `release/win-unpacked/Alpha AI Workspace.exe`
+- Update manifest: `release/latest.yml` (version 1.0.3, sha512 present)
+
+The rebuilt asar now contains `authRedirectScheme` (×2), `gateway/chat/completions` (×1),
+`platform/config` (×1) — the migration is actually inside the package.
+
+`release/`, `out/` and `admin/dist/` are gitignored.
+
+### Caveat: the handover's launch command is not equivalent to the real app
+
+`px electron out/main/index.js` — `px` is not a real binary (`npx …` works). Even corrected,
+`electron out/main/index.js` runs **unpackaged**: the app path becomes `out/main`, so
+`app.getVersion()` returns the Electron version (`44.7.0`), `app.isPackaged` is false, and
+userData is `%APPDATA%\Electron` instead of `%APPDATA%\alpha-ai-workspace`. Settings
+configured in that mode do **not** affect the installed app. Use `release/win-unpacked/…exe`
+or `npm run dev` instead. For a real userData profile, run the packaged build.
+
+---
+
+## 8. Remaining manual actions (require the user)
+
+- [ ] **CRITICAL** — disable `AUTH_DEV_ECHO_OTP` on the deployed Function and set
+      `ALLOWED_ORIGINS`; redeploy; confirm the dev fields are gone (§5).
+- [ ] Install the rebuilt `release/Alpha AI Workspace-Setup-1.0.3.exe` (the previously
+      shipped v1.0.3 was pre-migration — §3).
+- [ ] Sign in: Account → enter email → open the emailed link so the OS hands it to
+      `alpha://auth/callback`. **This is the one step that cannot be automated here.**
+- [ ] With a session, verify a real `/gateway/chat/completions` streaming reply and that
+      usage increments on the Account panel.
+- [ ] Website: complete OTP on `/account` against the deployed API (Vercel `API_BASE_URL` is
+      already correct in `website/config.js`).
+- [ ] Admin: sign in as the bootstrap owner and load Overview/Users/Audit (`/admin/rpc`).
+- [ ] Republish the GitHub release asset, or the old pre-migration installer stays available.
+
+---
+
+## 9. Known issues / risks not fixed here
+
+1. **`authRedirectScheme` is dead configuration.** It is in the contract, defaults, tests and
+   `PlatformService.authScheme()`, but `authScheme()` is never called. `src/main/index.ts`
+   hardcodes `AUTH_SCHEME = 'alpha'`, and `platform/api/auth.ts` hardcodes
+   `alpha://auth/callback`. Changing the setting has no effect. Wiring it up is a behavioural
+   change (protocol registration happens before settings load) and was left to a deliberate
+   follow-up.
+2. `src/shared/types.ts` exports `APP_VERSION = '1.0.0'` while `package.json` is `1.0.3`.
+   Nothing reads it for display, but it is a latent inconsistency.
+3. `admin/package.json` still depends on `@supabase/supabase-js`, which `admin/src/supabase.ts`
+   no longer uses (it is now a fetch client). Harmless, but should be removed.
+4. `admin/src/supabase.ts` `rpc()` flattens named params into a positional array
+   (`Object.values`) — fragile if any admin function takes more than one argument.
+5. The updater logs a `404` for `github.com/your-github-username/alpha-ai-workspace/releases.atom`
+   in older logs — a placeholder owner from an earlier config. Current `electron-builder.yml`
+   points at `martinssqeel-maker/Alpha-`.
+
+---
+
+## 10. Changes made in this recovery (round 1)
+
+| File | Change |
+|---|---|
+| `src/main/services/platform.ts` | Derive `enabled`/`configured` in `status()`; gate `authenticated`; fix `isActive()`; set `enabled` in `refresh()`'s signed-out branch |
+| `tests/platform.test.ts` | +3 regression tests (43 → 46) |
+
+No secrets, tokens, API keys or magic-link values were written into this report, the
+repository, or any log.
+
+---
+
+## 11. Round 2 — fixes for every issue flagged above
+
+### 11.1 Renderer never seeded platform state on startup (flaky onboarding) — FIXED
+
+Reproduced while re-testing: on some launches the Account modal showed *"Alpha Cloud is
+disabled"* while `platform:status` returned `enabled:true, configured:true` for the same
+process. Root cause: `useApp.init()` only **subscribed** to the `evt:platform` push event and
+never pulled the current status. `PlatformService.restore()` emits that event from the main
+process shortly after the window is created, and IPC events are not replayed — when the emit
+landed before the renderer subscribed, the store kept its `enabled:false` default until the
+user toggled something. `src/renderer/src/store/useApp.ts` now calls `refreshPlatform()`
+during `init()`, so state is seeded from the authoritative source regardless of event timing.
+
+Verified with three consecutive cold starts (previously timing-dependent):
+
+```
+run 1: {"status":"true/true","modal":{"hasEmailInput":true,"saysDisabled":false}}
+run 2: {"status":"true/true","modal":{"hasEmailInput":true,"saysDisabled":false}}
+run 3: {"status":"true/true","modal":{"hasEmailInput":true,"saysDisabled":false}}
+```
+
+### 11.2 Admin dashboard RPC mapped arguments by position — FIXED
+
+`admin/src/supabase.ts` flattened named parameters with `Object.keys(...).map(...)`, so a call
+only worked if the caller's key insertion order happened to match the Postgres signature. Two
+call sites in `App.tsx` were already broken against the server's declared arity
+(`admin_set_user_plan` sent 2 of 4, `admin_upsert_flag` sent 3 of 4), and those calls would
+have been rejected with `bad_args`.
+
+The allow-list now carries each parameter's **name**, cast and whether it has a default, in a
+dependency-free module (`platform/api/adminSignatures.ts`) with a pure `buildAdminCall()`.
+Calls are built with Postgres named-argument notation
+(`public.admin_set_user_plan(p_user => $1::uuid, p_plan_code => $2::text)`), so key order is
+irrelevant and parameters with a server-side default can simply be omitted. Unknown parameter
+names, missing required parameters and short positional lists are rejected with a specific
+error code instead of silently shifting arguments. The admin client now sends
+`{ fn, params }`; the positional `{ fn, args }` form is still accepted.
+
+New `tests/adminRpc.test.ts` (10 cases) covers ordering, defaulted parameters, explicit `null`
+vs `undefined`, missing/invalid names, positional arity, and asserts every entry in
+`ADMIN_SIGNATURES` builds and declares no duplicate parameter names.
+
+### 11.3 The backend was never typechecked — FIXED
+
+`platform/**` and `neon.ts` were absent from every tsconfig, so the whole API could drift with
+no compiler check. They are now included in `tsconfig.node.json`. Two latent errors surfaced
+and were fixed rather than suppressed:
+
+- `platform/api/db.ts` — `pg` had no type declarations; added `@types/pg` as a devDependency.
+- `platform/api/auth.ts` — `/verify` used `'error' in result` narrowing, which left
+  `result.error` possibly `undefined` at the map lookup. The outcome is now an explicit
+discriminated union (`ok: false as const, error: …` / `ok: true as const, …`), which also
+  removed the `Record<string, …>` cast on the message table.
+
+`npm run typecheck` now passes with `platform/**` included.
+
+### 11.4 `authRedirectScheme` was dead configuration — FIXED
+
+The setting existed in the contract, defaults and tests, and `PlatformService.authScheme()`
+was defined, but nothing called it: `src/main/index.ts` hardcoded `alpha` for both
+`setAsDefaultProtocolClient` and the deep-link guard. The main process now registers and
+matches the **configured** scheme (validated against `/^[a-z][a-z0-9+.-]*$/`, falling back to
+`alpha`), and registration moved inside `whenReady` so the setting is actually loaded first.
+
+Verified: with the default `alpha`, the Windows handler is registered as
+`"…\electron.exe" "…\out\main\index.js" "%1"`. Note the installer independently registers
+`alpha` via `electron-builder.yml` `protocols`, and the server emits `alpha://auth/callback`
+unless `WEB_ACCOUNT_URL` is set — changing this setting therefore also requires matching
+server/installer configuration.
+
+### 11.5 Other cleanups
+
+| File | Change |
+|---|---|
+| `platform/api/auth.ts` | Dev code/token echo now also requires `NODE_ENV=development`, so a deployed Function cannot leak sign-in tokens even if the flag is left on |
+| `src/shared/types.ts` | `APP_VERSION` was `'1.0.0'` while the app is `1.0.3`; now matches, with a note that `app.getVersion()` is authoritative |
+| `admin/src/supabase.ts` | Removed the commented-out reasoning block that documented the old flattening hack |
+| `admin/package.json` (+ lockfile) | Dropped the unused `@supabase/supabase-js` dependency (the admin client is a fetch wrapper) |
+| `tsconfig.node.json` | Added `platform/**/*.ts` and `neon.ts` to the checked set |
+| `docs/platform/MANUAL-TODO.md` | Added step 1b covering the API sign-in-token leak and the CORS wildcard |
+
+### 11.6 Post-round-2 verification
+
+| Command | Result |
+|---|---|
+| `npx vitest run` | 7 files, **56 passed** (was 46), exit 0 |
+| `npm run typecheck` (now incl. `platform/**`, `neon.ts`) | exit 0 |
+| `npx electron-vite build` | exit 0 |
+| `admin: npm run build` (tsc + vite) | exit 0 |
+| `npx electron-builder --win --publish never` | exit 0 |
+| Cold-start ×3 on the rebuilt app | Account modal offers sign-in every time |
+
+### 11.7 Still open
+
+- The `AUTH_DEV_ECHO_OTP` / `ALLOWED_ORIGINS` changes are **not deployed**. The Function must be
+  redeployed for any of it to take effect (§5, and `docs/platform/MANUAL-TODO.md` step 1b).
+- The rebuilt admin RPC path could not be exercised end-to-end: it needs an authenticated admin
+  session. Only the pure call-building logic is covered by tests; the HTTP round-trip against
+  the deployed `/admin/rpc` is unverified.
+- Sign-in, a live `/gateway/chat/completions` reply and the website/admin auth flows still
+  require the user's mailbox and admin credentials (§8).

@@ -131,12 +131,25 @@ export class PlatformService {
     return this.cached.config
   }
 
+  /**
+   * Current status. `enabled` / `configured` are always derived from the live
+   * settings, because the platform can be turned on or re-pointed from
+   * Settings while the app is running; the cached snapshot is only authoritative
+   * for session/entitlement fields, which come from the network.
+   */
   status(): PlatformStatus {
-    return this.cached
+    const enabled = this.platformSettings().enabled
+    const configured = this.isConfigured()
+    return {
+      ...this.cached,
+      enabled,
+      configured,
+      authenticated: configured ? this.cached.authenticated : false
+    }
   }
 
   isActive(): boolean {
-    return this.cached.configured && this.cached.authenticated
+    return this.isConfigured() && this.cached.authenticated
   }
 
   platformSettings(): AppSettings['platform'] {
@@ -242,7 +255,14 @@ export class PlatformService {
       }
       const token = await this.getAccessToken()
       if (!this.isActive() && !token) {
-        this.cached = { ...this.cached, configured: true, authenticated: false, email: undefined, config: null }
+        this.cached = {
+          ...this.cached,
+          enabled: cfg.enabled,
+          configured: true,
+          authenticated: false,
+          email: undefined,
+          config: null
+        }
         this.bump()
         this.opts.onActiveChange(false)
         return this.cached

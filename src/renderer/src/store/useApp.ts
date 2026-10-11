@@ -202,6 +202,12 @@ export const useApp = create<State>((set, get) => ({
     if (!updateUnsub) updateUnsub = onUpdate((event) => handleUpdateEvent(event, set, get))
     if (!platformUnsub) platformUnsub = onPlatform((status) => handlePlatformEvent(status, set, get))
 
+    // Seed platform state from the main process. The `evt:platform` push above can
+    // be emitted while the window is still booting (before this subscription
+    // exists), and those events are not replayed — without this pull the Account
+    // modal could sit on "Alpha Cloud is disabled" for a fully configured app.
+    await get().refreshPlatform()
+
     await get().refreshProviders()
     await get().refreshModels()
     await get().loadConversations()

@@ -25,6 +25,28 @@ PROVIDER_API_KEY_GROQ        = gsk_________________
 
 ---
 
+## [ ] 1b. Stop the API handing out sign-in tokens (critical)
+
+`POST /auth/request` was returning the live `devCode` / `devMagicToken` in its JSON body.
+`/auth/verify` accepts that token, so **anyone could sign in as any email address**,
+including the bootstrap admin. Two controls, both needed:
+
+- [ ] In `.env.local`, set `AUTH_DEV_ECHO_OTP=0`, then redeploy:
+      `neon deploy --env .env.local`.
+      Do **not** simply delete the line: `neon.ts` only forwards keys that are present, so a
+      deleted key is left as-is on the live Function. It must be set to `0`.
+      (The code now additionally requires `NODE_ENV=development` before echoing, so this is
+      belt-and-braces — but set the flag anyway.)
+- [ ] In `.env.local`, replace `ALLOWED_ORIGINS=*` with your real website + admin origins
+      (comma-separated). A wildcard makes Hono's CORS reflect any origin.
+- [ ] Redeploy, then confirm the leak is closed:
+      `curl -sS -X POST "$NEON_FUNCTION_API_BASE_URL/auth/request" -H 'content-type: application/json' -d '{"email":"you@example.com"}'`
+      → the response must contain no `devCode` and no `devMagicToken`.
+- [ ] Configure a real mail sender (`EMAIL_PROVIDER=resend` + `RESEND_API_KEY`) before real
+      users sign in; the `log` driver sends no mail, while the response still claims it did.
+
+---
+
 ## [ ] 2. Verify Neon schema + seed
 Neon DB is already applied (`production` branch). Quick sanity check (Neon SQL Editor):
 ```sql

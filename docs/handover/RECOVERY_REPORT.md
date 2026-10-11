@@ -141,7 +141,7 @@ trim), and `enabled` surviving a signed-out `refresh()`.
 
 ---
 
-## 5. 🔴 CRITICAL, NOT FIXED — production auth bypass (server-side)
+## 5. 🔴 CRITICAL — production auth bypass (server-side) — **RESOLVED and DEPLOYED**
 
 The deployed Function echoes **live sign-in secrets to unauthenticated callers**.
 
@@ -181,15 +181,49 @@ complete the exchange, to avoid creating a session against a real account.
 4. `EMAIL_PROVIDER` still appears to be the `log` driver — the response claims an email was
    sent when none was. Configure Resend before real users sign in.
 
-**Update (round 2):** `.env.local` was inspected for key *names only* and confirmed to contain
-both `AUTH_DEV_ECHO_OTP` (truthy) and `ALLOWED_ORIGINS=*`, which is the configuration behind
-this leak. A code-level guard was added as well (see §11.5): the echo now requires
-`NODE_ENV=development` in addition to the flag. **Neither change is live until the Function is
-redeployed**, so this remains open.
+### Resolution (round 3) — FIXED, DEPLOYED, VERIFIED
 
-Note that simply deleting `AUTH_DEV_ECHO_OTP` from `.env.local` does **not** clear it: `neon.ts`
-forwards only keys that are present, so a removed key is left untouched on the live Function.
-It must be set to `0`.
+`.env.local` was inspected for key *names only* and confirmed to hold both `AUTH_DEV_ECHO_OTP`
+(truthy) and `ALLOWED_ORIGINS=*` — the exact configuration behind this leak. The flag was set to
+`0` (a copy of the file was backed up outside the repository; no value was printed) and the
+Function was redeployed with the owner's explicit approval.
+
+The documented `neon deploy --env .env.local` does **not** work — the CLI (8.3.5) fails to load
+the file (`AUTH_JWT_SECRET is required`) with both a relative and an absolute path. The parity
+of `--env` is unresolved; the deploy was run with the same variables supplied through the
+process environment using a parser that handles the file's CRLF line endings and quoted values
+(verified before deploying: 64-char secret, no stray whitespace/CR, which would otherwise have
+silently rotated the production signing key).
+
+```
+→ Applying to branch production (br-flat-morning-b41hcfhc)
+Applied changes
+  ~ function api
+deploy exit: 0
+```
+
+Verification after the deploy:
+
+```
+POST /auth/request  {"ok":true,"message":"We sent a sign-in code to …","expiresInMinutes":10}
+  occurrences of devCode / devMagicToken: 0        <-- leak closed
+GET  /health          -> 200
+GET  /platform/config -> 401
+GET  /gateway/models  -> 401
+POST /admin/rpc       -> 401
+```
+
+⚠️ Note for future env edits: deleting `AUTH_DEV_ECHO_OTP` from `.env.local` does **not** clear
+it. `neon.ts` only forwards keys that are present, so a removed key is left untouched on the
+live Function — it must be set to `0`.
+
+### Still open from this finding
+
+`ALLOWED_ORIGINS` is still `*`, so Hono's CORS reflects any origin (re-confirmed after the
+deploy: an `attacker.example` preflight is echoed back). This was left unchanged deliberately:
+the real Vercel/admin origins are unknown, and guessing would break the website's own sign-in.
+The exposure is bounded — auth is bearer-token only, with no cookies — but it should be set to
+the real origins. This is the last item from this finding.
 
 ---
 
@@ -400,12 +434,19 @@ server/installer configuration.
 | `npx electron-builder --win --publish never` | exit 0 |
 | Cold-start ×3 on the rebuilt app | Account modal offers sign-in every time |
 
+### 11.6b Round 3 — the backend fix was deployed
+
+`AUTH_DEV_ECHO_OTP=0` was set and the Function redeployed (see §5). The sign-in-token leak is
+**closed in production and verified**. `ALLOWED_ORIGINS` remains `*` and needs the real origins
+before it can be tightened.
+
 ### 11.7 Still open
 
-- The `AUTH_DEV_ECHO_OTP` / `ALLOWED_ORIGINS` changes are **not deployed**. The Function must be
-  redeployed for any of it to take effect (§5, and `docs/platform/MANUAL-TODO.md` step 1b).
+- `ALLOWED_ORIGINS=*` — needs the real website/admin origins, then a redeploy (§5).
+- `neon deploy --env <file>` is broken in CLI 8.3.5; the deploy was worked around by passing the
+  variables through the environment. Worth re-checking on the next CLI upgrade.
 - The rebuilt admin RPC path could not be exercised end-to-end: it needs an authenticated admin
   session. Only the pure call-building logic is covered by tests; the HTTP round-trip against
-  the deployed `/admin/rpc` is unverified.
+  the deployed `/admin/rpc` is unverified (it does correctly return `401` unauthenticated).
 - Sign-in, a live `/gateway/chat/completions` reply and the website/admin auth flows still
   require the user's mailbox and admin credentials (§8).

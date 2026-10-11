@@ -181,6 +181,28 @@ export default function SettingsPage() {
             />
           </Row>
         </Section>
+        <Section title="Alpha Cloud (platform)" note="Connects the app to the Alpha backend — accounts, plans and cloud models via the AI gateway.">
+          <Row label="Enabled" hint="Turn the platform connection on/off.">
+            <Toggle
+              checked={settings.platform.enabled}
+              onChange={(v) => {
+                void save({ platform: { enabled: v } }).then(() => useApp.getState().refreshPlatform())
+              }}
+            />
+          </Row>
+          <Row label="API base URL" hint="Alpha Cloud API endpoint (Neon Function URL).">
+            <input
+              className="input mono"
+              defaultValue={settings.platform.apiBaseUrl}
+              onBlur={(e) =>
+                void save({ platform: { apiBaseUrl: e.target.value.trim() } }).then(() =>
+                  useApp.getState().refreshPlatform()
+                )
+              }
+            />
+          </Row>
+        </Section>
+
         <Section title="Updates" note="Checks the release channel for a newer version.">
           <Row label="Current version">
             <span className="mono text-sm">{update?.currentVersion ?? '—'}</span>

@@ -13,6 +13,13 @@ import { DEFAULT_OLLAMA_URL } from '@shared/types'
 import { DEFAULT_PERMISSIONS } from '@shared/permissions'
 import { Db } from './db'
 
+/** Defaults for the Alpha Cloud (platform) connection. */
+export const PLATFORM_DEFAULTS: AppSettings['platform'] = {
+  enabled: false,
+  apiBaseUrl: '',
+  authRedirectScheme: 'alpha'
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   defaultProviderId: null,
@@ -38,6 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     publishBehavior: 'ask',
     requireVerifiedRemote: true
   },
+  platform: { ...PLATFORM_DEFAULTS },
   permissions: DEFAULT_PERMISSIONS
 }
 

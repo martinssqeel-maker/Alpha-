@@ -31,3 +31,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Alpha AI Workspace
+protocols:
+  - name: Alpha AI Workspace
+    schemes:
+      - alpha

@@ -9,13 +9,14 @@ import type {
   GitStatus,
   InspectorTab,
   ModelInfo,
+  PlatformStatus,
   Project,
   ProviderConfig,
   ProviderStatus,
   UpdateEvent,
   UpdateStatus
 } from '@shared/types'
-import { api, onChat, onTerminal, onUpdate } from '../lib/api'
+import { api, onChat, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
 export type View = 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'settings' | 'help'
 
@@ -91,6 +92,9 @@ interface State {
 
   update: UpdateStatus | null
 
+  platform: PlatformStatus
+  platformAccess: Record<string, boolean>
+
   init: () => Promise<void>
   setView: (v: View) => void
   setInspectorTab: (t: InspectorTab) => void
@@ -131,11 +135,16 @@ interface State {
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>
+
+  refreshPlatform: () => Promise<void>
+  signInToPlatform: (email: string) => Promise<{ ok: boolean; message?: string }>
+  signOutOfPlatform: () => Promise<void>
 }
 
 let chatUnsub: (() => void) | null = null
 let termUnsub: (() => void) | null = null
 let updateUnsub: (() => void) | null = null
+let platformUnsub: (() => void) | null = null
 
 export const useApp = create<State>((set, get) => ({
   ready: false,
@@ -174,6 +183,9 @@ export const useApp = create<State>((set, get) => ({
 
   update: null,
 
+  platform: { enabled: false, configured: false, authenticated: false, config: null },
+  platformAccess: {},
+
   init: async () => {
     const settings = await api.settings.get()
     const layout = settings.layout
@@ -188,6 +200,7 @@ export const useApp = create<State>((set, get) => ({
     if (!chatUnsub) chatUnsub = onChat((event) => handleChatEvent(event, set, get))
     if (!termUnsub) termUnsub = onTerminal((event) => handleTerminalEvent(event, set, get))
     if (!updateUnsub) updateUnsub = onUpdate((event) => handleUpdateEvent(event, set, get))
+    if (!platformUnsub) platformUnsub = onPlatform((status) => handlePlatformEvent(status, set, get))
 
     await get().refreshProviders()
     await get().refreshModels()
@@ -419,6 +432,10 @@ export const useApp = create<State>((set, get) => ({
       state.toast('Select a model before sending.', 'error')
       return
     }
+    if (Object.prototype.hasOwnProperty.call(state.platformAccess, modelId) && state.platformAccess[modelId] === false) {
+      state.toast('This model is not included in your plan.', 'error')
+      return
+    }
     const mode = state.settings?.permissions.mode ?? 'assist'
 
     const tempId = 'temp-' + Math.random().toString(36).slice(2)
@@ -538,6 +555,23 @@ export const useApp = create<State>((set, get) => ({
   installUpdate: async () => {
     const result = await api.updates.install()
     if (!result.ok) get().toast(result.message ?? 'Could not install the update.', 'error')
+  },
+
+  refreshPlatform: async () => {
+    const status = await api.platform.status()
+    setPlatform(status, set, get)
+  },
+
+  signInToPlatform: async (email) => {
+    const result = await api.platform.signIn(email)
+    return result
+  },
+
+  signOutOfPlatform: async () => {
+    await api.platform.signOut()
+    await get().refreshPlatform()
+    void get().refreshProviders()
+    void get().refreshModels()
   }
 }))
 
@@ -688,6 +722,29 @@ function handleUpdateEvent(
   if (event.state === 'downloaded') {
     get().toast('Update downloaded — restart to install.', 'success')
   }
+}
+
+function setPlatform(
+  status: PlatformStatus,
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
+  get: () => State
+): void {
+  const prev = get().platform
+  const access: Record<string, boolean> = {}
+  for (const m of status.config?.models ?? []) access[m.modelId] = m.allowed
+  set({ platform: status, platformAccess: access })
+  if (prev.authenticated !== status.authenticated || prev.enabled !== status.enabled) {
+    void get().refreshProviders()
+    void get().refreshModels()
+  }
+}
+
+function handlePlatformEvent(
+  status: PlatformStatus,
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
+  get: () => State
+): void {
+  setPlatform(status, set, get)
 }
 
 function appendTerminal(

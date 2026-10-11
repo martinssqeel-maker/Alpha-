@@ -293,3 +293,34 @@ main { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto; }
 }
+
+/* ---- Account portal ---- */
+.account-card { max-width: 640px; margin: 0 auto; padding: 28px; }
+.account-card h3 { margin: 22px 0 10px; font-size: 15px; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.btn-row { display: flex; gap: 10px; }
+.signed-in-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.signed-in-head .email { font-weight: 600; font-size: 15px; }
+.plan-block { display: flex; align-items: baseline; justify-content: space-between; margin-top: 18px; }
+.plan-name { font-size: 22px; font-weight: 700; }
+.muted { color: var(--muted, #98a2b3); font-size: 13px; }
+.usage { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.usage .row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+.usage .bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.usage .bar i { display: block; height: 100%; background: var(--accent, #7c5cff); border-radius: 4px; }
+.usage .muted { list-style: none; }
+.announce { border-left: 3px solid var(--accent, #7c5cff); padding: 10px 14px; margin: 8px 0; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.announce.warning { border-color: #e0a800; }
+.announce.critical { border-color: #e5484d; }
+.announce strong { display: block; font-size: 14px; }
+.announce p { margin: 4px 0 0; color: var(--muted, #98a2b3); font-size: 13px; }
+.notice { padding: 14px 16px; border-radius: 10px; background: rgba(124,92,255,0.12); border: 1px solid rgba(124,92,255,0.35); font-size: 14px; }
+.status { margin-top: 16px; font-size: 13px; min-height: 18px; }
+.status[data-kind="ok"] { color: #3ddc97; }
+.status[data-kind="error"] { color: #e5484d; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.input {
+  padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,0.14));
+  background: rgba(0,0,0,0.25); color: inherit; font-size: 15px;
+}
+.input:focus { outline: 2px solid var(--accent, #7c5cff); outline-offset: 1px; }

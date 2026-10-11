@@ -8,9 +8,11 @@ import {
   Plug,
   Search,
   Settings as SettingsIcon,
-  Trash2
+  Trash2,
+  UserRound
 } from 'lucide-react'
 import { useApp, type View } from '../store/useApp'
+import AccountModal from './AccountModal'
 
 const NAV: { view: View; label: string; icon: typeof Boxes }[] = [
   { view: 'models', label: 'Models', icon: Boxes },
@@ -23,7 +25,9 @@ const NAV: { view: View; label: string; icon: typeof Boxes }[] = [
 export default function Sidebar() {
   const setView = useApp((s) => s.setView)
   const view = useApp((s) => s.view)
+  const platform = useApp((s) => s.platform)
   const [query, setQuery] = useState('')
+  const [showAccount, setShowAccount] = useState(false)
 
   const list = useApp((s) => s.conversations)
   const activeId = useApp((s) => s.activeConversationId)
@@ -131,7 +135,24 @@ export default function Sidebar() {
             <span className="label text-xs">{n.label}</span>
           </button>
         ))}
+        <button className={`nav-item ${showAccount ? 'active' : ''}`} onClick={() => setShowAccount(true)}>
+          <UserRound size={16} />
+          <span className="label text-xs flex-1">Account</span>
+          {platform.enabled && (
+            <span
+              className="status-dot"
+              title={platform.authenticated ? (platform.config?.account?.email ?? 'Signed in') : 'Not signed in'}
+              style={{
+                background: platform.authenticated ? 'var(--accent)' : 'var(--faint)',
+                borderRadius: 999,
+                width: 8,
+                height: 8
+              }}
+            />
+          )}
+        </button>
       </div>
+      <AccountModal open={showAccount} onClose={() => setShowAccount(false)} />
     </div>
   )
 }

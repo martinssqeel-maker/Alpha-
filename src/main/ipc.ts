@@ -25,6 +25,7 @@ import {
   zProjectRead,
   zProjectTree,
   zProjectWrite,
+  zPlatformSignIn,
   zProviderSave,
   zProviderTest,
   zSearch,
@@ -62,6 +63,11 @@ export function registerIpc(ctx: AppContext): void {
   handle(CH.updateDownload, null, () => ctx.updates.download())
   handle(CH.updateInstall, null, () => ctx.updates.install())
   handle(CH.updateStatus, null, () => ctx.updates.getStatus())
+
+  handle(CH.platformStatus, null, () => ctx.platform.status())
+  handle(CH.platformSignIn, zPlatformSignIn, (p) => ctx.platform.signIn((p as { email: string }).email))
+  handle(CH.platformSignOut, null, () => ctx.platform.signOut())
+  handle(CH.platformRefresh, null, () => ctx.platform.refresh())
 
   handle(CH.appTheme, null, (p) => {
     const dark = Boolean((p as { dark?: boolean })?.dark)

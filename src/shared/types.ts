@@ -20,7 +20,7 @@ export interface PermissionSettings {
 
 export type PermissionLevel = 'allow' | 'ask' | 'deny'
 
-export type ProviderKind = 'ollama' | 'openai-compatible'
+export type ProviderKind = 'ollama' | 'openai-compatible' | 'gateway'
 
 export interface ProviderConfig {
   id: string
@@ -144,6 +144,11 @@ export interface AppSettings {
   defaultProviderId?: string | null
   defaultModelId?: string | null
   ollamaUrl: string
+  platform: {
+    enabled: boolean
+    apiBaseUrl: string
+    authRedirectScheme: string
+  }
   layout: {
     inspectorOpen: boolean
     inspectorWidth: number
@@ -248,6 +253,66 @@ export interface GitStatus {
   remotes: { name: string; url: string }[]
   clean: boolean
   error?: string
+}
+
+export interface PlatformUsageItem {
+  resource: string
+  used: number
+  limit: number | null
+  unlimited: boolean
+}
+
+export interface PlatformModelAccess {
+  modelId: string
+  providerId: string
+  providerLabel: string
+  label: string
+  allowed: boolean
+  capabilities: { streaming: boolean; tools: boolean; vision: boolean }
+  contextLength?: number
+}
+
+export interface PlatformAnnouncement {
+  id: string
+  title: string
+  body: string
+  level: 'info' | 'warning' | 'critical'
+}
+
+export interface PlatformConfig {
+  account: {
+    email: string
+    fullName?: string
+    status: 'active' | 'suspended' | 'disabled'
+  } | null
+  plan: {
+    id: string
+    name: string
+    code: string
+    interval?: string
+    isTrial: boolean
+  } | null
+  subscription: { status: string; endsAt?: string } | null
+  features: Record<string, unknown>
+  limits: Record<string, number | null>
+  usage: PlatformUsageItem[]
+  models: PlatformModelAccess[]
+  flags: Record<string, boolean>
+  maintenance: { active: boolean; message?: string }
+  announcements: PlatformAnnouncement[]
+  desktop: { minVersion?: string; recommendedVersion?: string; forced?: string }
+  serverTime: string
+}
+
+export interface PlatformStatus {
+  enabled: boolean
+  configured: boolean
+  authenticated: boolean
+  email?: string
+  pendingSignIn?: boolean
+  config: PlatformConfig | null
+  error?: string
+  lastUpdatedAt?: number
 }
 
 export interface ProposedEdit {

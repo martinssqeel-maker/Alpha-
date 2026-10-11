@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Account · Alpha AI Workspace</title>
+    <meta name="description" content="Sign in to your Alpha AI Workspace account to manage your plan, usage and cloud models." />
+    <meta name="theme-color" content="#0b0d12" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#features">Features</a>
+        <a href="/#download">Download</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn primary" href="/#download">Download</a>
+      </div>
+    </header>
+
+    <main class="section" data-account-root>
+      <div class="section-head">
+        <p class="eyebrow">Alpha Cloud</p>
+        <h1>Your account</h1>
+        <p class="sub">Sign in with the same email you use in the desktop app. One account, everywhere.</p>
+      </div>
+
+      <div class="account-card card">
+        <p class="notice" data-account-notice hidden></p>
+
+        <div data-signed-out hidden>
+          <form data-signin-form class="stack">
+            <label class="field">
+              <span>Email</span>
+              <input class="input" type="email" data-email placeholder="you@example.com" autocomplete="email" required />
+            </label>
+            <button class="btn primary" type="submit">Email me a sign-in link</button>
+            <p class="micro">We send a one-time link — no password to remember or leak.</p>
+          </form>
+        </div>
+
+        <div data-signed-in hidden>
+          <div class="signed-in-head">
+            <div>
+              <div class="muted">Signed in as</div>
+              <div class="email" data-email-out></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn ghost" data-refresh type="button">Refresh</button>
+              <button class="btn" data-signout type="button">Sign out</button>
+            </div>
+          </div>
+
+          <div class="plan-block">
+            <div>
+              <div class="muted">Current plan</div>
+              <div class="plan-name" data-plan>Free</div>
+            </div>
+            <div class="muted" data-interval></div>
+          </div>
+          <div class="muted" data-subscription></div>
+
+          <h3>Usage this period</h3>
+          <ul class="usage" data-usage></ul>
+
+          <h3>Cloud models</h3>
+          <p class="muted" data-models></p>
+
+          <div data-announcements hidden></div>
+        </div>
+
+        <p class="status" data-status></p>
+      </div>
+
+      <p class="micro">
+        Manage the same account from the desktop app under <em>Account</em>. Local models work without signing in.
+      </p>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/#download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="config.js"></script>
+    <script type="module" src="assets/account.js"></script>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import type { SecretStore } from '../secrets'
 import type { ProvidersRepo } from '../store'
 import { OllamaAdapter } from './ollama'
 import { OpenAICompatibleAdapter } from './openaiCompatible'
+import { GatewayAdapter, type GatewayContext } from './gateway'
 import { ProviderError, type ChatRequest, type ChatResult, type ProviderAdapter } from './types'
 
 export interface ProviderPreset {
@@ -101,9 +102,11 @@ export interface ResolvedTarget {
 export class ProviderRegistry {
   private adapters: Record<ProviderKind, ProviderAdapter> = {
     ollama: new OllamaAdapter(),
-    'openai-compatible': new OpenAICompatibleAdapter()
+    'openai-compatible': new OpenAICompatibleAdapter(),
+    gateway: new GatewayAdapter(() => this.gatewayContext ?? emptyGatewayContext)
   }
   private statusCache: Record<string, ProviderStatus> = {}
+  private gatewayContext: GatewayContext | null = null
 
   constructor(
     private repo: ProvidersRepo,
@@ -112,6 +115,48 @@ export class ProviderRegistry {
 
   static secretRef(providerId: string): string {
     return `provider:${providerId}:apiKey`
+  }
+
+  /** Wire the cloud gateway (platform token + API base URL). */
+  attachGateway(ctx: GatewayContext): void {
+    this.gatewayContext = ctx
+  }
+
+  /**
+   * Keep the managed Alpha Cloud provider in sync with the platform session.
+   * Created + enabled while signed in; removed when signed out.
+   */
+  syncGateway(opts: { apiBaseUrl: string; enabled: boolean }): void {
+    const existing = this.repo.list().find((p) => p.kind === 'gateway')
+    const cleaned = opts.apiBaseUrl.replace(/\/+$/, '')
+    if (!opts.enabled || !cleaned) {
+      if (existing) this.remove(existing.id)
+      return
+    }
+    if (existing) {
+      if (existing.baseUrl !== cleaned || !existing.enabled) {
+        this.repo.save({
+          id: existing.id,
+          kind: 'gateway',
+          name: 'Alpha Cloud',
+          baseUrl: cleaned,
+          enabled: true,
+          isLocal: false,
+          hasApiKey: false,
+          preset: 'alpha-cloud'
+        })
+      }
+      return
+    }
+    this.repo.save({
+      kind: 'gateway',
+      name: 'Alpha Cloud',
+      baseUrl: cleaned,
+      enabled: true,
+      isLocal: false,
+      hasApiKey: false,
+      preset: 'alpha-cloud'
+    })
   }
 
   presets(): ProviderPreset[] {
@@ -295,7 +340,16 @@ export class ProviderRegistry {
 }
 
 export function providerToolSupport(kind: ProviderKind): boolean {
-  return kind === 'ollama' || kind === 'openai-compatible'
+  return kind === 'ollama' || kind === 'openai-compatible' || kind === 'gateway'
+}
+
+export const emptyGatewayContext: GatewayContext = {
+  async getToken() {
+    return null
+  },
+  apiBaseUrl() {
+    return ''
+  }
 }
 
 export type { ChatRequest, ChatResult, ToolDefinition }

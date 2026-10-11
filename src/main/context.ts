@@ -10,6 +10,7 @@ import { GitService } from './services/git'
 import { GithubService } from './services/github'
 import { getLogger, initLogger, type Logger } from './services/logger'
 import { ApprovalBroker, PermissionService } from './services/permissionService'
+import { PlatformService } from './services/platform'
 import { ProjectService } from './services/projectService'
 import { ProviderRegistry } from './services/providers/registry'
 import { ObfuscationCipher, SecretStore, type Cipher } from './services/secrets'
@@ -70,6 +71,7 @@ export interface AppContext {
   attachments: AttachmentService
   chat: ChatService
   updates: UpdateService
+  platform: PlatformService
   emit: (channel: string, data: unknown) => void
 }
 
@@ -127,6 +129,33 @@ export async function buildContext(
 
   const updates = new UpdateService(logger, (status) => emit('evt:update', status))
 
+  const syncGatewayProvider = () => {
+    registry.syncGateway({
+      apiBaseUrl: platform.apiBaseUrl(),
+      enabled: platform.isActive()
+    })
+  }
+
+  const platform = new PlatformService({
+    settings,
+    secrets,
+    logger,
+    onStatus: (status) => emit('evt:platform', status),
+    onActiveChange: () => {
+      try {
+        syncGatewayProvider()
+        emit('evt:provider-status', { changed: true })
+      } catch (e) {
+        logger.warn('platform', `sync gateway provider failed: ${String(e)}`)
+      }
+    }
+  })
+
+  registry.attachGateway({
+    getToken: () => platform.getAccessToken(),
+    apiBaseUrl: () => platform.apiBaseUrl()
+  })
+
   return {
     paths,
     logger,
@@ -148,6 +177,7 @@ export async function buildContext(
     attachments,
     chat,
     updates,
+    platform,
     emit
   }
 }

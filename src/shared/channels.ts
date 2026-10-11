@@ -77,7 +77,12 @@ export const CH = {
   attachmentsAnalyze: 'attachments:analyze',
   attachmentsPick: 'attachments:pick',
 
-  voiceTranscribe: 'voice:transcribe'
+  voiceTranscribe: 'voice:transcribe',
+
+  platformStatus: 'platform:status',
+  platformSignIn: 'platform:signin',
+  platformSignOut: 'platform:signout',
+  platformRefresh: 'platform:refresh'
 } as const
 
 export const EVENTS = {
@@ -85,7 +90,8 @@ export const EVENTS = {
   terminal: 'evt:terminal',
   providerStatus: 'evt:provider-status',
   project: 'evt:project',
-  update: 'evt:update'
+  update: 'evt:update',
+  platform: 'evt:platform'
 } as const
 
 export type Channel = (typeof CH)[keyof typeof CH]

@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "buildCommand": "node gen-config.mjs",
   "headers": [
     {
       "source": "/(.*)",

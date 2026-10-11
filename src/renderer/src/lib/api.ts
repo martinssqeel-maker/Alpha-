@@ -1,6 +1,6 @@
 import { CH, EVENTS } from '@shared/channels'
 import type { ChannelName, IpcContract } from '@shared/ipc'
-import type { ChatEvent, TerminalEvent, UpdateEvent } from '@shared/types'
+import type { ChatEvent, PlatformStatus, TerminalEvent, UpdateEvent } from '@shared/types'
 
 async function invoke<K extends ChannelName>(
   channel: K,
@@ -134,7 +134,18 @@ export const api = {
 
   voice: {
     transcribe: (input: unknown) => invoke(CH.voiceTranscribe, input)
+  },
+
+  platform: {
+    status: () => invoke(CH.platformStatus, undefined),
+    signIn: (email: string) => invoke(CH.platformSignIn, { email }),
+    signOut: () => invoke(CH.platformSignOut, undefined),
+    refresh: () => invoke(CH.platformRefresh, undefined)
   }
+}
+
+export function onPlatform(cb: (status: PlatformStatus) => void): () => void {
+  return window.alpha.subscribe(EVENTS.platform, cb as (d: unknown) => void)
 }
 
 export type Api = typeof api

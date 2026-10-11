@@ -672,6 +672,22 @@ select {
   border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--accent);
 }
+
+.usage-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.usage-bar .usage-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.status-dot {
+  display: inline-block;
+  flex-shrink: 0;
+}
 .msg-body {
   min-width: 0;
   flex: 1;

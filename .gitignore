@@ -8,3 +8,10 @@ Thumbs.db
 .vite/
 coverage/
 .freebuff/
+website/config.js
+admin/node_modules/
+admin/dist/
+admin/.env
+supabase/.temp/
+.neon
+.env.local

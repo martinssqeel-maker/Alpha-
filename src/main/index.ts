@@ -94,11 +94,33 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  const AUTH_SCHEME = 'alpha'
+
+  function handleDeepLink(rawUrl: string): void {
+    if (!/^alpha:\/\//.test(rawUrl)) return
+    const c = ctx
+    if (!c) return
+    void c.platform.handleRedirectUrl(rawUrl).then(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.focus()
+      }
+    })
+  }
+
+  app.setAsDefaultProtocolClient(AUTH_SCHEME, process.execPath, isDev ? [path.resolve(process.argv[1] ?? '')] : [])
+
+  app.on('second-instance', (_e, argv, _workingDirectory) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     }
+    for (const arg of argv) handleDeepLink(arg)
+  })
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    handleDeepLink(url)
   })
 
   app.on('web-contents-created', (_e, contents) => {
@@ -134,6 +156,9 @@ if (!gotLock) {
       console.error('Failed to initialise application context', e)
     }
     await createWindow()
+
+    void ctx?.platform.restore()
+    for (const arg of process.argv) handleDeepLink(arg)
 
     setTimeout(() => {
       void ctx?.updates.check()

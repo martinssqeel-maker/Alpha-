@@ -10,6 +10,7 @@ import type {
   GitStatus,
   ModelInfo,
   PendingApproval,
+  PlatformStatus,
   Project,
   ProviderConfig,
   ProviderStatus,
@@ -155,6 +156,11 @@ export interface IpcContract {
   [CH.attachmentsPick]: { req: void; res: { paths: string[]; attachments: AttachmentRef[] } }
 
   [CH.voiceTranscribe]: { req: unknown; res: { text: string; error?: string; provider?: string } }
+
+  [CH.platformStatus]: { req: void; res: PlatformStatus }
+  [CH.platformSignIn]: { req: { email: string }; res: { ok: boolean; message?: string } }
+  [CH.platformSignOut]: { req: void; res: { ok: true } }
+  [CH.platformRefresh]: { req: void; res: PlatformStatus }
 }
 
 export type ChannelName = keyof IpcContract

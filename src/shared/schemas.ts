@@ -5,7 +5,7 @@ export const zPermissionMode = z.enum(['chat', 'assist', 'agent'])
 
 export const zProviderSave = z.object({
   id: z.string().min(1).optional(),
-  kind: z.enum(['ollama', 'openai-compatible']),
+  kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
   name: z.string().min(1).max(120),
   baseUrl: z.string().min(1).max(2000),
   enabled: z.boolean().default(true),
@@ -16,9 +16,13 @@ export const zProviderSave = z.object({
 
 export const zProviderTest = z.object({
   id: z.string().optional(),
-  kind: z.enum(['ollama', 'openai-compatible']),
+  kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
   baseUrl: z.string().min(1),
   apiKey: z.string().max(4000).optional()
+})
+
+export const zPlatformSignIn = z.object({
+  email: z.string().email()
 })
 
 export const zChatSend = z.object({

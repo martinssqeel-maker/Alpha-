@@ -56,8 +56,12 @@ jobs:
         working-directory: admin
         run: npm run build
 
-      # gen-config is the website's only build step (see website/vercel.json).
-      # With no API_BASE_URL it must still succeed and write an unconfigured config.
-      - name: Website config generation
-        working-directory: website
-        run: node gen-config.mjs
+      # The committed website/config.js is what ships, so the generator is not a
+      # deploy step. Exercise it into a temp dir with no API_BASE_URL: it must
+      # still succeed and write an unconfigured config, leaving the tracked file alone.
+      - name: Website config generator (temp output)
+        shell: bash
+        run: |
+          node website/gen-config.mjs "$RUNNER_TEMP/site-config"
+          test -f "$RUNNER_TEMP/site-config/config.js"
+          git diff --quiet -- website/config.js

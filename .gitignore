@@ -8,7 +8,9 @@ Thumbs.db
 .vite/
 coverage/
 .freebuff/
-website/config.js
+# website/config.js IS committed on purpose: the site serves it as a plain static
+# file so a deployment never depends on a Vercel build step. Regenerate it with
+# `node website/gen-config.mjs` (see website/README.md).
 admin/node_modules/
 admin/dist/
 admin/.env

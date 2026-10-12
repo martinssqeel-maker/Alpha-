@@ -21,22 +21,26 @@ website/
   assets/account.js     sign-in + plan/usage rendering against the API
   assets/icon.png       app icon (favicon + branding)
   config.example.js     shape of the generated config
-  config.js             GENERATED at build time — gitignored, never edit
-  gen-config.mjs        writes config.js from the environment
-  vercel.json           clean URLs, security headers, build command
+  config.js             COMMITTED platform config — this is what ships
+  gen-config.mjs        regenerates config.js from the environment
+  vercel.json           clean URLs + security headers (deliberately no build command)
 ```
 
 ## Configuration
 
-The page reads `window.ALPHA_PLATFORM.apiBaseUrl`, which `gen-config.mjs` writes from:
+The page reads `window.ALPHA_PLATFORM.apiBaseUrl` from the **committed** `config.js`, so a
+deployment serves it as a plain static file — no build step, no environment variables.
 
-| Variable | Notes |
-| --- | --- |
-| `API_BASE_URL` | The Neon Function base URL. `VITE_API_BASE_URL` also accepted. |
+Regenerate it when the API host changes:
 
-With nothing set, the build **still succeeds** and writes an unconfigured `config.js`;
-`/account` then shows an honest "not configured" notice instead of a form that cannot
-work. Verify a deployed site with:
+```powershell
+$env:API_BASE_URL = "https://<function-host>"   # VITE_API_BASE_URL also accepted
+node website/gen-config.mjs
+```
+
+With no `API_BASE_URL` the generator still succeeds and writes an *unconfigured*
+`config.js`; `/account` then shows an honest "not configured" notice instead of a form
+that cannot work. Verify a deployed site with:
 
 ```powershell
 npm run smoke -- --website https://your-site.vercel.app
@@ -46,10 +50,15 @@ npm run smoke -- --website https://your-site.vercel.app
 
 1. **https://vercel.com/new** → import the `martinssqeel-maker/Alpha-` repo.
 2. **Root Directory:** `website`. Framework Preset: **Other**, Build Command: leave
-   empty (`vercel.json` supplies `node gen-config.mjs`), Output Directory: leave empty.
-3. Add `API_BASE_URL` under **Settings → Environment Variables** for Production *and*
-   Preview, then redeploy — Vite is not involved, but the config is generated at build
-   time, so an env change needs a new deployment.
+   empty, Output Directory: leave empty. Do **not** add a build command to
+   `vercel.json` either — see the note below.
+3. Nothing else to configure: the committed `config.js` supplies the API host.
+
+> **Why there is no build command.** The migration added
+> `"buildCommand": "node gen-config.mjs"` and every deployment failed from that commit
+> on, leaving the site stuck on an older build. The generated file only ever contained a
+> public API URL, so it is committed instead and `vercel.json` keeps the shape that last
+> deployed successfully.
 
 Every push to `main` that touches `website/` redeploys automatically.
 
@@ -63,7 +72,7 @@ If you do, remember the Function's `ALLOWED_ORIGINS` must list the final origin.
 Any static server works:
 
 ```powershell
-node gen-config.mjs           # optional: writes config.js for your API
+node website/gen-config.mjs   # optional: rewrite config.js for a different API host
 npx serve website             # then open the printed http://localhost:3000
 ```
 

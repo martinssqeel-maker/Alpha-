@@ -75,13 +75,17 @@ for every model. It is a configuration gap, not a code fault.
 
 ## 6. Website (Vercel)
 
-- **Root directory:** `website` (framework preset *Other*, no build command of its own —
-  `vercel.json` runs `node gen-config.mjs`).
-- **Environment variable (Production + Preview):** `API_BASE_URL` = the Function URL
-  above. Also accepted: `VITE_API_BASE_URL`.
-- `gen-config.mjs` writes the gitignored `website/config.js` at build time. With no
-  `API_BASE_URL` it still succeeds and writes an unconfigured config, and `/account`
-  shows an honest "not configured" notice instead of a broken form.
+- **Root directory:** `website`, framework preset *Other*, and **no build command**.
+  `vercel.json` only sets clean URLs and the security headers.
+- `website/config.js` is **committed** and served as a plain static file, so a deployment
+  needs no environment variables and no build step. It points at the production Function
+  URL above.
+- If the Function URL ever changes:
+  `API_BASE_URL=<new url> node website/gen-config.mjs`, then commit the regenerated file.
+- History: the Neon migration added `"buildCommand": "node gen-config.mjs"` to
+  `vercel.json`, and **every** production deployment failed from `4c4321a` onward
+  (`npx vercel inspect <deployment> --logs`). Serving the committed config and dropping
+  the command restored successful deployments (`07e3801`).
 
 ## 7. Admin dashboard
 
@@ -116,7 +120,7 @@ set — so changing the scheme requires matching changes in both places.
 | `WEB_ACCOUNT_URL` | Function env | no |
 | `NEON_AI_GATEWAY_BASE_URL` / `_TOKEN` | Function env | token **yes** |
 | `PROVIDER_API_KEY_<CODE>` | Function env | **yes** |
-| `API_BASE_URL` | Vercel build env | no |
+| `API_BASE_URL` | only when regenerating `website/config.js` | no |
 | `VITE_API_BASE_URL` | `admin/.env.local` (build time) | no |
 | `GH_TOKEN` | local shell only, for publishing a release | **yes** |
 

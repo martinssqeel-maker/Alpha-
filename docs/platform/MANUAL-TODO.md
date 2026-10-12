@@ -25,7 +25,7 @@ NEON_PROJECT                = alpha-platform (billowing-brook-66269785)
 NEON_BRANCH                 = production (br-flat-morning-b41hcfhc)
 NEON_FUNCTION_API_BASE_URL  = https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech
 API_BASE_URL                = $NEON_FUNCTION_API_BASE_URL
-WEBSITE_URL                 = ____________________   (Vercel domain)
+WEBSITE_URL                 = https://alpha-website-lime.vercel.app
 ADMIN_EMAIL                 = ____________________   (bootstrap admin)
 RESEND_API_KEY              = re___________________
 PROVIDER_API_KEY_OPENAI     = sk-__________________
@@ -117,16 +117,38 @@ real users sign in: set `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` and a verified
 Also set `WEB_ACCOUNT_URL` to the website origin if the magic link should open in the
 browser instead of the app; otherwise links fall back to `alpha://auth/callback`.
 
-## [ ] 6. Website: set the API base URL (Vercel)
+## [x] 6. Website: the deployed site is configured and serving
 
-Vercel project root `website`. Environment Variables (Production **and** Preview):
+Project `alpha--website` (scope `martinssqeel-zapdata`), production domain
+`https://alpha-website-lime.vercel.app`, root directory `website`, no build command.
 
-```
-API_BASE_URL = https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech
-```
+The API host ships in the **committed** `website/config.js`, so there is nothing to set in
+Vercel: the pushed commit deploys and the account portal is live. Verified `07e3801`
+(deployment `success`; `/account` and `/config.js` both `200`).
 
-Redeploy — the config is generated at build time, so a new deployment is required.
-Verify: `npm run smoke -- --website https://<your-domain>` and open `/account`.
+Verify any time: `npm run smoke -- --website https://alpha-website-lime.vercel.app`.
+
+If the Function URL changes: `API_BASE_URL=<new> node website/gen-config.mjs`, commit, push.
+
+> Do **not** put a `buildCommand` back in `website/vercel.json`. See §6b.
+
+### 6b. Why the website deployments were failing
+
+Every production deployment failed from `4c4321a` until it was fixed, so the live site was
+frozen on the build of `62571c7`: `/account` and `/config.js` both answered `404` while the
+old landing page kept serving.
+
+The only change at that boundary was one line added to `website/vercel.json`,
+`"buildCommand": "node gen-config.mjs"`; the rest of the migration commit was inert static
+files. The generated file only ever held a **public** API URL, so there was no reason to
+build it on the host: `website/config.js` is committed instead, and `vercel.json` is back to
+the exact blob (`bb1f31d`) that last deployed successfully.
+
+Evidence after the fix (commit `07e3801`): Vercel reported `success` where every earlier
+commit reported `failure`; `/`, `/account`, `/config.js`, `/assets/account.js` and
+`/assets/styles.css` all `200` with correct content types; the page's API calls pass CORS
+(origin reflected, preflight `204`); `npm run smoke -- --website <domain>` → 7 passed,
+0 failed, including `website config.js is configured`.
 
 ## [ ] 7. Admin dashboard: set the API base URL
 

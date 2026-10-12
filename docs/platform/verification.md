@@ -105,8 +105,12 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
 
 ## Website
 
-- `/account` loads. With no `API_BASE_URL` you get the honest "not configured" notice;
-  once set, the email form appears and after sign-in plan/usage/models render.
+- `/account` loads with the email form (the committed `config.js` supplies the API
+  host); after sign-in, plan/usage/models render. A site whose `config.js` is empty
+  shows the honest "not configured" notice instead.
+- The page's API calls must pass CORS from the site origin: preflight on `/auth/request`
+  should answer `204` with `access-control-allow-origin: <site>` and
+  `access-control-allow-headers: Authorization,Content-Type`.
 - Verify programmatically with `npm run smoke -- --website <url>`.
 
 ## Admin dashboard

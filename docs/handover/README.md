@@ -21,7 +21,7 @@
   history (see the *Legacy* section of the architecture doc).
 - **Desktop:** Electron 44 + React 19, talking to the Function over REST with a bearer
   token. Local Ollama stays fully offline.
-- **Website:** static, on Vercel, `API_BASE_URL` → the Function.
+- **Website:** static, on Vercel, committed `config.js` → the Function.
 - **Admin:** separate Vite/React app, `VITE_API_BASE_URL` → the Function.
 
 ## Verify a change before trusting it

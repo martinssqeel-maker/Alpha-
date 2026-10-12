@@ -236,7 +236,24 @@ async function writeChecks() {
         record('FAIL', 'the admin session can read /admin/rpc', `status=${overview.status}`)
       }
 
-      // 5. The same session reaches the gated download surface.
+      // 5. The desktop app's own contract still answers for a signed-in account:
+      //    /platform/config is what the workspace calls on every launch.
+      const platformConfig = await call('/platform/config', { token: adminToken })
+      if (platformConfig.status === 200 && platformConfig.json && typeof platformConfig.json === 'object') {
+        record('PASS', '/platform/config answers for a signed-in account', `plan=${platformConfig.json.plan?.code ?? 'n/a'}`)
+      } else {
+        record('FAIL', '/platform/config answers for a signed-in account', `status=${platformConfig.status}`)
+      }
+
+      const device = await call('/platform/device', {
+        method: 'POST',
+        token: adminToken,
+        body: { platform: 'win32', appVersion: '0.0.0-verify' }
+      })
+      if (device.status === 200) record('PASS', '/platform/device records a launch', '200')
+      else record('FAIL', '/platform/device records a launch', `status=${device.status}`)
+
+      // 6. The same session reaches the gated download surface.
       const download = await call('/downloads/latest', { token: adminToken })
       const release = download.json?.release
       if (download.status === 200 && release?.version) {
@@ -245,7 +262,7 @@ async function writeChecks() {
         record('FAIL', 'a signed-in account gets the release metadata', `status=${download.status}`)
       }
 
-      // 6. A suspended account is cut off by the server, not the UI.
+      // 7. A suspended account is cut off by the server, not the UI.
       await client.query("update public.users set status = 'suspended' where id = $1", [ids[0]])
       const suspendedDownload = await call('/downloads/latest', { token: adminToken })
       const suspendedLogin = await call('/auth/password', {
@@ -259,7 +276,7 @@ async function writeChecks() {
       }
       await client.query("update public.users set status = 'active' where id = $1", [ids[0]])
 
-      // 7. One-time OAuth codes are single use.
+      // 8. One-time OAuth codes are single use.
       const code = randomBytes(32).toString('base64url')
       const { createHash } = await import('node:crypto')
       const pepper = local.AUTH_PEPPER || local.AUTH_JWT_SECRET || ''

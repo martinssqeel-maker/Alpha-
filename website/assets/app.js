@@ -1,9 +1,13 @@
 // Alpha AI Workspace — landing page behaviour.
-// Resolves the latest GitHub release so the download button is never stale.
+// Resolves the latest release so the version/size hints are never stale.
+//
+// The download CTA always points at our own /download page, which checks the
+// account before it hands out an installer link — it deliberately does NOT jump
+// straight to the public release asset.
 
 const REPO = "martinssqeel-maker/Alpha-";
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-const FALLBACK_URL = `https://github.com/${REPO}/releases/latest`;
+const DOWNLOAD_PAGE = "/download";
 
 function formatSize(bytes) {
   if (!bytes || bytes < 0) return null;
@@ -37,15 +41,16 @@ async function resolveLatestRelease() {
     const asset = (release.assets || []).find((a) => /\.exe$/i.test(a.name));
 
     if (version) setText("[data-version]", version);
+    setDownload(DOWNLOAD_PAGE);
     if (asset) {
-      setDownload(asset.browser_download_url);
       const size = formatSize(asset.size);
-      if (size) setText("[data-size-hint]", `~${size.replace(" ", " ")} installer`);
+      if (size) setText("[data-size-hint]", `~${size} installer`);
     }
   } catch (err) {
-    // Offline or rate-limited: keep the graceful fallback link.
+    // Offline or rate-limited: the hints stay generic and the gated page is
+    // still the destination.
     console.warn("Could not resolve latest release:", err && err.message);
-    setDownload(FALLBACK_URL);
+    setDownload(DOWNLOAD_PAGE);
   }
 }
 

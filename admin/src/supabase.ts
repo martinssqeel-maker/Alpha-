@@ -2,12 +2,21 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined || '').
 
 export const configured = Boolean(apiBase)
 
+/**
+ * Sessions written by the OTP era stored `email`, while the UI reads
+ * `session.user.email`. Normalise on read so both shapes work.
+ */
+function normalise(s: any) {
+  if (!s || !s.accessToken) return null
+  const email = s.email || s.user?.email || ''
+  return { ...s, email, user: { email } }
+}
+
 function getSession() {
   try {
     const raw = localStorage.getItem('alpha-admin-session')
     if (!raw) return null
-    const s = JSON.parse(raw)
-    if (s && s.accessToken) return s
+    return normalise(JSON.parse(raw))
   } catch (e) {
     /* ignore */
   }
@@ -44,18 +53,28 @@ export const supabase = {
       }, 500)
       return { data: { subscription: { unsubscribe: () => clearInterval(id) } } }
     },
-    signInWithOtp: async ({ email, options }: { email: string; options?: any }) => {
+    /**
+     * Administrator sign-in: email + password. The server decides whether the
+     * account may administer anything — a non-admin gets the same generic
+     * failure as a wrong password.
+     */
+    signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
       try {
-        const res = await fetch(`${apiBase}/auth/request`, {
+        const res = await fetch(`${apiBase}/auth/password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, password })
         })
         const body = await res.json().catch(() => ({}))
-        if (!res.ok) return { error: { message: body?.error?.message || 'Failed to send link' } }
+        if (!res.ok || body?.ok === false) {
+          return { error: { message: body?.error?.message || 'Sign-in failed' } }
+        }
+        if (body.accessToken && body.refreshToken) {
+          setSession({ accessToken: body.accessToken, refreshToken: body.refreshToken, email: body.email })
+        }
         return { error: null }
       } catch (e: any) {
-        return { error: { message: e.message } }
+        return { error: { message: e.message || 'Sign-in failed' } }
       }
     },
     signOut: async () => {
@@ -86,19 +105,4 @@ export async function rpc<T = unknown>(name: string, params?: Record<string, unk
     throw new Error(msg)
   }
   return body.result as T
-}
-
-// Helpers for magic link handling in App if needed
-export async function verifyToken(token: string) {
-  const res = await fetch(`${apiBase}/auth/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token })
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok || body.ok === false) throw new Error(body?.error?.message || 'Verification failed')
-  if (body.accessToken && body.refreshToken) {
-    setSession({ accessToken: body.accessToken, refreshToken: body.refreshToken, email: body.email })
-  }
-  return body
 }

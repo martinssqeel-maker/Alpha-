@@ -97,6 +97,8 @@ interface AuditEntry {
 export default function App() {
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']>(null)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [tab, setTab] = useState<Tab>('overview')
   const [overview, setOverview] = useState<Overview | null>(null)
@@ -148,7 +150,7 @@ export default function App() {
         <div className="card">
           <h1>Alpha Admin</h1>
           <p className="muted">
-            Not configured. Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> and rebuild.
+            Not configured. Set <code>VITE_API_BASE_URL</code> to the Function URL and rebuild.
           </p>
         </div>
       </div>
@@ -158,25 +160,47 @@ export default function App() {
   if (!session) {
     return (
       <div className="gate">
-        <div className="card">
+        <form
+          className="card"
+          onSubmit={async (event) => {
+            event.preventDefault()
+            if (busy) return
+            setBusy(true)
+            setStatus('Signing in…')
+            const { error: err } = await supabase.auth.signInWithPassword({ email, password })
+            setBusy(false)
+            // On success onAuthStateChange takes over; never echo the password back.
+            setStatus(err ? err.message : '')
+            if (!err) {
+              setPassword('')
+              const { data } = await supabase.auth.getSession()
+              setSession(data.session)
+            }
+          }}
+        >
           <h1>Alpha Admin</h1>
-          <p className="muted">Sign in with an administrator email.</p>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
-          <button
-            className="primary"
-            onClick={async () => {
-              setStatus('Sending link…')
-              const { error: err } = await supabase.auth.signInWithOtp({
-                email,
-                options: { emailRedirectTo: location.origin, shouldCreateUser: false }
-              })
-              setStatus(err ? err.message : 'Check your email for the sign-in link.')
-            }}
-          >
-            Email me a link
+          <p className="muted">Sign in with your administrator email and password.</p>
+          <input
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@example.com"
+            required
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+          />
+          <button className="primary" type="submit" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
           </button>
           <p className="muted small">{status}</p>
-        </div>
+        </form>
       </div>
     )
   }

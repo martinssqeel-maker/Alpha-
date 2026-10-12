@@ -19,8 +19,10 @@
     "dist:dir": "electron-vite build && electron-builder --win --dir",
     "release": "electron-vite build && electron-builder --win nsis --publish always & node scripts/ensure-release.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "admin:password": "node scripts/admin-password.mjs",
     "deploy": "node scripts/deploy.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "verify:auth": "node scripts/verify-auth.mjs",
     "smoke:desktop": "node scripts/desktop-smoke.mjs"
   },
   "dependencies": {

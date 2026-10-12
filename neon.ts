@@ -26,6 +26,14 @@ const apiEnv = pickEnv([
   'RESEND_API_KEY',
   'WEB_ACCOUNT_URL',
   'ALLOWED_ORIGINS',
+  // Google sign-in: set these two to turn the Google button on (see docs).
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_REDIRECT_URI',
+  'AUTH_APP_SCHEME',
+  'AUTH_PASSWORD_MAX_ATTEMPTS',
+  'AUTH_PASSWORD_WINDOW_MIN',
+  'AUTH_OAUTH_CODE_TTL_MIN',
   // Enable these once the Neon AI Gateway is provisioned (paid plan):
   'NEON_AI_GATEWAY_BASE_URL',
   'NEON_AI_GATEWAY_TOKEN',

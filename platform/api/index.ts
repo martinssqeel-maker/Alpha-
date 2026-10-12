@@ -5,6 +5,7 @@ import { authRoutes } from './auth'
 import { platformRoutes } from './platform'
 import { gatewayRoutes } from './gateway'
 import { adminRoutes } from './admin'
+import { downloadRoutes } from './downloads'
 
 const app = new Hono()
 
@@ -37,6 +38,7 @@ app.route('/auth', authRoutes)
 app.route('/platform', platformRoutes)
 app.route('/gateway', gatewayRoutes)
 app.route('/admin', adminRoutes)
+app.route('/downloads', downloadRoutes)
 
 app.notFound((c) => c.json({ ok: false, error: { code: 'not_found', message: 'Not found.' } }, 404))
 

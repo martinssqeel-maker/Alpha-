@@ -74,7 +74,9 @@ export const ADMIN_SIGNATURES: Record<string, AdminParam[]> = {
   ],
   admin_upsert_announcement: [{ name: 'p', cast: 'jsonb' }],
   admin_audit_log: [{ name: 'p_limit', cast: 'integer', hasDefault: true }],
-  admin_list_catalog: []
+  admin_list_catalog: [],
+  admin_list_releases: [],
+  admin_upsert_release: [{ name: 'p', cast: 'jsonb' }]
 }
 
 export type AdminCallErrorCode = 'unknown_function' | 'unknown_param' | 'missing_param' | 'bad_args'

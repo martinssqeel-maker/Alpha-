@@ -2,7 +2,7 @@ export const APP_NAME = 'Alpha AI Workspace'
 export const APP_ID = 'com.alpha.aiworkspace'
 // Display/telemetry constant. The authoritative runtime version is read from the
 // packaged app itself via `app.getVersion()` (see `app:info` diagnostics).
-export const APP_VERSION = '1.0.3'
+export const APP_VERSION = '1.0.4'
 export const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434'
 
 export const MODES = ['chat', 'assist', 'agent'] as const

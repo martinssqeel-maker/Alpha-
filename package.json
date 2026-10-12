@@ -1,6 +1,6 @@
 {
   "name": "alpha-ai-workspace",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Alpha AI Workspace - a premium local-first Windows desktop AI development environment that connects to your existing Ollama models, cloud providers, project folders and GitHub.",
   "main": "./out/main/index.js",
   "author": "Alpha AI Workspace",
@@ -18,7 +18,10 @@
     "dist": "electron-vite build && electron-builder --win nsis",
     "dist:dir": "electron-vite build && electron-builder --win --dir",
     "release": "electron-vite build && electron-builder --win nsis --publish always & node scripts/ensure-release.mjs",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:desktop": "node scripts/desktop-smoke.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.8.6",

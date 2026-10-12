@@ -892,11 +892,18 @@ select {
   height: 28px;
 }
 
-/* Launch splash */
+/* Launch splash (decorative — never interactive) */
 .splash {
   position: fixed;
   inset: 0;
   z-index: 999;
+  /*
+   * The splash has no controls and sits above the entire window, so it must
+   * never take pointer input: a stuck overlay here makes the whole app look
+   * frozen while every click silently lands on the splash instead. Clicks fall
+   * through to the workspace until the splash unmounts.
+   */
+  pointer-events: none;
   display: grid;
   place-items: center;
   background:

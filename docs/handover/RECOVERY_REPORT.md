@@ -440,6 +440,83 @@ server/installer configuration.
 **closed in production and verified**. `ALLOWED_ORIGINS` remains `*` and needs the real origins
 before it can be tightened.
 
+### 11.6c Round 4 — the frozen workspace (reproduced, fixed, verified)
+
+**Symptom.** The window opened and rendered correctly, but nothing responded: no button
+clicks, no typing, Settings would not open. Only closing the window worked.
+
+**Root cause.** `src/renderer/src/App.tsx` armed both splash timers in one effect and listed
+`splashPhase` in its dependency array. The moment the first timer flipped the phase to
+`'leaving'`, the effect re-ran, its cleanup cancelled the still-pending `'done'` timer, and the
+guard (`splashPhase !== 'show'`) refused to re-arm it. `.splash` is
+`position: fixed; inset: 0; z-index: 999` with no `pointer-events` rule, so the overlay stayed
+mounted at `splash-leaving` — `opacity: 0`, invisible, and above every control in the window.
+Captured from the live renderer: `document.elementFromPoint(<Settings button>)` returned
+`splash splash-leaving`, and `.splash` never unmounted.
+
+**When.** Commit `347a057` "Add launch splash animation" (2026-10-10 18:42) introduced it. The
+app log shows the last successful interaction at 16:46 and then 8+ relaunches from 20:05 onward
+that only ever reach `database opened` — consistent with the app being unclickable ever since.
+The Neon migration (`4c4321a`, 01:15 the next day) is **not** the cause, though the separately
+installed build predates it (see below).
+
+**Fix.** One timer per phase (cleanup can then only cancel the *next* pending step), plus a
+bounded hold when startup is slow, plus `pointer-events: none` on `.splash` so a decorative
+overlay can never swallow input again.
+
+**Verified** on the packaged build (`release/win-unpacked`), against the real profile, with
+`npm run smoke:desktop`: 12/12 checks pass, twice in a row, and 16/16 with `--stall-init`
+(fault-injected stalled startup). Before the fix the same script failed on "launch splash leaves
+the screen", "no overlay covers the sidebar", typing, the send button and Settings — the test
+demonstrably detects the defect it guards.
+
+### 11.6d Round 5 — seven IPC channels rejected before their handler
+
+**Symptom.** Git status/branches/remotes and the checkpoint list never populated, and the chat
+**Stop** button did nothing. Nothing appeared in the UI, because every affected caller either
+ignores the rejection or shows a generic failure.
+
+**Root cause.** `shared/ipc.ts` (`IpcContract`) is the contract both sides are written against,
+and it asks these channels for a key that is not `id` — `{ requestId }`, `{ runId }`,
+`{ projectId }`. The main process validated all seven with `zId` (`{ id }`) and then read `.id`,
+so zod rejected every call as `Invalid request: Required`. The `(p as { id: string })` casts were
+the tell. Log evidence: `Error occurred in handler for 'git:status': Invalid request: Required`.
+
+| Channel | Contract | Was validated as |
+|---|---|---|
+| `chat:cancel` | `{ requestId }` | `{ id }` |
+| `terminal:cancel` | `{ runId }` | `{ id }` |
+| `edit:checkpoints` | `{ projectId }` | `{ id }` |
+| `git:status`, `git:branches`, `git:remotes`, `git:init` | `{ projectId }` | `{ id }` |
+
+**Fix.** `zRequestId` / `zRunId` / `zProjectId` added to `shared/schemas.ts` to mirror the
+contract, and the seven handlers switched over (casts removed). No renderer change was needed —
+the renderer was already correct.
+
+**Verified** in the packaged 1.0.4 build by `npm run smoke:desktop`, which now invokes each
+keyed channel through the preload bridge: `IPC request-key contract` passes for all seven and
+`git status answers for a real project` returns a real `GitStatus`. The app log for the run
+contains **zero** `Invalid request` lines (the only handler errors are the deliberate bogus-id
+probes returning `Project not found`).
+
+### 11.6e Artifacts (1.0.4)
+
+Version bumped to `1.0.4` in `package.json`, `package-lock.json` and `APP_VERSION`, because
+electron-updater compares versions: shipping the fix as `1.0.3` would never be offered to
+anyone already on `1.0.3`. Built (not published):
+
+- Installer: `release/Alpha AI Workspace-Setup-1.0.4.exe` (125,197,395 bytes)
+- Unpacked payload: `release/win-unpacked/` — FileVersion `1.0.4`
+- Update manifest: `release/latest.yml` (version 1.0.4, sha512 present)
+
+Verified by running the **packaged** app (not dev): `npm run smoke:desktop -- --stall-init --chat`
+→ **20/20**, including a real streamed model reply. The installer wraps that same payload; the
+installation itself was left to the operator.
+
+⚠️ `release/Alpha AI Workspace-Setup-1.0.3.exe` and everything older still contains the stuck
+splash overlay from §11.6c. Do not install or distribute them. Publishing 1.0.4 needs
+`GH_TOKEN` and an explicit go-ahead (`npm run release`).
+
 ### 11.7 Still open
 
 - `ALLOWED_ORIGINS=*` — needs the real website/admin origins, then a redeploy (§5).

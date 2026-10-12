@@ -14,4 +14,10 @@ admin/dist/
 admin/.env
 supabase/.temp/
 .neon
-.env.local
+
+# Secrets. `.env` was NOT ignored before, so a real key file dropped at the repo
+# root could be committed by accident. Templates stay tracked.
+.env
+.env.*
+!.env.example
+admin/.env

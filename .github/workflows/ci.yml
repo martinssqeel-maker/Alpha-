@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (desktop + backend + admin + website)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # LTS. Deliberately not npm 11+: its install-script blocking would skip
+          # Electron's postinstall, and we want CI closer to a normal install.
+          node-version: 22
+          cache: npm
+
+      # A tracked secrets file is the one mistake that must never reach main.
+      - name: Refuse tracked secret files
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked=$(git ls-files | grep -E '(^|/)\.env($|\.local$)|(^|/)secrets\.enc$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::These secret files are tracked by git: $tracked"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (desktop + preload + shared + platform API)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build desktop bundles
+        run: npm run build
+
+      - name: Install admin dependencies
+        working-directory: admin
+        run: npm ci
+
+      - name: Typecheck + build admin dashboard
+        working-directory: admin
+        run: npm run build
+
+      # gen-config is the website's only build step (see website/vercel.json).
+      # With no API_BASE_URL it must still succeed and write an unconfigured config.
+      - name: Website config generation
+        working-directory: website
+        run: node gen-config.mjs

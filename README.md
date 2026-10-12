@@ -89,6 +89,9 @@ footer, choose a mode, and start chatting.
 | `npm run dist` | Build and create the Windows NSIS installer (`release/`) |
 | `npm run dist:dir` | Build an unpacked app directory (`release/win-unpacked/`) |
 | `npm run release` | Build and publish the installer to GitHub Releases (requires `GH_TOKEN`) |
+| `npm run db:migrate` | Apply `database/migrations/*.sql` to the Neon database |
+| `npm run deploy` | Validate `.env.local` and deploy the platform Function (`-- --plan` for a read-only diff) |
+| `npm run smoke` | Read-only live smoke check of the deployed API |
 | `node scripts/make-icon.cjs` | Regenerate `build/icon.ico` |
 
 ---
@@ -141,6 +144,30 @@ never written to logs.
 
 Cloud providers receive your prompts. Acknowledge the context-disclosure setting in
 Settings before using non-local models.
+
+---
+
+## Alpha Cloud (optional accounts)
+
+Everything above works fully offline with no account. **Alpha Cloud** is the optional
+hosted layer: sign in with an emailed code, get a plan (free / pro / team), and reach
+cloud models through a server-side gateway so provider keys never touch your machine.
+
+- **Where it lives:** one Neon Function (Hono) over Neon Postgres, at
+  `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech`. The same
+  backend serves the desktop app, the download site and the admin dashboard.
+- **Turn it on:** *Settings → Alpha Cloud (platform)* → enable and paste the API base
+  URL. Then *Account → enter your email* → open the emailed link. The `alpha://`
+  handler returns you to the app, signed in.
+- **What it changes:** a managed `gateway` provider appears; plan, usage and the
+  allowed model list come from the server. Plans and quotas are enforced server-side,
+  so a disabled model cannot be used by editing the client.
+- **Sign out** and the gateway provider and its models disappear again.
+
+Only the API base URL is stored locally; the session is kept in the OS-encrypted
+secret store (Windows DPAPI). See [docs/platform/](docs/platform/architecture.md) for
+the full design and [docs/platform/MANUAL-TODO.md](docs/platform/MANUAL-TODO.md) for the
+go-live runbook.
 
 ---
 

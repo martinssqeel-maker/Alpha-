@@ -245,6 +245,28 @@ async function writeChecks() {
         record('FAIL', '/platform/config answers for a signed-in account', `status=${platformConfig.status}`)
       }
 
+      // 6. Every panel of the admin portal is backed by one of these RPCs, so a
+      //    failure here is a failure the dashboard would show as an empty panel.
+      for (const fn of [
+        'admin_list_users',
+        'admin_list_catalog',
+        'admin_list_releases',
+        'admin_audit_log'
+      ]) {
+        const res = await call('/admin/rpc', {
+          method: 'POST',
+          token: adminToken,
+          body: { fn, params: {} }
+        })
+        const shape = Array.isArray(res.json?.result)
+          ? `${res.json.result.length} row(s)`
+          : res.json?.result && typeof res.json.result === 'object'
+            ? 'object'
+            : typeof res.json?.result
+        if (res.status === 200 && res.json?.ok) record('PASS', `admin RPC ${fn} answers`, shape)
+        else record('FAIL', `admin RPC ${fn} answers`, `status=${res.status} ${res.json?.error?.message ?? ''}`)
+      }
+
       const device = await call('/platform/device', {
         method: 'POST',
         token: adminToken,

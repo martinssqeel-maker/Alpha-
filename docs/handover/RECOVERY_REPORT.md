@@ -513,9 +513,15 @@ Verified by running the **packaged** app (not dev): `npm run smoke:desktop -- --
 → **20/20**, including a real streamed model reply. The installer wraps that same payload; the
 installation itself was left to the operator.
 
+**Published** with `node scripts/ensure-release.mjs` (the idempotent half of `npm run release`,
+run against the already-verified installer rather than rebuilding). Release `v1.0.4` is public
+and points at commit `e16c7b3`: exe 125,197,395 bytes, blockmap, and a `latest.yml` whose
+sha512 is byte-identical to the installer that passed the desktop checks — so what auto-update
+downloads is the build that was actually driven. `v1.0.3` and earlier are untouched.
+
 ⚠️ `release/Alpha AI Workspace-Setup-1.0.3.exe` and everything older still contains the stuck
-splash overlay from §11.6c. Do not install or distribute them. Publishing 1.0.4 needs
-`GH_TOKEN` and an explicit go-ahead (`npm run release`).
+splash overlay from §11.6c. Anyone still on 1.0.3 gets 1.0.4 from auto-update now; do not
+install or distribute the older installers by hand.
 
 ### 11.7 Still open
 

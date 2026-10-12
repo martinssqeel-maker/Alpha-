@@ -111,7 +111,12 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
 - The page's API calls must pass CORS from the site origin: preflight on `/auth/request`
   should answer `204` with `access-control-allow-origin: <site>` and
   `access-control-allow-headers: Authorization,Content-Type`.
-- Verify programmatically with `npm run smoke -- --website <url>`.
+- Verify programmatically with `npm run smoke -- --website <url>` and
+  `npm run verify:auth`. The latter is read-only by default (capability endpoints, the
+  anonymous `401` on `/downloads/latest`, the foreign-redirect refusal, and CORS for both an
+  allowed and a foreign origin). Add `-- --with-write` to also create two throwaway
+  accounts, prove administrator password sign-in, `/admin/rpc` authorization, the gated
+  release, suspension and single-use code replay, then delete them again.
 
 ## Admin dashboard
 

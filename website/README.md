@@ -15,10 +15,13 @@ portal that reads plans, usage and models from the Neon Function API.
 ```
 website/
   index.html            landing page
-  account.html          account / sign-in portal
+  account.html          account / sign-in portal (Google + one-time link)
+  download.html         gated download page — requires a signed-in account
   assets/styles.css     design system
-  assets/app.js         latest-release resolver + reveal animations
+  assets/app.js         version/size hints + reveal animations
+  assets/session.js     shared session, API and OAuth-return helpers
   assets/account.js     sign-in + plan/usage rendering against the API
+  assets/download.js    reveals the installer only to a signed-in account
   assets/icon.png       app icon (favicon + branding)
   config.example.js     shape of the generated config
   config.js             COMMITTED platform config — this is what ships

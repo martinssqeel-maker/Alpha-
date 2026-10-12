@@ -563,3 +563,35 @@ the Function (`/platform/config` → `401` unauthorized, `/auth/request` with a 
 `npm run smoke -- --website https://alpha-website-lime.vercel.app` → 7 passed, 0 failed.
 
 Not covered: the emailed sign-in link itself still needs a real mailbox (§11.7).
+
+### 11.6g Round 6 — identity, administrator access and a gated download
+
+**What was missing.** One sign-in method (emailed one-time codes), no way for the owner to
+reach the admin portal without a mailbox, and a download button that linked straight to a
+public release asset.
+
+**Added, on top of the existing accounts rather than beside them:**
+
+| Area | Change |
+|---|---|
+| Google sign-in | `GET /auth/google/start` → Google → `GET /auth/google/callback`, all server side: signed state, PKCE-free code exchange, id_token verified against Google's JWKS (issuer, audience, nonce, `email_verified`). The identity is linked by verified email via `public.link_identity`, so a Google sign-in lands on the account that already owns that email instead of forking a second one |
+| Sessions | Every path (OTP, Google, password) mints the same session through one helper, and a web return hands the browser a single-use code it exchanges over `POST /auth/oauth/exchange` — no session token in a URL or in history |
+| Desktop | A Google callback aimed at the app redirects to the existing `alpha://auth/callback` magic-link shape, so the installed app needs no change |
+| Admin password | `POST /auth/password`; scrypt digests seeded by `npm run admin:password` (no API can write that table). Database-enforced admin role, per-email and per-address throttling, one generic failure message, audit row per successful login |
+| Downloads | `GET /downloads/latest` backed by a new `releases` table (seeded with 1.0.4): `401` anonymous, `403` suspended, otherwise the release metadata. `/download.html` is the gated page; the landing CTA points at it instead of at GitHub |
+| CORS | `ALLOWED_ORIGINS` pinned to the website origin — the long-open wildcard finding is closed |
+
+**Verified** (all against the deployed Function, commit `e371caa`): `npm run verify:auth` →
+8/8 read-only checks, then `--with-write` → 15/15 including administrator password sign-in,
+`/admin/rpc` returning `users=8`, `/downloads/latest` → `1.0.4` (125197395 bytes), a
+non-administrator refused on the admin path, a suspended account refused (`403` download,
+`401` login), and a code that exchanges once and cannot be replayed — with both throwaway
+accounts and every trace of them removed afterwards. Browser: `/download` shows the sign-in
+prompt while signed out, then `Version 1.0.4 · Installer · 119 MB · SHA-512` and the
+installer link once signed in. Unit tests 72/72, typecheck 0, admin build 0, `npm run smoke`
+7/7 with the CORS warning now gone, Vercel `success` on the push.
+
+**Not verified: the Google round trip itself.** No OAuth client exists yet, so the button is
+testable only after §7b of the runbook supplies `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+Everything either side of Google is verified, including the redirect-target allow-list
+(which refuses a foreign host) and the code exchange that follows the callback.

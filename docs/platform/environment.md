@@ -87,6 +87,20 @@ for every model. It is a configuration gap, not a code fault.
   (`npx vercel inspect <deployment> --logs`). Serving the committed config and dropping
   the command restored successful deployments (`07e3801`).
 
+### Website sign-in and downloads
+
+`/account.html` and `/download.html` offer only the methods the deployment actually
+supports, discovered from `GET /auth/providers`:
+
+- **Google** — needs `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (below). While they are
+  unset the API answers `503 google_not_configured` and the button is hidden.
+- **Emailed one-time link** — the original path, still present. `EMAIL_PROVIDER=log`
+  means no mail is actually sent (see §5).
+- **Downloads** are authenticated: `/downloads/latest` returns the published release for a
+  signed-in *active* account, `401` anonymously and `403` when the account is suspended.
+  Publishing a release is a row in `public.releases` (seeded with `1.0.4`); the website
+  never links to an installer asset directly.
+
 ## 7. Admin dashboard
 
 ```bash
@@ -96,6 +110,22 @@ npm install
 npm run dev                    # local
 npm run build                  # → admin/dist (deploy to any static host)
 ```
+
+**Sign-in is an administrator email + password** (not the emailed link). The account must
+already exist and already hold an admin role; the password is set locally so it never
+travels through the API, the shell or chat:
+
+```bash
+npm run admin:password                 # prompts for the email and a hidden password
+npm run admin:password -- --revoke     # remove the credential
+```
+
+Only a scrypt digest reaches `public.password_credentials`. The API re-checks the admin
+role in the database on every request and throttles failed attempts per email and per
+address, so this path cannot be used to promote an ordinary account.
+
+When you host the dashboard somewhere other than `http://localhost:5173`, add that origin
+to `ALLOWED_ORIGINS` — otherwise the browser will refuse its API calls.
 
 Guard the deployment (only staff should reach it), but note the RPCs are safe
 regardless: every call is `require_admin`-checked in the database.
@@ -121,6 +151,9 @@ set — so changing the scheme requires matching changes in both places.
 | `NEON_AI_GATEWAY_BASE_URL` / `_TOKEN` | Function env | token **yes** |
 | `PROVIDER_API_KEY_<CODE>` | Function env | **yes** |
 | `API_BASE_URL` | only when regenerating `website/config.js` | no |
+| `GOOGLE_CLIENT_ID` | Function env — enables Google sign-in | no |
+| `GOOGLE_CLIENT_SECRET` | Function env — enables Google sign-in | **yes** |
+| `AUTH_APP_SCHEME` | Function env — desktop deep-link scheme (`alpha`) | no |
 | `VITE_API_BASE_URL` | `admin/.env.local` (build time) | no |
 | `GH_TOKEN` | local shell only, for publishing a release | **yes** |
 

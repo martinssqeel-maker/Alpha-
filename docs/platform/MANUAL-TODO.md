@@ -14,7 +14,7 @@ you do not have to re-derive any of it:
 | Auth on private routes | Enforced — `/platform/config`, `/gateway/models`, `/admin/rpc` all `401` anonymously |
 | Input validation | Working — malformed email → `400 invalid_email` before any mail is touched |
 | Sign-in token leak | **Closed** — `/auth/request` no longer returns `devCode` / `devMagicToken` |
-| CORS | **Still open** — `ALLOWED_ORIGINS` unset/`*`, so any origin is reflected |
+| CORS | **Closed** — `ALLOWED_ORIGINS` pinned to the website origin; a foreign origin is no longer reflected |
 | Email | `EMAIL_PROVIDER=log` — sends no mail, but still replies "we sent a code" |
 | Provider credentials | **None** — no Neon AI Gateway and no provider keys ⇒ every chat request returns `502 provider_unavailable` |
 | Schema | Applied on `production`; `neon config plan` reports a pending `~ function api` change |
@@ -27,6 +27,8 @@ NEON_FUNCTION_API_BASE_URL  = https://br-flat-morning-b41hcfhc-api.compute.c-6.u
 API_BASE_URL                = $NEON_FUNCTION_API_BASE_URL
 WEBSITE_URL                 = https://alpha-website-lime.vercel.app
 ADMIN_EMAIL                 = ____________________   (bootstrap admin)
+GOOGLE_CLIENT_ID            = __________.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET        = GOCSPX-_______________
 RESEND_API_KEY              = re___________________
 PROVIDER_API_KEY_OPENAI     = sk-__________________
 PROVIDER_API_KEY_ANTHROPIC  = sk-ant-______________
@@ -150,7 +152,21 @@ commit reported `failure`; `/`, `/account`, `/config.js`, `/assets/account.js` a
 (origin reflected, preflight `204`); `npm run smoke -- --website <domain>` → 7 passed,
 0 failed, including `website config.js is configured`.
 
-## [ ] 7. Admin dashboard: set the API base URL
+## [ ] 7. Admin dashboard: API base URL + your administrator password
+
+The dashboard now signs in with an **administrator email and password** instead of an
+emailed link, so you need to set one. Run this on your machine (it prompts for the password
+with hidden input, writes only a scrypt digest, and prints nothing):
+
+```powershell
+npm run admin:password                 # email + hidden password
+```
+
+The account must already exist and already be an admin: sign in once on the website with the
+bootstrap admin email first, then run the command. `npm run admin:password -- --revoke`
+removes the credential again.
+
+Then build the dashboard:
 
 ```powershell
 cd admin
@@ -159,7 +175,31 @@ npm run build
 ```
 
 Host `admin/dist/` privately. The RPCs are `require_admin`-checked regardless, but keep
-the URL unlisted. Remember to add the admin origin to `ALLOWED_ORIGINS`.
+the URL unlisted. **Add that host to `ALLOWED_ORIGINS`** (and redeploy) or the browser will
+block its API calls — only the website origin and `localhost:5173/3000` are allowed today.
+
+## [ ] 7b. Google sign-in: create the OAuth client
+
+The code is written and deployed; Google is simply switched off until these two values
+exist on the Function (`GET /auth/providers` reports `google:false`, and the website hides
+the button rather than showing one that cannot work).
+
+1. https://console.cloud.google.com/ → create/select a project.
+2. **APIs & Services → OAuth consent screen**: External; app name `Alpha AI Workspace`;
+   your support email; add your own Google account under **Test users**. Scopes: the
+   defaults plus `openid`, `email`, `profile`.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+   Application type: **Web application**.
+   Authorized redirect URI (exactly this, no trailing slash):
+   `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/google/callback`
+4. Add the client ID and secret to `.env.local` as `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET` (never paste them into chat), then
+   `npm run deploy`.
+5. Verify: `curl https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/providers`
+   must show `"google":true`, and `/account` must now show **Continue with Google**.
+
+Desktop sign-in with Google uses the same button on the website; the API returns the
+browser to the app's existing `alpha://auth/callback` link, so no desktop change is needed.
 
 ## [ ] 8. Desktop app: connect to Alpha Cloud
 

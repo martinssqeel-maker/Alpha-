@@ -59,6 +59,14 @@ export const zConversationUpdate = z.object({
 })
 
 export const zId = z.object({ id: z.string().min(1) })
+
+// Payload schemas for the channels whose request key is not `id`. These mirror
+// `IpcContract` in shared/ipc.ts, which is the contract both sides are written
+// against: validating with the wrong key shape rejects every call before it
+// reaches its handler (the caller only sees "Invalid request: Required").
+export const zRequestId = z.object({ requestId: z.string().min(1) })
+export const zRunId = z.object({ runId: z.string().min(1) })
+export const zProjectId = z.object({ projectId: z.string().min(1) })
 export const zIdNullable = z.object({ id: z.string().min(1).nullable() })
 
 export const zConversationAppend = z.object({

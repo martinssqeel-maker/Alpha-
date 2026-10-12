@@ -26,8 +26,11 @@ import {
   zProjectTree,
   zProjectWrite,
   zPlatformSignIn,
+  zProjectId,
   zProviderSave,
   zProviderTest,
+  zRequestId,
+  zRunId,
   zSearch,
   zSettingsSet,
   zTerminalRun,
@@ -125,7 +128,7 @@ export function registerIpc(ctx: AppContext): void {
   })
 
   handle(CH.chatSend, zChatSend, (p) => ctx.chat.send(p as never))
-  handle(CH.chatCancel, zId, (p) => ({ ok: ctx.chat.cancel((p as { id: string }).id) }))
+  handle(CH.chatCancel, zRequestId, (p) => ({ ok: ctx.chat.cancel((p as { requestId: string }).requestId) }))
   handle(CH.chatApproval, zApproval, (p) => {
     const a = p as { approvalId: string; approved: boolean }
     ctx.broker.resolve(a.approvalId, a.approved)
@@ -228,13 +231,15 @@ export function registerIpc(ctx: AppContext): void {
     if (decision === 'deny') throw new Error('File writes are disabled by the current permission settings.')
     return ctx.editService.apply((p as { proposalId: string }).proposalId)
   })
-  handle(CH.editCheckpoints, zId, (p) => ctx.checkpoints.list((p as { id: string }).id))
+  handle(CH.editCheckpoints, zProjectId, (p) =>
+    ctx.checkpoints.list((p as { projectId: string }).projectId)
+  )
   handle(CH.editRestore, zCheckpointRestore, (p) => ctx.checkpoints.restore((p as { checkpointId: string }).checkpointId))
 
   handle(CH.terminalRun, zTerminalRun, (p) => ctx.terminal.run(p as never, termEvent))
-  handle(CH.terminalCancel, zId, (p) => ({ ok: ctx.terminal.cancel((p as { id: string }).id) }))
+  handle(CH.terminalCancel, zRunId, (p) => ({ ok: ctx.terminal.cancel((p as { runId: string }).runId) }))
 
-  handle(CH.gitStatus, zId, (p) => ctx.git.status((p as { id: string }).id))
+  handle(CH.gitStatus, zProjectId, (p) => ctx.git.status((p as { projectId: string }).projectId))
   handle(CH.gitDiff, zGitDiff, (p) => {
     const { projectId, path, staged } = p as { projectId: string; path?: string; staged?: boolean }
     return ctx.git.diff(projectId, path, staged).then((patch) => ({ patch }))
@@ -274,7 +279,9 @@ export function registerIpc(ctx: AppContext): void {
     const { projectId, limit } = p as { projectId: string; limit?: number }
     return ctx.git.log(projectId, limit).then((entries) => ({ entries }))
   })
-  handle(CH.gitBranches, zId, (p) => ctx.git.branches((p as { id: string }).id))
+  handle(CH.gitBranches, zProjectId, (p) =>
+    ctx.git.branches((p as { projectId: string }).projectId)
+  )
   handle(CH.gitCreateBranch, zGitCreateBranch, (p) => {
     const { projectId, name, checkout } = p as { projectId: string; name: string; checkout?: boolean }
     return ctx.git.createBranch(projectId, name, checkout ?? true)
@@ -283,8 +290,10 @@ export function registerIpc(ctx: AppContext): void {
     const { projectId, name } = p as { projectId: string; name: string }
     return ctx.git.checkout(projectId, name)
   })
-  handle(CH.gitInit, zId, (p) => ctx.git.init((p as { id: string }).id))
-  handle(CH.gitRemotes, zId, (p) => ctx.git.remotes((p as { id: string }).id))
+  handle(CH.gitInit, zProjectId, (p) => ctx.git.init((p as { projectId: string }).projectId))
+  handle(CH.gitRemotes, zProjectId, (p) =>
+    ctx.git.remotes((p as { projectId: string }).projectId)
+  )
   handle(CH.gitSetRemote, zGitSetRemote, (p) => {
     const { projectId, name, url } = p as { projectId: string; name: string; url: string }
     return ctx.git.setRemote(projectId, name, url)

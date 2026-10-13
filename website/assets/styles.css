@@ -485,74 +485,16 @@ main { position: relative; z-index: 1; }
 }
 
 /* ============================================================================
-   Account portal + download surface (shared components)
+   Download page surface
    ========================================================================== */
 
 .account-card { max-width: 620px; margin: 0 auto; padding: 28px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--lift-1); }
 .account-card h2 { font-family: var(--plate); }
-.account-card h3 { margin: 22px 0 10px; font-size: 12.5px; font-weight: 600; color: var(--steel); }
-.stack { display: flex; flex-direction: column; gap: 14px; }
-.btn-row { display: flex; gap: 10px; }
-.signed-in-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.signed-in-head .email { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
-.plan-block { display: flex; align-items: baseline; justify-content: space-between; margin-top: 18px; gap: 12px; }
-.plan-name { font-family: var(--plate); font-size: 24px; font-weight: 600; }
 .muted { color: var(--steel); font-size: 13px; }
-.usage { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
-.usage .row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; font-variant-numeric: tabular-nums; }
-.usage .bar { height: 6px; border-radius: 4px; background: var(--panel-3); overflow: hidden; }
-.usage .bar i { display: block; height: 100%; background: var(--brand); border-radius: 4px; }
-.usage .muted { list-style: none; }
 
-.announce { border-left: 2px solid var(--brand); padding: 11px 14px; margin: 8px 0; background: var(--brand-tint); border-radius: var(--r-sm); }
-.announce.warning { border-color: var(--warn); background: var(--warn-tint); }
-.announce.critical { border-color: var(--bad); background: var(--bad-tint); }
-.announce strong { display: block; font-size: 14px; }
-.announce p { margin: 4px 0 0; color: var(--steel); font-size: 13px; }
-
-.notice { padding: 14px 16px; border-radius: var(--r); background: var(--brand-tint); border: 1px solid var(--brand-edge); font-size: 14px; }
 .status { margin-top: 16px; font-size: 13px; min-height: 18px; color: var(--steel); }
 .status[data-kind='ok'] { color: var(--ok); }
 .status[data-kind='error'] { color: var(--bad); }
-
-.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.field > span { color: var(--steel); }
-.input {
-  padding: 11px 13px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-2);
-  background: var(--ink);
-  color: var(--chalk);
-  font: inherit;
-  font-size: 15px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-html[data-theme='light'] .input { background: var(--panel-2); }
-.input::placeholder { color: var(--faint); }
-.input:focus { outline: none; border-color: var(--brand-edge); box-shadow: 0 0 0 3px var(--brand-tint); }
-
-/* --- Google sign-in: Google's own button, so it must not be restyled away --- */
-.btn.google {
-  background: #ffffff;
-  color: #1f2430;
-  border-color: rgba(255, 255, 255, 0.85);
-  justify-content: center;
-  gap: 10px;
-  font-weight: 600;
-}
-.btn.google:hover { background: #f2f5fb; color: #12161f; }
-.btn.google .gicon { flex: none; }
-
-.or {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 16px 0 2px;
-  color: var(--faint);
-  font-size: 11.5px;
-}
-.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-.or span { flex: none; }
 
 /* --- download surface --- */
 .dl-block {

@@ -4,6 +4,7 @@ import type { ChatMessage } from '@shared/types'
 import { useApp } from '../store/useApp'
 import Markdown from './Markdown'
 import ActivityTimeline from './ActivityTimeline'
+import alphaLogo from '../assets/alpha-logo.png'
 
 export default function MessageList() {
   const messages = useApp((s) => s.messages)
@@ -118,12 +119,7 @@ function Empty() {
   ]
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
-      <div
-        className="grid place-items-center rounded-xl"
-        style={{ width: 56, height: 56, background: 'var(--accent)', color: '#fff', fontSize: 26 }}
-      >
-        A
-      </div>
+      <img src={alphaLogo} alt="" width={56} height={56} draggable={false} />
       <div>
         <h2 className="text-lg font-semibold">Alpha AI Workspace</h2>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>

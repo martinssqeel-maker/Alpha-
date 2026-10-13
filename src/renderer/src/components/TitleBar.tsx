@@ -1,5 +1,6 @@
 import { Cpu, FolderGit2, Shield } from 'lucide-react'
 import { useApp } from '../store/useApp'
+import alphaLogo from '../assets/alpha-logo.png'
 
 export default function TitleBar() {
   const activeProject = useApp((s) =>
@@ -14,12 +15,7 @@ export default function TitleBar() {
   return (
     <div className="titlebar">
       <div className="flex items-center gap-2 font-semibold no-drag">
-        <div
-          className="grid place-items-center rounded-md"
-          style={{ width: 22, height: 22, background: 'var(--accent)', color: '#fff', fontSize: 12 }}
-        >
-          A
-        </div>
+        <img src={alphaLogo} alt="" width={22} height={22} draggable={false} />
         <span>Alpha AI Workspace</span>
       </div>
       <div className="flex-1" />

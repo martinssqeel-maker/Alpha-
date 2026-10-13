@@ -1,27 +1,25 @@
 # Alpha AI Workspace — website
 
-A dependency-free static site: marketing/landing page, plus a passwordless account
-portal that reads plans, usage and models from the Neon Function API.
+A dependency-free static site: marketing/landing page plus a public download page.
+No accounts, no sign-in — the site is purely public.
 
 - **No framework, no build step** beyond one config generator. Plain HTML/CSS/JS.
 - **Never-stale download.** `assets/app.js` reads the latest GitHub Release from
   `martinssqeel-maker/Alpha-` and points every download button at the newest `.exe`
   (falling back to the releases page if the API is unavailable).
-- **Account portal.** `account.html` + `assets/account.js` request an emailed code /
-  magic link and then render the signed-in user's plan, usage and available models.
+- **Public download page.** `download.html` + `assets/download.js` show the current
+  version, size and release notes from the same GitHub API — no session required.
 
 ## Files
 
 ```
 website/
   index.html            landing page
-  account.html          account / sign-in portal (Google + one-time link)
-  download.html         gated download page — requires a signed-in account
+  download.html         public download page (no sign-in)
   assets/styles.css     design system
-  assets/app.js         version/size hints + reveal animations
-  assets/session.js     shared session, API and OAuth-return helpers
-  assets/account.js     sign-in + plan/usage rendering against the API
-  assets/download.js    reveals the installer only to a signed-in account
+  assets/app.js         direct-download resolution + version/size hints + reveal animations
+  assets/theme.js       applies the stored palette before first paint
+  assets/download.js    fills the download page from the public GitHub Releases API
   assets/icon.png       app icon (favicon + branding)
   config.example.js     shape of the generated config
   config.js             COMMITTED platform config — this is what ships
@@ -42,8 +40,8 @@ node website/gen-config.mjs
 ```
 
 With no `API_BASE_URL` the generator still succeeds and writes an *unconfigured*
-`config.js`; `/account` then shows an honest "not configured" notice instead of a form
-that cannot work. Verify a deployed site with:
+`config.js`; the pages then simply skip anything platform-backed instead of failing.
+Verify a deployed site with:
 
 ```powershell
 npm run smoke -- --website https://your-site.vercel.app

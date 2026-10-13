@@ -62,6 +62,8 @@ async function createWindow(): Promise<void> {
     minWidth: 980,
     minHeight: 640,
     show: false,
+    // Packaged builds take the icon from the exe resource; dev needs it explicit.
+    icon: isDev ? path.join(app.getAppPath(), 'build', 'icon.ico') : undefined,
     backgroundColor: '#0b0d12',
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',

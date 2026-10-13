@@ -8,6 +8,14 @@
 > **PARTIAL** · **NOT STARTED** · **FAILED** · **BLOCKED** (with the reason) ·
 > **DEFERRED** (intentionally postponed) · **UNKNOWN — NEEDS VERIFICATION**
 >
+> **DIRECTION CHANGE (2026-10-13).** The product is now a **public landing page +
+> free direct download + AI Workspace**. The Admin portal, SaaS surfaces and all
+> website authentication were removed (commits `ca261ed`, `c90a87e`); the gated
+> website download was replaced with a public direct download and the Alpha logo
+> is now the brand across site and app — see the session log at the end of this
+> file, which supersedes every §5/§10/§11 statement that still assumes the
+> admin/auth model.
+>
 > Older notes in this repository are superseded where they disagree:
 > [HANDOVER_NOTE.md](HANDOVER_NOTE.md) and
 > [docs/handover/HANDOVER_SUMMARY.md](docs/handover/HANDOVER_SUMMARY.md) both describe
@@ -427,3 +435,142 @@ After that, in priority order: (a) private installer hosting with signed URLs,
 
 **Do not** re-do the website deployment fix, the auth layer or the admin rebuild — they are
 verified and live. Extend them.
+
+---
+
+## 14. Session log — 2026-10-13, public download fix + Alpha logo
+
+**Brief:** remove the leftover login requirement from the download flow, remove dead
+authentication UI from the website, and make the new Alpha logo the brand across the
+website and the desktop app. No rebuild, no auth back, no admin back, do not break the
+AI Workspace.
+
+### DOWNLOAD FIX — what was broken and what replaced it
+
+- **Root cause.** The landing page's `data-download` buttons pointed at `/download`,
+  which served `website/download.html` — a **sign-in-gated page** (`assets/download.js`
+  asked the platform API for the release with a session token; unauthenticated visitors
+  got "Sign in to get your download link"). Its "Sign in with a one-time link" pointed at
+  `/account.html?redirect=/download.html` — but `account.html` had been deleted with the
+  SaaS cleanup, so that link 404'd. That is exactly the reported
+  Download → Sign In → Page Not Found flow. `assets/app.js` even had a comment stating it
+  "deliberately does NOT jump straight to the public release asset".
+- **Removed.** The sign-in gate on `download.html` (sign-in card, Google button, one-time
+  link, session handling), the "Sign-in required" copy on the landing page, and
+  `assets/session.js` (the shared session/OAuth helper — nothing imports it anymore).
+- **New destination (the pre-existing public mechanism, not a new URL).** The GitHub
+  Releases of the public repo `martinssqeel-maker/Alpha-` — the same source the platform
+  `releases` table and the desktop updater already use. Both download CTAs on the landing
+  page keep a static href of `https://github.com/martinssqeel-maker/Alpha-/releases/latest`
+  (public, never 404s), which `assets/app.js` upgrades to the direct `.exe`
+  `browser_download_url` once the GitHub API answers. `download.html` was rewritten as a
+  **public** page: version, size and release notes from the same public API, a direct
+  download button, and the same releases-page fallback on API failure.
+- **Test result (VERIFIED, real browser via CDP):** landing page loads with the Alpha
+  logo; both CTAs resolve to
+  `https://github.com/martinssqeel-maker/Alpha-/releases/download/v1.0.4/Alpha-AI-Workspace-Setup-1.0.4.exe`;
+  the asset answers `HTTP 206` on a range request with
+  `application/octet-stream` (browsers download it); zero links matching
+  /account|sign-in|login/ on either page; no "sign in" text anywhere; `/download` shows
+  "Version 1.0.4 · Installer · 119 MB" with the direct link. `npm run smoke -- --website
+  http://localhost:4173` → **7 passed, 0 warnings**.
+
+### AUTHENTICATION — what was removed, what remains
+
+- **Removed (website):** the `/download` sign-in gate and page, `assets/session.js`,
+  the Account links in the landing nav + footer, the `/account` link in the FAQ, and the
+  dead account-portal CSS blocks (`.signed-in-head`, `.usage`, `.announce`, `.input`,
+  `.btn.google`, `.or`, `.stack`, `.btn-row`, `.plan-block`, `.notice`, `.field`).
+- **Removed (SaaS copy):** "Paid plans are planned for later" in the FAQ — the product
+  direction is free.
+- **Remains (intentionally):** the desktop app keeps its platform plumbing
+  (`platform:signin` IPC, `signInToPlatform`, gateway token handling) — commit `c90a87e`
+  already disabled enforcement and the workspace runs without sign-in; ripping the
+  plumbing out risks breaking the AI Workspace for no user-visible gain. The server-side
+  `/downloads/latest` gate on the deployed Function still answers 401 anonymously; no
+  website code calls it anymore, and the Function was not redeployed this session. The
+  `AccountModal` in the app now just states "Authentication has been removed" and shows
+  the version — left as is.
+
+### ALPHA LOGO — asset, replacement, integration
+
+- **Asset found:** `Alpha log.jpg` in the repo root (1254×1254, square, untracked — left
+  in place). A copy is committed as `build/alpha-logo.jpg` as the icon source of truth.
+  No replacement logo was created; the artwork was not redrawn.
+- **Icon pipeline:** `scripts/make-icon.cjs` (previously the generator of the old purple-A
+  placeholder) was rewritten: it writes a rounded-corner alpha mask in pure Node and
+  shells to ffmpeg for a lanczos downscale + `alphamerge` (requires ffmpeg on PATH; run
+  `node scripts/make-icon.cjs` after dropping a new `build/alpha-logo.jpg`). Proportions
+  are preserved — square source, square outputs, no stretching.
+- **Generated:** `build/icon.png` (512), `build/icon.ico` (256, PNG-compressed entry,
+  verified byte-level), `website/assets/icon.png` (256),
+  `src/renderer/src/assets/alpha-logo.png` (512).
+- **Old branding replaced:** the purple "A" app icons (`build/icon.png`, `build/icon.ico`,
+  `website/assets/icon.png`), the CSS letter-"A" splash mark (`Splash.tsx` now shows the
+  logo image; `.splash-mark` restyled as an image), the accent-square "A" in the title
+  bar (`TitleBar.tsx`) and the chat empty state (`MessageList.tsx`). Favicon, og:image,
+  nav brand, download card and footer on the website all use the new icon automatically
+  (same `assets/icon.png` path). Dev-mode `BrowserWindow` now sets `build/icon.ico` so
+  the taskbar shows Alpha during development; packaged builds take the icon from the exe
+  (electron-builder already points at `build/icon.ico`, so **the next installer build
+  picks the new icon up automatically** — the existing published 1.0.4 exe still carries
+  the old icon until a release is cut).
+
+### FILES CHANGED
+
+- Website: `index.html`, `download.html` (rewritten public), `assets/app.js`,
+  `assets/download.js` (rewritten public), `assets/styles.css` (pruned), `assets/session.js`
+  (deleted), `assets/icon.png`, `README.md`
+- Desktop: `Splash.tsx`, `TitleBar.tsx`, `MessageList.tsx`, `styles.css`,
+  `src/main/index.ts` (dev window icon), `src/renderer/src/assets/alpha-logo.png` (new),
+  `src/renderer/src/vite-env.d.ts` (new — `*.png` module declaration)
+- Branding/build: `build/icon.ico`, `build/icon.png`, `build/alpha-logo.jpg` (new),
+  `scripts/make-icon.cjs` (rewritten)
+- Docs: this file, `website/README.md`
+
+### TESTS ACTUALLY RUN
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npx vitest run` | 62 passed (7 files) |
+| `npm run build` (electron-vite) | exit 0, `alpha-logo-*.png` bundled |
+| Landing page in real browser (CDP) | CTAs → direct v1.0.4 exe asset; 0 auth links; logo loads 256×256; no sign-in text |
+| `/download` in real browser (CDP) | Version 1.0.4, 119 MB, direct link, 0 auth links |
+| Direct asset URL | `HTTP 206`, `application/octet-stream` |
+| `npm run smoke -- --website http://localhost:4173` | 7 passed, 0 warnings |
+| `npm run smoke:desktop` (app launched with `--remote-debugging-port=9222`) | **14 passed, 0 warnings, 0 failed** — splash unmounts, workspace renders, no overlay covers the sidebar, IPC contract holds, typing/clicks land, Account modal opens/closes, no renderer errors |
+| Logo rendered in running app | title-bar `<img>` loaded, naturalWidth 512 |
+
+### FAILED ATTEMPTS
+
+- `npm run smoke:desktop` failed once with "Could not reach the renderer on port 9222" —
+  the script expects the app to already be running with a debug port (its header says
+  so). Launched `npx electron . --remote-debugging-port=9222` first, then it passed 14/14.
+  Not a product bug.
+- Screenshots of the web pages were unavailable (the in-app browser exposes no visible
+  viewport — a known quirk recorded in §13). Structural DOM checks were used instead.
+
+### BLOCKERS
+
+- None new. (Standing ones from §3 remain: no AI gateway credentials, no email provider.)
+
+### MANUAL ACTIONS FOR THE OPERATOR
+
+1. **Delete the loose `Alpha log.jpg` in the repo root if you want** — the canonical copy
+   is `build/alpha-logo.jpg`. The root file was left untouched (not mine to delete).
+2. **The published 1.0.4 installer still shows the old icon.** Run `npm run dist` (and
+   publish a release) whenever you want the new icon to reach users — nothing else is
+   needed; `electron-builder.yml` already points at the new `build/icon.ico`.
+3. The live site (`alpha-website-lime.vercel.app`) updates on push — verify
+   `https://alpha-website-lime.vercel.app` after this lands.
+4. The two pre-existing document deletions in git status are still not mine — leave them.
+
+### NEXT STEP FOR THE NEXT AGENT
+
+The website is now a clean public landing page with a free direct download and the Alpha
+logo everywhere. Highest-value next steps, in order: (a) cut a new release build so the
+installer/taskbar icon becomes the Alpha logo (`npm run dist`, publish, then confirm the
+website's `app.js` picks the new tag); (b) if you ever revisit the platform Function,
+un-gate `/downloads/latest` or delete it — no web caller remains; (c) optional legal +
+support pages (§4). **Do not** reintroduce login, admin, plans or billing anywhere.

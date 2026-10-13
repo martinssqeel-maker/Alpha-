@@ -6,7 +6,7 @@
     <title>Download · Alpha AI Workspace</title>
     <meta
       name="description"
-      content="Download the Alpha AI Workspace desktop app for Windows. Sign in with the same account you use everywhere in Alpha."
+      content="Download the Alpha AI Workspace desktop app for Windows — free, direct, no account required."
     />
     <meta name="theme-color" content="#0c0f14" />
     <meta name="robots" content="noindex" />
@@ -25,7 +25,7 @@
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="/#features">Features</a>
-        <a href="/account.html">Account</a>
+        <a href="/#faq">FAQ</a>
       </nav>
       <div class="nav-actions">
         <button
@@ -39,7 +39,7 @@
           <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
           <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
         </button>
-        <a class="btn" href="/account.html">Account</a>
+        <a class="btn" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
       </div>
     </header>
 
@@ -48,84 +48,34 @@
         <p class="eyebrow">Desktop app</p>
         <h1>Download Alpha AI Workspace</h1>
         <p class="sub">
-          The full agent workspace for Windows. The download is tied to your Alpha account — the same
-          account you use on this website and inside the app.
+          The full agent workspace for Windows. Free, direct download — no account, no sign-in.
         </p>
       </div>
 
       <div class="account-card card">
-        <p class="notice" data-download-notice hidden></p>
-
-        <div data-signed-out hidden>
-          <div class="stack">
-            <p class="muted">
-              Sign in to get your download link. Your account controls which version and which cloud
-              models you can use.
-            </p>
-            <div data-google-wrap hidden>
-              <button class="btn google" type="button" data-google>
-                <svg class="gicon" viewBox="0 0 48 48" aria-hidden="true" width="18" height="18">
-                  <path
-                    fill="#EA4335"
-                    d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-                  />
-                </svg>
-                Continue with Google
-              </button>
-            </div>
-            <p class="micro">
-              Prefer email? <a data-account-link href="/account.html?redirect=/download.html">Sign in with a one-time link</a>.
-            </p>
+        <div class="dl-block">
+          <div>
+            <div class="plan-name" data-version>Windows</div>
+            <div class="muted" data-size>Fetching the latest release…</div>
           </div>
+          <a class="btn primary" data-download-link href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
+            Download installer
+          </a>
         </div>
 
-        <div data-signed-in hidden>
-          <div class="signed-in-head">
-            <div>
-              <div class="muted">Signed in as</div>
-              <div class="email" data-email-out></div>
-            </div>
-            <div class="btn-row">
-              <a class="btn ghost" href="/account.html">Account</a>
-              <button class="btn" data-signout type="button">Sign out</button>
-            </div>
-          </div>
+        <p class="muted" data-notes hidden></p>
+        <p class="micro mono" data-checksum hidden></p>
 
-          <div class="dl-block">
-            <div>
-              <div class="plan-name" data-version>Windows</div>
-              <div class="muted" data-size></div>
-            </div>
-            <a class="btn primary" data-download-link href="#" hidden>Download installer</a>
-          </div>
-
-          <p class="muted" data-notes hidden></p>
-          <p class="micro mono" data-checksum hidden></p>
-
-          <p class="micro">
-            After installing, open the app and sign in through the same flow — the desktop app shares
-            this account. Local models work without signing in.
-          </p>
-        </div>
-
+        <p class="micro">
+          After installing, open the app and pick a model — local Ollama models are discovered
+          automatically and work without any sign-in.
+        </p>
         <p class="status" data-status></p>
       </div>
 
       <p class="micro">
-        Verifying your download? Compare the SHA-512 shown above — it is fetched from the platform for the
-        release you are about to install.
+        Unsigned build — if SmartScreen appears, choose <em>More info → Run anyway</em>.
+        Verifying your download? Compare the SHA-512 shown above with the file you received.
       </p>
     </main>
 
@@ -136,13 +86,11 @@
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href="/">Home</a>
-        <a href="/account.html">Account</a>
         <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
       </nav>
       <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
     </footer>
 
-    <script src="config.js"></script>
-    <script type="module" src="assets/download.js"></script>
+    <script src="assets/download.js"></script>
   </body>
 </html>

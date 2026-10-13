@@ -729,3 +729,123 @@ Nothing pending. Desktop branding is fixed in source, in the 1.0.5 build, and in
 the published release. The only remaining action is the operator's own machine:
 steps 1–3 above (install 1.0.5, then clear the Windows icon cache if the
 taskbar icon lags).
+
+---
+
+## 16. Session log — 2026-10-13 (fourth agent pass), "old logo still in the app view"
+
+Operator report: the Windows **taskbar icon is now correct**, but the old purple
+"A" allegedly still appears in the **application view / window branding**.
+Scope: desktop only; website and download flow untouched.
+
+### RESULT: no old logo remains anywhere in the desktop app — could not reproduce
+
+**Files changed this pass: none.** Nothing in the desktop app needed fixing, so
+nothing was edited. Below is the evidence, because "I searched and it's fine"
+without receipts is worthless.
+
+### 1. The installed build is 1.0.5 and is fully converted
+
+`C:\Program Files\Alpha AI Workspace\` — `ProductVersion 1.0.5.0`, exe stamped
+2026-10-13 15:38 (i.e. the build from §15).
+
+| check on `resources/app.asar` (64,720,366 B) | result |
+|---|---|
+| `'#6d7cff, #4cc9f0'` (old purple gradient) | **absent** |
+| `'#6d7cff,#4cc9f0'` (minified variant) | **absent** |
+| `alpha-logo` reference | present |
+| renderer assets shipped | `alpha-logo-s7rQ08ym.png`, `index-C_9USdSc.css`, `index-DuSMql8u.js` |
+| `.splash-mark` rule | `filter: drop-shadow(...); border-radius: 19px; width/height: 68px; display: block` — the **img** version, no `background`, no `font-size` |
+| `resources/icon.ico` md5 | `8bbbeb00…` — **identical to `build/icon.ico`** |
+
+Contrast with §15's read of the old 1.0.4 archive, which contained the literal
+`background: linear-gradient(135deg, #6d7cff, #4cc9f0)` and zero `alpha-logo`.
+
+### 2. Every rendered view inspected in the real running window
+
+Attached to the **installed exe** over CDP (`--remote-debugging-port=9225`) using
+a **copy** of the operator's live profile (`%APPDATA%\alpha-ai-workspace` →
+`%TEMP%\alpha-view-profile`) so the app showed real data — project "my workflow",
+model `qwen2.5:3b`, agent mode — without touching the running instance.
+
+For each of **Chat, Models, AI Providers, GitHub, Settings, Help & Diagnostics,
+Account**, a DOM sweep looked for (a) any visible element with a
+`linear-gradient` containing `#6d7cff`/`#4cc9f0`, (b) any accent-filled rounded
+box, (c) any element whose entire text is a lone `A`/`a`.
+
+- (a) **zero hits** on every page.
+- (c) **zero hits** on every page.
+- (b) hits were only legitimate controls: `button.btn.primary` (New chat, save
+  buttons) and `span.slider` (Settings toggles). Not branding.
+- The title-bar `alpha-logo` `<img>` was `loaded && visible` on all seven views
+  (22×22), plus 56×56 in the chat empty state.
+
+Screenshots were captured per view and read back. Zoomed crops of the title bar
+and the workspace mark confirm the Alpha symbol renders correctly at 22 px —
+blue/violet gradient mark on a dark navy rounded tile, sparkle included.
+
+Splash re-checked too: `.splash-mark` is an `IMG`, `src=alpha-logo-s7rQ08ym.png`,
+computed `background-image: none`, empty text.
+
+### 3. Codebase sweep for old-logo references
+
+- `src/renderer/src/assets/` holds **exactly one** image: `alpha-logo.png`.
+  No SVG, no `data:image` URI anywhere in `src/`.
+- `grep 4cc9f0 src/` → **no matches**. The only `linear-gradient` left in
+  `styles.css` is line 982, the splash progress-bar shimmer
+  (`transparent → var(--accent) → transparent`), which is a loading animation,
+  not a logo.
+- `alpha-logo` is imported by precisely the three components that brand the UI:
+  `Splash.tsx`, `TitleBar.tsx`, `MessageList.tsx`.
+- Chat message avatars use lucide `Bot` / `UserIcon`, not a letter mark
+  (`MessageList.tsx:33,65,85`).
+- `grep "Tray|nativeImage|setAboutPanelOptions|new BrowserWindow|setIcon" src/main/`
+  → one `BrowserWindow`, **no tray, no native image, no about panel**, so there
+  is no second icon path anywhere in the app.
+- Repo image assets (excluding `node_modules/out/release`): `Alpha log.jpg`
+  (loose original, still untouched), `build/alpha-logo.jpg` (source),
+  `build/icon.ico`, `build/icon.png`, `src/renderer/src/assets/alpha-logo.png`,
+  `website/assets/icon.png` — all six are the new logo or its source. **No stale
+  old-logo file exists in the tree.**
+
+### 4. Windows-side icon wiring (all resolve to the new exe)
+
+- Start Menu: `C:\ProgramData\...\Programs\Alpha AI Workspace.lnk` →
+  `Target = C:\Program Files\Alpha AI Workspace\Alpha AI Workspace.exe`,
+  `IconLocation = <same exe>,0`.
+- Uninstall registry: `DisplayName "Alpha AI Workspace 1.0.5"`,
+  `DisplayVersion 1.0.5`, `DisplayIcon <exe>,0`.
+- No desktop shortcut and no per-user Start Menu entry exist.
+- Therefore the taskbar, Start Menu, Alt+Tab and Add/Remove-Programs icons all
+  come from the 1.0.5 exe resource, which §15 proved is the Alpha mark.
+- No second Alpha install: `%LOCALAPPDATA%\Programs` has no Alpha folder, and the
+  only running processes are the four from `C:\Program Files`.
+
+### 5. What the operator is most likely seeing (needs their input)
+
+Cannot be answered from the machine; the app is clean. Ranked guesses:
+
+1. **The Alpha mark itself reads as "a purple A".** It is literally an
+   "A"-shaped symbol in blue→violet on a dark rounded tile. That is the provided
+   asset, not leftover branding. If the expectation was the *standalone symbol
+   without the dark tile*, or a light-on-dark variant for the title bar, that is
+   an asset/usage decision, not a bug — and per the brief I did not redesign it.
+2. **A window opened before the 1.0.5 install** is still on screen (the old
+   renderer stays loaded until the app restarts). Fix: close every Alpha window
+   and relaunch.
+3. **Windows icon cache** for a *pinned* taskbar tile (a pin keeps the icon it
+   captured when pinned). Fix: unpin and re-pin from Start Menu.
+4. The screenshot they referred to was **not attached** to the message, so I
+   could not look at the exact pixels they saw.
+
+### 6. Cleanup
+
+Inspection instance stopped by PID (matched on its `--user-data-dir`, leaving the
+operator's four processes untouched); `%TEMP%\alpha-view-profile` deleted. The
+two throwaway profiles from §15 were already removed.
+
+### NEXT STEP
+
+Wait for the operator to re-attach the screenshot or name the exact screen.
+Do not change branding code on speculation — the bundle, the running window and
+the icon wiring are all verified clean.

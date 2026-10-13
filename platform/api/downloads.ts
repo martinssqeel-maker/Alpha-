@@ -3,6 +3,11 @@ import type { AppEnv } from './types'
 import { withContext } from './db'
 import { requireAuth } from './middleware'
 import { gatingProblem, normalizeRelease } from './releases'
+import { maintenanceProblem, maintenanceState } from './maintenance'
+
+function requestIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || null
+}
 
 export const downloadRoutes = new Hono<AppEnv>()
 
@@ -20,7 +25,18 @@ downloadRoutes.get('/latest', async (c) => {
     ).rows[0] ?? null
 
     const gate = gatingProblem(user)
-    if (gate) return { gate, release: null }
+    if (gate) return { gate, release: null, downloads: 0 }
+
+    if (user) {
+      const isAdmin = (
+        await q.query<{ is_admin: boolean }>('select public.is_admin($1) as is_admin', [user.id])
+      ).rows[0]?.is_admin
+      const maintenance = await maintenanceProblem(
+        await maintenanceState(),
+        Boolean(isAdmin)
+      )
+      if (maintenance) return { gate: maintenance, release: null, downloads: 0 }
+    }
 
     const latest = (
       await q.query<{ release: Record<string, unknown> | null }>(
@@ -28,7 +44,22 @@ downloadRoutes.get('/latest', async (c) => {
       )
     ).rows[0]?.release ?? null
 
-    return { gate: null, release: latest }
+    // A download here means an account was handed the current installer link, so
+    // the Downloads page counts something real.
+    let downloads = 0
+    if (latest) {
+      const recorded = await q.query(
+        `insert into public.downloads (user_id, release_id, version, platform, ip, user_agent)
+         select $1, r.id, r.version, r.platform, $2, $3
+           from public.releases r
+          where r.channel = 'stable' and r.platform = 'win' and r.published
+          order by r.released_at desc limit 1`,
+        [c.get('userId'), requestIp(c), c.req.header('user-agent') ?? null]
+      )
+      downloads = recorded.rowCount ?? 0
+    }
+
+    return { gate: null, release: latest, downloads }
   })
 
   if (result.gate) {

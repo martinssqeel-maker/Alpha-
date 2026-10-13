@@ -31,6 +31,36 @@ npm run smoke -- --website https://<site>     # + website config.js is configure
 npm run smoke -- --email you@example.com      # + sign-in path leaks no code/token
 ```
 
+Two deeper live checks need a database connection (`DATABASE_URL`); they create throwaway
+accounts and delete them again, so they are still safe to point at production:
+
+```bash
+npm run verify:auth -- --with-write   # 27 checks: identity, authorization, gating, replay
+npm run verify:admin                  # 15 checks: every portal control has a real effect
+```
+
+`verify:auth` proves the *authorization* boundary: an ordinary session is refused by
+`/admin/rpc` and `/admin/system`, a correctly signed token that merely claims `role:admin`
+is refused too, a role granted in the database lets the *same* session through until it is
+revoked, and an administrator cannot strip its own rights.
+
+`verify:admin` proves the *effects* boundary — that no control in the portal is decorative.
+Each one is changed through the RPC the UI calls and then read back through the surface a
+user sees:
+
+| Control | Changed via | Read back through |
+| --- | --- | --- |
+| Feature flag | `admin_upsert_flag` | `GET /platform/config` → `flags` (present when on, absent when off) |
+| Announcement | `admin_upsert_announcement` | `GET /platform/config` → `announcements` |
+| Application version / minimum | `admin_set_setting` (`desktop_versions`) | `GET /platform/config` → `desktop` |
+| Maintenance mode | `admin_set_setting` (`maintenance`) | `POST /auth/request` → `503 maintenance` carrying the admin's own message, while an administrator still gets `200` |
+| Account status | `admin_set_user_status` | `GET /downloads/latest` → `200` → `403` → `200` |
+| Release | `admin_list_releases` | `GET /downloads/latest` → the published version |
+| Audit trail | all of the above | `admin_audit_log` contains each action, and no key/hash material |
+
+It restores every `system_settings` value it touched and prints the restored rows, so a run
+leaves no switch flipped. Both scripts refuse to run without `DATABASE_URL`.
+
 `npm run smoke` passes/fails per check and exits non-zero on any failure. Expected
 shape of a healthy API:
 
@@ -120,8 +150,11 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
 
 ## Admin dashboard
 
-- Sign in with the bootstrap admin email. Overview shows counts; Users changes
+- Sign in with an administrator email and password. Overview shows counts; Users changes
   status/plan and grants overrides; every action appears under Audit.
+- `npm run verify:admin` is the programmatic form of the checklist above — if a control is
+  added to the portal, add its effect there, because "the button calls an RPC" is not the
+  same claim as "the product changed".
 
 ## What cannot be verified here
 

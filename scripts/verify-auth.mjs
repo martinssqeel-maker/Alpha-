@@ -20,7 +20,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomBytes, scryptSync } from 'node:crypto'
+import { createHash, createHmac, randomBytes, scryptSync } from 'node:crypto'
 import pg from 'pg'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -170,6 +170,41 @@ async function writeChecks() {
   const adminPassword = `Tile-Canyon-${stamp}-Riverbend`
   const userPassword = `Meadow-Lantern-${stamp}-Basalt`
   const ids = []
+  const pepper = local.AUTH_PEPPER || local.AUTH_JWT_SECRET || ''
+
+  /** Mint a real session for `userId` through the same one-time-code exchange the
+   *  website uses, so the token under test is one the API itself issued. */
+  async function sessionFor(userId) {
+    const code = randomBytes(32).toString('base64url')
+    const codeHash = createHash('sha256').update(`${pepper}:${code}`).digest('hex')
+    await client.query(
+      `insert into public.auth_oauth_codes (code_hash, user_id, expires_at)
+       values ($1, $2, now() + interval '5 minutes')`,
+      [codeHash, userId]
+    )
+    const res = await call('/auth/oauth/exchange', { method: 'POST', body: { code } })
+    return res.json?.accessToken ?? null
+  }
+
+  /** A correctly signed token whose `role` claim simply *says* administrator.
+   *  Authorization must come from the database, so this must change nothing. */
+  function forgedAdminClaim(userId, secret) {
+    const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+    const now = Math.floor(Date.now() / 1000)
+    const header = b64({ alg: 'HS256', typ: 'JWT' })
+    const payload = b64({
+      sub: userId,
+      email: userEmail,
+      sid: 'forged-verify-claim',
+      role: 'admin',
+      iss: 'alpha-platform',
+      aud: 'alpha-clients',
+      iat: now,
+      exp: now + 3600
+    })
+    const sig = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url')
+    return `${header}.${payload}.${sig}`
+  }
 
   try {
     for (const [email, password, isAdmin] of [
@@ -300,8 +335,6 @@ async function writeChecks() {
 
       // 8. One-time OAuth codes are single use.
       const code = randomBytes(32).toString('base64url')
-      const { createHash } = await import('node:crypto')
-      const pepper = local.AUTH_PEPPER || local.AUTH_JWT_SECRET || ''
       const codeHash = createHash('sha256').update(`${pepper}:${code}`).digest('hex')
       await client.query(
         `insert into public.auth_oauth_codes (code_hash, user_id, expires_at)
@@ -315,6 +348,87 @@ async function writeChecks() {
       } else {
         record('FAIL', 'an OAuth code exchanges once and cannot be replayed', `first=${exchanged.status} replay=${replayed.status}`)
       }
+
+      // 9. The admin surface must refuse an *authenticated but ordinary* session.
+      //    This is the check that makes "modify the frontend request" pointless:
+      //    the token is genuine and unexpired, and it still gets nothing.
+      const userToken = await sessionFor(ids[1])
+      if (!userToken) {
+        record('FAIL', 'an ordinary session can be minted for the authorization checks', 'no access token')
+      } else {
+        const userRpc = await call('/admin/rpc', {
+          method: 'POST',
+          token: userToken,
+          body: { fn: 'admin_overview', params: {} }
+        })
+        if (userRpc.status === 403) record('PASS', 'an ordinary session is refused by /admin/rpc', '403')
+        else record('FAIL', 'an ordinary session is refused by /admin/rpc', `status=${userRpc.status}`)
+
+        const userSystem = await call('/admin/system', { token: userToken })
+        if (userSystem.status === 403) record('PASS', 'an ordinary session is refused by /admin/system', '403')
+        else record('FAIL', 'an ordinary session is refused by /admin/system', `status=${userSystem.status}`)
+
+        // 10. A *correctly signed* token that merely claims `role: admin` must be
+        //     worth exactly as much as any other non-administrator session.
+        const secret = process.env.AUTH_JWT_SECRET || local.AUTH_JWT_SECRET
+        if (!secret) {
+          record('NOT RUN', 'a forged admin claim is still refused', 'AUTH_JWT_SECRET not available locally')
+        } else {
+          const forged = await call('/admin/rpc', {
+            method: 'POST',
+            token: forgedAdminClaim(ids[1], secret),
+            body: { fn: 'admin_overview', params: {} }
+          })
+          if (forged.status === 403) {
+            record('PASS', 'a signed token claiming role=admin is still refused', '403')
+          } else {
+            record('FAIL', 'a signed token claiming role=admin is still refused', `status=${forged.status}`)
+          }
+        }
+
+        // 11. Role changes take effect live and server-side: the *same* token that
+        //     was just refused must work once the database grants the role, and be
+        //     refused again the moment it is revoked.
+        const granted = await call('/admin/rpc', {
+          method: 'POST',
+          token: adminToken,
+          body: { fn: 'admin_set_user_admin', params: { p_user: ids[1], p_admin: true, p_role_code: 'admin' } }
+        })
+        const afterGrant = granted.json?.ok
+          ? await call('/admin/rpc', { method: 'POST', token: userToken, body: { fn: 'admin_overview', params: {} } })
+          : null
+        if (granted.json?.result?.isAdmin === true && afterGrant?.status === 200) {
+          record('PASS', 'granting the role lets the live session through', 'admin_set_user_admin -> 200')
+        } else {
+          record('FAIL', 'granting the role lets the live session through', `grant=${granted.status} rpc=${afterGrant?.status ?? 'n/a'}`)
+        }
+
+        const revoked = await call('/admin/rpc', {
+          method: 'POST',
+          token: adminToken,
+          body: { fn: 'admin_set_user_admin', params: { p_user: ids[1], p_admin: false } }
+        })
+        const afterRevoke = revoked.json?.ok
+          ? await call('/admin/rpc', { method: 'POST', token: userToken, body: { fn: 'admin_overview', params: {} } })
+          : null
+        if (revoked.json?.result?.isAdmin === false && afterRevoke?.status === 403) {
+          record('PASS', 'revoking the role cuts the live session off again', 'admin_set_user_admin -> 403')
+        } else {
+          record('FAIL', 'revoking the role cuts the live session off again', `revoke=${revoked.status} rpc=${afterRevoke?.status ?? 'n/a'}`)
+        }
+
+        // 12. The last owner cannot be demoted, so the product cannot lock itself out.
+        const selfDemote = await call('/admin/rpc', {
+          method: 'POST',
+          token: adminToken,
+          body: { fn: 'admin_set_user_admin', params: { p_user: ids[0], p_admin: false } }
+        })
+        if (selfDemote.status === 403 && /cannot_remove_own_admin/.test(selfDemote.json?.error?.message ?? '')) {
+          record('PASS', 'an administrator cannot remove its own admin rights', '403 cannot_remove_own_admin')
+        } else {
+          record('FAIL', 'an administrator cannot remove its own admin rights', `status=${selfDemote.status}`)
+        }
+      }
     }
   } finally {
     // Always clean up, even when an assertion threw above.
@@ -322,6 +436,7 @@ async function writeChecks() {
       await client.query('delete from public.audit_logs where actor_id = any($1::uuid[])', [ids])
       await client.query('delete from public.users where id = any($1::uuid[])', [ids])
     }
+    // admin_users rows (and sessions, credentials, overrides) cascade from users.
     const leftovers = await client.query(
       'select count(*)::int as n from public.users where email like $1',
       ['verify-%@example.invalid']

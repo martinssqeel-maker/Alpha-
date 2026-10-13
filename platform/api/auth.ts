@@ -19,6 +19,7 @@ import {
   verifyState
 } from './oauth'
 import type { GoogleIdentity } from './oauth'
+import { maintenanceProblem, maintenanceState } from './maintenance'
 
 export const authRoutes = new Hono<AppEnv>()
 
@@ -130,6 +131,13 @@ authRoutes.post('/request', async (c) => {
   const email = (body.email ?? '').trim().toLowerCase()
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return c.json({ ok: false, error: { code: 'invalid_email', message: 'Enter a valid email address.' } }, 400)
+  }
+
+  // While maintenance mode is on, ordinary sign-ins are refused with an
+  // explanation. The password path still works for administrators (below).
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
   }
 
   const ttlMinutes = intEnv('AUTH_OTP_TTL_MIN', 10)
@@ -244,6 +252,20 @@ authRoutes.post('/verify', async (c) => {
     return c.json({ ok: false, error: { code: info.code, message: info.message } }, info.status as 400)
   }
 
+  // A code requested before maintenance began must not become a way in either.
+  const signInMaintenance = await withContext(null, 'anon', async (q) => {
+    const isAdmin = (
+      await q.query<{ is_admin: boolean }>('select public.is_admin($1) as is_admin', [result.uid])
+    ).rows[0]?.is_admin
+    return maintenanceProblem(await maintenanceState(), Boolean(isAdmin))
+  })
+  if (signInMaintenance) {
+    return c.json(
+      { ok: false, error: { code: signInMaintenance.code, message: signInMaintenance.message } },
+      503
+    )
+  }
+
   const accessToken = await signAccessToken({
     userId: result.uid,
     email: result.email,
@@ -322,6 +344,12 @@ authRoutes.post('/password', async (c) => {
     return row ?? null
   })
 
+  // Administrators keep access during maintenance; everyone else does not.
+  const maintenance = maintenanceProblem(await maintenanceState(), Boolean(account?.is_admin))
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
+  }
+
   const okPassword = verifyPassword(password, account?.password_hash ?? dummyHash())
   const allowed = Boolean(account && account.is_admin && okPassword && account.status === 'active')
 
@@ -367,6 +395,11 @@ authRoutes.get('/google/start', async (c) => {
       },
       503
     )
+  }
+
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
   }
 
   const target = resolveTarget(c.req.query('redirect'))

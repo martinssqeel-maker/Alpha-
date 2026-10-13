@@ -14,7 +14,10 @@ you do not have to re-derive any of it:
 | Auth on private routes | Enforced — `/platform/config`, `/gateway/models`, `/admin/rpc` all `401` anonymously |
 | Input validation | Working — malformed email → `400 invalid_email` before any mail is touched |
 | Sign-in token leak | **Closed** — `/auth/request` no longer returns `devCode` / `devMagicToken` |
-| CORS | **Closed** — `ALLOWED_ORIGINS` pinned to the website origin; a foreign origin is no longer reflected |
+| CORS | **Closed** — `ALLOWED_ORIGINS` set to the website origin plus `localhost:5173`/`3000`; a foreign origin is not reflected |
+| Administrators | **None.** `admin_users` is empty and `bootstrap_admin_email` is `""` — see §4 |
+| Maintenance mode | Off. Enforced by the API when on (verified 2026-10-13: ordinary `503 maintenance` with the admin's message, administrator `200`) |
+| Downloads | `public.downloads` has 0 rows — the Downloads metric legitimately reads 0 |
 | Email | `EMAIL_PROVIDER=log` — sends no mail, but still replies "we sent a code" |
 | Provider credentials | **None** — no Neon AI Gateway and no provider keys ⇒ every chat request returns `502 provider_unavailable` |
 | Schema | Applied on `production`; `neon config plan` reports a pending `~ function api` change |
@@ -53,15 +56,11 @@ Reported done in `HANDOVER_NOTE.md`, **not independently verified here**. Confir
 additionally requires `NODE_ENV=development` before it will ever echo, and a probe
 confirms neither `devCode` nor `devMagicToken` appears in the response.
 
-Remaining from that finding:
-
-- [ ] Set `ALLOWED_ORIGINS` to the real website + admin origins (comma-separated) in
-      `.env.local`, then `npm run deploy`. Deleting the line does **not** work — `neon.ts`
-      only forwards keys that are present, so a removed key keeps its live value. A
-      wildcard makes Hono reflect any origin. Bearer-only auth keeps this from being
-      credential theft, but it is the last open item.
-- [ ] Confirm with `npm run smoke` (expect the CORS warning to disappear).
-- [ ] Never delete a key you want turned off — set it explicitly (`AUTH_DEV_ECHO_OTP=0`).
+- [x] `ALLOWED_ORIGINS` is set (website origin + `localhost:5173`, `localhost:3000`) and
+      deployed; `npm run smoke` reports the CORS warning gone. Add the hosted admin origin
+      to the same list when you host `admin/dist`.
+- [ ] Never delete a key you want turned off — `neon.ts` only forwards keys that are present,
+      so a removed key keeps its live value. Set it explicitly (`AUTH_DEV_ECHO_OTP=0`).
 
 ## [ ] 2. Verify the Neon schema + seed
 
@@ -88,7 +87,12 @@ Currently **nothing** is configured, so `/gateway/models` lists catalog models a
 
 Then `npm run deploy`. `npm run deploy -- --check` warns while this is still unset.
 
-## [ ] 4. Bootstrap admin user
+## [ ] 4. Bootstrap admin user — currently there are none
+
+Measured 2026-10-13: `select count(*) from public.admin_users;` → **0**. The control centre
+is built and verified but unreachable until this step is done. `bootstrap_admin_email` in
+`system_settings` is blank, and the bootstrap-instead-of-SQL route needs a sign-in, which
+needs email delivery (§5) — so use the SQL promotion below.
 
 If `ADMIN_EMAIL` is not yet an owner, promote via SQL (Neon SQL Editor):
 
@@ -221,6 +225,25 @@ Uninstall the old copy first (Programs & Features) so the `alpha://` protocol ha
 re-registered, then install. When the installer is good, publish it so auto-update
 customers get it: `npm run release` (needs `GH_TOKEN`).
 
+### 9b. The installer file is public — a decision, not an oversight
+
+The download *page* and the download *API* are gated (`401` anonymous, `403` suspended,
+and the asset URL is only handed to a signed-in active account). The **file** is not: it is
+a GitHub release asset and the repository is public. Measured anonymously 2026-10-13:
+repository API `200`, release page `200`, asset `206` on a range request. Anything a
+visitor can fetch, they can install.
+
+Three honest options, pick one and record the choice:
+
+1. **Private storage + signed URLs (recommended).** Upload each installer to a private
+   bucket and serve a minutes-long signed URL from `GET /downloads/latest` after the gate.
+   Keep `latest.yml` in the public GitHub release so electron-updater keeps working.
+2. **Make the repository private.** Release assets then require auth, but existing installs
+   cannot auto-update without a token shipped in the app — do not do this without adding
+   one.
+3. **Accept it.** Treat the installer as public and gate only the product surface; then say
+   so on the site rather than implying the download is exclusive.
+
 ## [ ] 10. End-to-end smoke
 
 Automated part — safe, read-only, survives a deploy:
@@ -229,7 +252,15 @@ Automated part — safe, read-only, survives a deploy:
 npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
+npm run verify:auth -- --with-write           # 27 checks; creates + deletes temp accounts
+npm run verify:admin                          # 15 checks; changes settings, then restores them
 ```
+
+`verify:admin` is the check that the portal is not decorative: it flips a feature flag, an
+announcement, the application-version setting, maintenance mode and an account status
+through the portal's own RPCs and reads each one back through `/platform/config`,
+`/downloads/latest` and `/auth/request`. It restores every `system_settings` value it
+touched and prints the restored rows.
 
 Manual part, needs a mailbox and credentials:
 

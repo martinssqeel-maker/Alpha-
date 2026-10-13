@@ -23,6 +23,7 @@
     "deploy": "node scripts/deploy.mjs",
     "smoke": "node scripts/smoke.mjs",
     "verify:auth": "node scripts/verify-auth.mjs",
+    "verify:admin": "node scripts/verify-admin.mjs",
     "smoke:desktop": "node scripts/desktop-smoke.mjs"
   },
   "dependencies": {

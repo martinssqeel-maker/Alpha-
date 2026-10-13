@@ -8,10 +8,12 @@
       name="description"
       content="Download the Alpha AI Workspace desktop app for Windows. Sign in with the same account you use everywhere in Alpha."
     />
-    <meta name="theme-color" content="#0b0d12" />
+    <meta name="theme-color" content="#0c0f14" />
     <meta name="robots" content="noindex" />
     <link rel="icon" type="image/png" href="assets/icon.png" />
     <link rel="stylesheet" href="assets/styles.css" />
+    <!-- Applies the stored appearance before first paint, so the palette never flashes. -->
+    <script src="assets/theme.js"></script>
   </head>
   <body>
     <div class="glow" aria-hidden="true"></div>
@@ -26,6 +28,17 @@
         <a href="/account.html">Account</a>
       </nav>
       <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
         <a class="btn" href="/account.html">Account</a>
       </div>
     </header>
@@ -111,8 +124,8 @@
       </div>
 
       <p class="micro">
-        Verifying your download? Compare the SHA-512 above, or see
-        <a href="https://github.com/martinssqeel-maker/Alpha-/releases" target="_blank" rel="noopener">all releases on GitHub</a>.
+        Verifying your download? Compare the SHA-512 shown above — it is fetched from the platform for the
+        release you are about to install.
       </p>
     </main>
 

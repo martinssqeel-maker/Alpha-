@@ -1,6 +1,6 @@
 import { CH, EVENTS } from '@shared/channels'
 import type { ChannelName, IpcContract } from '@shared/ipc'
-import type { ChatEvent, PlatformStatus, TerminalEvent, UpdateEvent } from '@shared/types'
+import type { BrowserPreviewState, ChatEvent, PlatformStatus, TerminalEvent, UpdateEvent } from '@shared/types'
 import type { ResolvedTheme } from '@shared/theme'
 
 async function invoke<K extends ChannelName>(
@@ -16,6 +16,10 @@ export function onChat(cb: (event: ChatEvent) => void): () => void {
 
 export function onTerminal(cb: (event: TerminalEvent) => void): () => void {
   return window.alpha.subscribe(EVENTS.terminal, cb as (d: unknown) => void)
+}
+
+export function onBrowser(cb: (state: BrowserPreviewState) => void): () => void {
+  return window.alpha.subscribe(EVENTS.browser, cb as (d: unknown) => void)
 }
 
 export function onUpdate(cb: (event: UpdateEvent) => void): () => void {
@@ -43,6 +47,11 @@ export const api = {
     set: (ref: string, value: string) => invoke(CH.secretsSet, { ref, value }),
     delete: (ref: string) => invoke(CH.secretsDelete, { ref }),
     has: (ref: string) => invoke(CH.secretsHas, { ref })
+  },
+
+  skills: {
+    list: () => invoke(CH.skillsList, undefined),
+    setEnabled: (id: string, enabled: boolean) => invoke(CH.skillsSetEnabled, { id, enabled })
   },
 
   providers: {
@@ -103,6 +112,17 @@ export const api = {
   terminal: {
     run: (input: unknown) => invoke(CH.terminalRun, input),
     cancel: (runId: string) => invoke(CH.terminalCancel, { runId })
+  },
+
+  browser: {
+    navigate: (url: string) => invoke(CH.browserNavigate, { url }),
+    back: () => invoke(CH.browserBack, undefined),
+    forward: () => invoke(CH.browserForward, undefined),
+    reload: () => invoke(CH.browserReload, undefined),
+    openExternal: () => invoke(CH.browserOpenExternal, undefined),
+    setLayout: (visible: boolean, bounds: { x: number; y: number; width: number; height: number }) =>
+      invoke(CH.browserLayout, { visible, bounds }),
+    getState: () => invoke(CH.browserState, undefined)
   },
 
   git: {

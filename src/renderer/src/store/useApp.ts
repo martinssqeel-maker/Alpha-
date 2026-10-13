@@ -19,7 +19,7 @@ import type {
 import { THEME_TOKENS, resolveTheme } from '@shared/theme'
 import { api, onChat, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
-export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'settings' | 'help'
+export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'skills' | 'settings' | 'help'
 
 export interface Toast {
   id: string
@@ -38,7 +38,7 @@ export interface TerminalSession {
   command: string
   cwd: string
   lines: TerminalLine[]
-  exit?: { code: number | null; durationMs: number }
+  exit?: { code: number | null; durationMs: number; cancelled?: boolean }
   running: boolean
 }
 
@@ -207,6 +207,12 @@ export const useApp = create<State>((set, get) => ({
     if (!termUnsub) termUnsub = onTerminal((event) => handleTerminalEvent(event, set, get))
     if (!updateUnsub) updateUnsub = onUpdate((event) => handleUpdateEvent(event, set, get))
     if (!platformUnsub) platformUnsub = onPlatform((status) => handlePlatformEvent(status, set, get))
+
+    try {
+      set({ update: await api.updates.status() })
+    } catch {
+      /* A status read failure should not prevent the workspace from opening. */
+    }
 
     // Seed platform state from the main process. The `evt:platform` push above can
     // be emitted while the window is still booting (before this subscription
@@ -622,7 +628,7 @@ export const useApp = create<State>((set, get) => ({
       get().toast('Open a project first.', 'error')
       return
     }
-    const runId = 'run-' + Math.random().toString(36).slice(2)
+    const runId = crypto.randomUUID()
     set((s) => ({
       inspectorOpen: true,
       inspectorTab: 'terminal',
@@ -633,8 +639,15 @@ export const useApp = create<State>((set, get) => ({
       ]
     }))
     try {
-      const result = await api.terminal.run({ projectId, command, approved })
+      const result = await api.terminal.run({ runId, projectId, command, approved })
       if (result.requiresApproval) {
+        set((s) => ({
+          terminals: s.terminals.map((t) =>
+            t.runId === runId
+              ? { ...t, running: false, lines: [...t.lines, { id: crypto.randomUUID(), stream: 'meta' as const, data: 'Waiting for approval.\n' }] }
+              : t
+          )
+        }))
         get().toast(`Command requires approval: ${result.reason}`, 'info')
         const ok = window.confirm(`Run this command in the project?\n\n${command}\n\nReason: ${result.reason}`)
         if (ok) {
@@ -650,6 +663,7 @@ export const useApp = create<State>((set, get) => ({
       }
       if (!result.approved) {
         get().toast(result.reason, 'error')
+        set((s) => ({ terminals: s.terminals.map((t) => (t.runId === runId ? { ...t, running: false } : t)) }))
       }
     } catch (e) {
       get().toast(`Command failed to start: ${(e as Error).message}`, 'error')
@@ -862,13 +876,15 @@ function handleTerminalEvent(
             ? {
                 ...t,
                 running: false,
-                exit: { code: event.code, durationMs: event.durationMs },
+                exit: { code: event.code, durationMs: event.durationMs, cancelled: event.cancelled },
                 lines: [
                   ...t.lines,
                   {
                     id: Math.random().toString(36).slice(2),
                     stream: 'meta' as const,
-                    data: `\n[exit ${event.code ?? '?'} in ${event.durationMs}ms]\n`
+                    data: event.cancelled
+                      ? `\n[cancelled after ${event.durationMs}ms]\n`
+                      : `\n[exit ${event.code ?? '?'} in ${event.durationMs}ms]\n`
                   }
                 ]
               }

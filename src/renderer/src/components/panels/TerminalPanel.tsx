@@ -29,7 +29,7 @@ export default function TerminalPanel() {
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && run()}
         />
-        <button className="btn primary icon" style={{ width: 30, height: 30 }} onClick={run} disabled={!projectId || !command.trim()}>
+        <button className="btn primary icon" style={{ width: 30, height: 30 }} title="Run command" aria-label="Run command" onClick={run} disabled={!projectId || !command.trim()}>
           <Play size={14} />
         </button>
       </div>
@@ -43,13 +43,16 @@ export default function TerminalPanel() {
         {[...terminals].reverse().map((t) => (
           <div key={t.runId} className="card tight" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="flex items-center gap-2 p-2" style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-              <span className={`dot ${t.running ? 'running' : t.exit ? (t.exit.code === 0 ? '' : 'failed') : ''}`} />
-              <span className="mono text-xs flex-1" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {t.command}
-              </span>
-              {t.exit && <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>exit {t.exit.code ?? '?'} · {t.exit.durationMs}ms</span>}
+              <span className={`dot ${t.running ? 'running' : t.exit ? (t.exit.cancelled || t.exit.code === 0 ? '' : 'failed') : ''}`} />
+              <div className="flex flex-col flex-1 min-w-0" title={t.command}>
+                <span className="mono text-xs" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t.command}
+                </span>
+                {t.cwd && <span className="text-xs" style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.cwd}>{t.cwd}</span>}
+              </div>
+              {t.exit && <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>{t.exit.cancelled ? 'cancelled' : `exit ${t.exit.code ?? '?'}`} · {t.exit.durationMs}ms</span>}
               {t.running ? (
-                <button className="btn danger icon" style={{ width: 22, height: 22 }} title="Cancel" onClick={() => void cancelRun(t.runId)}>
+                <button className="btn danger icon" style={{ width: 22, height: 22 }} title="Cancel command" aria-label="Cancel command" onClick={() => void cancelRun(t.runId)}>
                   <Square size={12} />
                 </button>
               ) : (

@@ -1,9 +1,8 @@
-// Appearance preference, shared by the whole product.
+// Appearance preference for the public website.
 //
-// The website and the admin control centre read and write the SAME key
-// (`alpha-theme`), so a choice made here is already in force when the console
-// opens, and vice versa. Loaded from <head> without `defer` so the palette is
-// applied before the first paint instead of flashing the wrong one.
+// This preference is local to the website. The desktop app stores its theme in
+// its own settings database. Loaded from <head> without `defer` so the palette
+// is applied before the first paint instead of flashing the wrong one.
 const KEY = 'alpha-theme'
 const root = document.documentElement
 

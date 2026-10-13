@@ -1,11 +1,8 @@
 /* ============================================================================
    Alpha - website visual system
 
-   Same tokens, same type roles and the same component shapes as the admin
-   control centre (admin/src/styles.css), because they are one product: the
-   website is the identity and download gateway, the console is where the
-   product is operated. The vocabulary is deliberately identical so the two
-   stylesheets can be read side by side:
+   The public website follows the desktop app's visual language while keeping
+   its own CSS because it has no build step. The vocabulary is kept aligned:
 
      planes    --ink / --panel / --panel-2
      hairlines --line / --line-2
@@ -136,8 +133,7 @@ code {
   html { scroll-behavior: auto; }
 }
 
-/* One brand wash at the top of the page, the same treatment the console uses on
-   its sign-in gate. No second hue, no gradient text. */
+/* One brand wash at the top of the page. No second hue, no gradient text. */
 .glow {
   position: fixed;
   inset: -18% -10% auto -10%;
@@ -289,7 +285,7 @@ main { position: relative; z-index: 1; }
 .trust span { display: inline-flex; align-items: center; gap: 8px; }
 .trust span::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); }
 
-/* ---------------------------------------------------------- window mockup -- */
+/* --------------------------------------------------------- product screen -- */
 .shots { max-width: var(--maxw); margin: 44px auto 0; padding: 0 22px; }
 .window {
   border: 1px solid var(--line-2);
@@ -298,47 +294,19 @@ main { position: relative; z-index: 1; }
   background: var(--panel);
   box-shadow: var(--lift-2), var(--lift-1);
 }
-.win-bar {
+.product-window { margin: 0; }
+.product-screen { display: block; width: 100%; height: auto; background: var(--panel); }
+.product-caption {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--steel);
+  font-size: 13px;
 }
-.win-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--line-2); }
-.win-bar span:nth-child(1) { background: #ff5f57; }
-.win-bar span:nth-child(2) { background: #febc2e; }
-.win-bar span:nth-child(3) { background: #28c840; }
-.win-bar em { margin-left: 10px; font-style: normal; font-family: var(--data); font-size: 12px; color: var(--steel); }
-.win-body { display: grid; grid-template-columns: 190px 1fr 260px; min-height: 330px; }
-.fake-side, .fake-inspector { padding: 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
-.fake-inspector { border-right: 0; border-left: 1px solid var(--line); }
-.fake-side .row { height: 30px; border-radius: var(--r-sm); background: var(--panel-2); }
-.fake-side .row.active { background: var(--brand-tint); border: 1px solid var(--brand-edge); }
-.fake-main { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-.bubble { padding: 12px 14px; border-radius: var(--r); font-size: 13px; }
-.bubble.user { align-self: flex-end; max-width: 70%; background: var(--brand-tint); border: 1px solid var(--brand-edge); }
-.bubble.ai { max-width: 90%; background: var(--panel-2); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
-.line { height: 9px; border-radius: 6px; background: var(--line-2); }
-.w80 { width: 80%; } .w92 { width: 92%; } .w70 { width: 70%; } .w40 { width: 40%; } .w85 { width: 85%; } .w90 { width: 90%; } .w50 { width: 50%; }
-.tool { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--steel); }
-.tool em { font-style: normal; font-family: var(--data); color: var(--faint); }
-.dot.ok { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
-.tab { height: 26px; border-radius: var(--r-xs); background: var(--brand-tint); }
-.code { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
-.composer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--panel-2);
-}
-.composer .line { flex: 1; }
-.send { width: 26px; height: 26px; border-radius: var(--r-xs); background: var(--brand); }
+.product-caption .eyebrow { margin: 0; }
 
 /* ----------------------------------------------------------------- sections -- */
 .section { max-width: var(--maxw); margin: 0 auto; padding: 76px 22px; }
@@ -469,8 +437,6 @@ main { position: relative; z-index: 1; }
 /* -------------------------------------------------------------- responsive -- */
 @media (max-width: 900px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
-  .win-body { grid-template-columns: 150px 1fr; }
-  .fake-inspector { display: none; }
   .steps, .req-grid { grid-template-columns: 1fr; }
   .nav-links { display: none; }
 }
@@ -479,8 +445,7 @@ main { position: relative; z-index: 1; }
   .hide-sm { display: none; }
   .nav-actions { margin-left: auto; }
   .hero { padding-top: 56px; }
-  .win-body { grid-template-columns: 1fr; }
-  .fake-side { display: none; }
+  .product-caption { align-items: flex-start; flex-direction: column; gap: 4px; }
   .section { padding: 56px 20px; }
 }
 

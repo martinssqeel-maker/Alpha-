@@ -45,7 +45,7 @@ async function resolveLatestRelease() {
     setDownload(asset ? asset.browser_download_url : RELEASES_PAGE);
     if (asset) {
       const size = formatSize(asset.size);
-      if (size) setText("[data-size-hint]", `~${size} installer`);
+      if (size) setText("[data-size-hint]", `~${size}`);
     }
   } catch (err) {
     // Offline or rate-limited: the hints stay generic and the public releases

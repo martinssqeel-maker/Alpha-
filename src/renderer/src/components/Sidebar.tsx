@@ -53,7 +53,7 @@ export default function Sidebar() {
       </div>
 
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-1 mb-1 text-xs font-semibold" style={{ color: 'var(--muted)' }}>
+        <div className="flex items-center gap-1 mb-1 text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           <FolderGit2 size={12} /> PROJECTS
           <div className="flex-1" />
           <button className="btn ghost icon" style={{ width: 22, height: 22 }} title="Open project" onClick={() => useApp.getState().openProject()}>
@@ -63,8 +63,7 @@ export default function Sidebar() {
         {projects.slice(0, 4).map((p) => (
           <button
             key={p.id}
-            className={`nav-item ${activeProjectId === p.id ? 'active' : ''}`}
-            style={{ padding: '5px 8px' }}
+            className={`nav-item sidebar-project-item ${activeProjectId === p.id ? 'active' : ''}`}
             onClick={() => setView('projects')}
             onDoubleClick={() => void openProject(p.rootPath)}
             title={p.rootPath}
@@ -74,14 +73,14 @@ export default function Sidebar() {
           </button>
         ))}
         {projects.length === 0 && (
-          <div className="text-xs px-2 py-1" style={{ color: 'var(--faint)' }}>
+          <div className="text-xs px-2 py-1" style={{ color: 'var(--text-disabled)' }}>
             No projects yet
           </div>
         )}
       </div>
 
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 text-xs font-semibold mb-1" style={{ color: 'var(--muted)' }}>
+        <div className="flex items-center gap-2 text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>
           <Search size={12} /> CONVERSATIONS
         </div>
         <input
@@ -89,24 +88,22 @@ export default function Sidebar() {
           placeholder="Search chats…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          style={{ padding: '5px 9px' }}
+          style={{ padding: 'var(--space-1) var(--space-2)' }}
         />
       </div>
 
       <div className="sidebar-scroll px-2">
         {filtered.map((c) => (
-          <div key={c.id} className={`nav-item ${activeId === c.id ? 'active' : ''}`} style={{ padding: '6px 8px' }}>
+          <div key={c.id} className={`nav-item conversation-item ${activeId === c.id ? 'active' : ''}`}>
             <button
-              className="flex-1 text-left label text-xs"
-              style={{ background: 'none', border: 'none', padding: 0 }}
+              className="conversation-title flex-1 text-left label text-xs"
               onClick={() => useApp.getState().openConversation(c.id)}
               title={c.title}
             >
               {c.title}
             </button>
             <button
-              className="btn ghost icon"
-              style={{ width: 20, height: 20, padding: 2 }}
+              className="btn ghost icon compact"
               title="Delete"
               onClick={(e) => {
                 e.stopPropagation()
@@ -118,13 +115,13 @@ export default function Sidebar() {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="text-xs px-2 py-1" style={{ color: 'var(--faint)' }}>
+          <div className="text-xs px-2 py-1" style={{ color: 'var(--text-disabled)' }}>
             {query ? 'No matches' : 'No conversations yet'}
           </div>
         )}
       </div>
 
-      <div className="p-2" style={{ borderTop: '1px solid var(--border)' }}>
+      <div className="p-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
         {NAV.map((n) => (
           <button
             key={n.view}
@@ -143,8 +140,8 @@ export default function Sidebar() {
               className="status-dot"
               title={platform.authenticated ? (platform.config?.account?.email ?? 'Signed in') : 'Not signed in'}
               style={{
-                background: platform.authenticated ? 'var(--accent)' : 'var(--faint)',
-                borderRadius: 999,
+                background: platform.authenticated ? 'var(--accent)' : 'var(--text-disabled)',
+                borderRadius: 'var(--radius-pill)',
                 width: 8,
                 height: 8
               }}

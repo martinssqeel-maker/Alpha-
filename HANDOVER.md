@@ -46,9 +46,9 @@ Architecture flow: React pages/components → typed `src/renderer/src/lib/api.ts
 - `git status --short` was empty before audit; `git diff` and `git diff --staged` were empty. No pre-existing edits needed preservation.
 - `npm run typecheck` — **VERIFIED**, exit 0 (`typecheck:node` and `typecheck:web`).
 - `npm test` — **VERIFIED**, exit 0; 7 files, 62 tests passed.
-- `npm run build` — **VERIFIED**, exit 0; main, preload, and renderer bundles produced. Renderer JS bundle reported 1,554.01 kB.
+- `npm run build` — **VERIFIED**, exit 0; main, preload, and renderer bundles produced. Baseline renderer JS bundle reported 1,554.01 kB.
 - Live installed app was visible and rendered the Chat workspace at 1440×816. The screenshot showed a generic assistant robot glyph, “New chat” despite an existing conversation, and the Git panel’s honest “Open a project to use Git” empty state. No settings were changed during the observation. The installed app showed a registered project but no active project. A safe Settings click-through was deferred because the window bounds changed during UI automation; do it in a controlled dev session.
-- Build output is ignored under `out/`; no dependency or application-code changes have been made for the audit.
+- Phase 1 audit was committed as `eac5415` (`Document current workspace audit and plan`). Phase 2 added application code and theme tests; no dependency, user profile, or installed-app data changes were made.
 
 ## 3. Feature inventory (source traced; runtime confidence stated honestly)
 
@@ -65,8 +65,8 @@ The code paths below were traced from renderer through `lib/api.ts`, preload/IPC
 | Terminal | Custom subprocess streaming in `terminal.ts`, correct-project root is supplied by tool context. No PTY/emulator or stdin interface; cancellation calls `child.kill()` and process-tree cleanup has not been demonstrated. | **PARTIAL** |
 | Git/GitHub | Git service/panel supports status, diff, stage/commit/push/pull/branches/remotes. GitHub uses a stored PAT or installed `gh`; “device” flow is an explicit placeholder because there is no app client ID. Prompt’s system-browser OAuth flow is not implemented. | **PARTIAL** |
 | Settings | Existing real controls cover two themes, Ollama/default model, permissions, voice, Git publishing, privacy/log level, optional platform URL, and updater. One long page; no settings navigation, project settings, Skills, shortcuts reference, Archives, Browser, MCP state, or browser integration. Developer API is already absent from the app route/nav. | **PARTIAL** |
-| Appearance | `styles.css` has dark/light CSS variables and focus-visible styling, but no primitive/semantic/component token layers, no presets/System mode, and many raw colours/sizes remain in components. Website has a separate palette. | **PARTIAL** |
-| Updates | `updater.ts` uses real `electron-updater` check/download/install events, surfaced in Settings. Current app version is runtime `app.getVersion()`; `package.json` is 1.0.5 while `src/shared/types.ts` still says 1.0.4 (stale constant to correct). | **PARTIAL** |
+| Appearance | Three-layer CSS token foundation and semantic theme remapping now provide Dark, Light, System, Alpine, Dune, Tide, and Ember. Main/preload apply the saved palette before first paint; settings selection updates the renderer and native titlebar. Core shell, composer, controls, and dialog use semantic tokens; remaining screens still have legacy aliases/sizing to migrate. | **PARTIAL** — shell/dialog runtime checked; full app migration is later work |
+| Updates | `updater.ts` uses real `electron-updater` check/download/install events, surfaced in Settings. `APP_VERSION` is now aligned to package version 1.0.5. | **PARTIAL** |
 | Website | Static pages and direct public GitHub release download are present; no admin/auth gate (matches settled direction). Local crawl at mobile/desktop sizes and current deployment state are not freshly checked here. | **IMPLEMENTED — NOT VERIFIED** |
 | Skills, Browser preview, Home, archives, auto-titles | No product-skill discovery/injection, in-app Browser panel, Home dashboard, archived-conversation model, or automatic local chat title generation found. | **NOT STARTED** |
 | Logo/icon | Existing approved Alpha logo is wired to the app/site/build and explicitly out of redesign scope. Only regression-check references. | **VERIFIED** by current live window and prior packaged v1.0.5 evidence in §15–16 |
@@ -81,17 +81,20 @@ The code paths below were traced from renderer through `lib/api.ts`, preload/IPC
 6. **GitHub auth:** retain current PAT/`gh` fallback while determining a supported public desktop flow. No OAuth secret or client registration is present; stop at a documented credential/configuration boundary if required.
 7. **Website + hardening:** locally crawl links and responsive states, then repeat typecheck/tests/build, package, and exercise the packaged app. Do not publish/deploy as part of local verification.
 
-Known drift to fix/document during implementation: `APP_VERSION` is 1.0.4 vs package 1.0.5; README and older handover sections still describe removed Alpha Cloud/admin website flows; no renderer error boundary was found; current styles use raw values outside the token declarations. Website release links must remain public and ungated per product direction.
+Known drift to fix/document during implementation: README and older handover sections still describe removed Alpha Cloud/admin website flows; no renderer error boundary was found; many spacing, sizing, and typography values remain in styles outside the token declarations for later screen migrations. The renderer contains no raw hex colors outside CSS token definitions. Website release links must remain public and ungated per product direction.
 
 ## 5. Changes made during this execution
 
-**Phase 1 — Audit & protect:** only this current-state handover block is being replaced/updated. No application source, dependencies, settings, user data, or Git history were changed. The directory remains clean aside from this documentation edit.
+**Phase 1 — Audit & protect:** current-state inventory, baseline results, and the phase plan were recorded here and committed as `eac5415`.
+
+**Phase 2 — Design system foundation:** added a shared theme model, semantic palette tokens, first-paint preload application, native titlebar/background updates, and settings theme selection. Migrated the shared shell, buttons, fields, sidebar, composer, and modal scrim to semantic tokens; added pressed/disabled states and reduced-motion handling. Corrected the stale app version constant to 1.0.5. No dependency was added and approved branding assets were not changed. Contrast checks cover all six resolved palettes; `docs/qa/phase2/` holds dark/light chat and light dialog screenshots. Other pages and panels remain on legacy aliases and will migrate in their scheduled phases.
 
 ## 6. Design and architecture decisions
 
-- Keep the current Electron/React/TypeScript, Tailwind v4, Zustand, sql.js, and static website stack. No dependency is justified yet.
+- Keep the current Electron/React/TypeScript, Tailwind v4, Zustand, sql.js, and static website stack. Phase 2 introduced no dependency.
 - Treat `HANDOVER.md` as the live continuation record and sections 12–16 as historical logs. Do not use old admin/auth claims as present-day product scope.
-- Build themes by remapping semantic CSS variables, then migrate controls and screens in small increments. Do not alter approved logo/icon art.
+- Themes remap shared semantic tokens; system preference resolution is separated from the six concrete palettes. The main process sets window surfaces and passes the resolved value to preload so the saved theme is present before the renderer's first paint. Keep migrating screens from legacy aliases to semantic tokens in small increments. Do not alter approved logo/icon art.
+- A modal scrim is a component token with a fixed dark tint so it dims content in both dark and light themes; deriving it from the surface color made the first light-mode overlay nearly disappear.
 - Keep the desktop core local-first. The optional platform backend remains out of scope; do not add sign-in gates.
 - Preserve security boundaries (`contextIsolation`, `nodeIntegration: false`, allow-listed IPC, pathGuard, permission service, safeStorage). No browser integration may weaken them.
 
@@ -99,11 +102,15 @@ Known drift to fix/document during implementation: `APP_VERSION` is 1.0.4 vs pac
 
 | Command | Result |
 |---|---|
-| `npm run typecheck` | **VERIFIED**, exit 0 |
-| `npm test` | **VERIFIED**, 62/62 passed, 7 files |
-| `npm run build` | **VERIFIED**, exit 0; Electron main/preload/renderer bundled |
+| Baseline `npm run typecheck` | **VERIFIED**, exit 0 |
+| Baseline `npm test` | **VERIFIED**, 62/62 passed, 7 files |
+| Phase 2 `npm run typecheck` | **VERIFIED**, exit 0 after theme and shell changes |
+| Phase 2 `npm test` | **VERIFIED**, 66/66 passed, 8 files; includes palette completeness, system resolution, contrast, and token/state checks |
+| Phase 2 `npm run build` | **VERIFIED**, exit 0; main/preload/renderer bundled, renderer JS 1,560.17 kB |
 | `npm run dist` | **NOT STARTED** in this pass; release-phase packaging and app launch remain in Phase 7 |
-| Desktop click-through / multi-step agent / approval / project switch | **PARTIAL**; screenshot captured, controlled runtime test not completed |
+| `npm run smoke:desktop -- --port 9224` | **VERIFIED** after restart in an isolated temp user-data profile: 13 passed, 1 warning, 0 failed; theme/palette applied and persisted. Warning: no project was open, so real-project Git status was not exercised. No renderer errors. |
+| Dark/light shell and dialog screenshots | **VERIFIED** by live screenshot inspection: [dark chat](docs/qa/phase2/chat-dark.png), [light chat](docs/qa/phase2/chat-light.png), [light dialog](docs/qa/phase2/dialog-light.png) |
+| Multi-step agent / approval / project switch | **NOT STARTED** in Phase 2; regression work remains in later phases |
 | Website route/link/responsive check | **NOT STARTED** in this pass |
 
 ## 8. Phase plan and gates
@@ -111,7 +118,7 @@ Known drift to fix/document during implementation: `APP_VERSION` is 1.0.4 vs pac
 | Phase | Scope | Status / exit gate |
 |---|---|---|
 | 1 — Audit & protect | Current docs, Git state, baseline checks, feature inventory | **VERIFIED**: audit and baseline above; only handover documentation changed |
-| 2 — Design system foundation | Three-layer tokens, theme engine, shell/component states | **NOT STARTED**: gate is a real theme switch across migrated shell and dialog, contrast check, screenshots |
+| 2 — Design system foundation | Three-layer tokens, theme engine, shell/component states | **VERIFIED**: all six concrete palettes meet text contrast gates; dark/light switch was exercised on the running shell and dialog; light choice survived restart; screenshots are stored in `docs/qa/phase2/`. Remaining screens are explicitly scheduled for migration in later phases. |
 | 3 — Core workspace | Projects, local auto-titles, Home/navigation, real execution timeline | **NOT STARTED**: gate is persisted workspace state and a real multi-step task with accurate events |
 | 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth boundary | **NOT STARTED**: gate is local preview, accurate/cancellable terminal, GitHub at supported auth boundary |
 | 5 — Skills & Settings | Skill injection, settings IA, themes, browser settings, Developer API removal check | **NOT STARTED**: gate is persisted skill effect and click-through of implemented settings |
@@ -122,7 +129,7 @@ Do not advance past a phase gate without recording its shortfall here. Commit co
 
 ## 9. Manual steps and external boundaries
 
-- **No user action is needed for Phase 1.**
+- **No user action is needed for Phases 1–2.**
 - GitHub browser authentication may need a registered public client ID. Inspect current official GitHub support before selecting an OAuth/device flow; if app registration is required, give the exact local configuration steps and never request a secret in chat. Existing PAT/`gh` support remains until the replacement is verified.
 - No platform credentials, website deployment, release publishing, or account setup is required for the local-first product work.
 
@@ -137,7 +144,7 @@ npm run dist
 npm run smoke:desktop -- --port <debug-port>   # only when packaged app was launched with that port
 ```
 
-**Next task:** Phase 2, beginning with the style/token inventory and semantic token/theme architecture. Current highest-priority issue: the visual system is only a two-palette variable set while UI components still contain hard-coded styling.
+**Next task:** Phase 3 — implement the Home/navigation and workspace continuity work while migrating the remaining core chat/project screens to the token system. Highest-priority global follow-up remains end-to-end project/chat restoration and real multi-step agent verification.
 
 ---
 ## 12. Session log — 2026-10-13 (second agent, no access to session 1)

@@ -17,6 +17,7 @@ import type {
   SearchResult,
   UpdateStatus
 } from './types'
+import type { ResolvedTheme } from './theme'
 
 export interface DiagnosticsInfo {
   appVersion: string
@@ -79,7 +80,7 @@ export interface TerminalRunResult {
 export interface IpcContract {
   [CH.appInfo]: { req: void; res: DiagnosticsInfo }
   [CH.diagnostics]: { req: void; res: DiagnosticsInfo }
-  [CH.appTheme]: { req: { dark: boolean }; res: { ok: true } }
+  [CH.appTheme]: { req: { theme: ResolvedTheme }; res: { ok: true } }
   [CH.revealPath]: { req: { path: string }; res: { ok: true } }
   [CH.updateCheck]: { req: void; res: UpdateStatus }
   [CH.updateDownload]: { req: void; res: UpdateStatus }

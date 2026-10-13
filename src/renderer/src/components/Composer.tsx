@@ -139,8 +139,7 @@ export default function Composer() {
 
   return (
     <div
-      className="p-3"
-      style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}
+      className="composer-shell p-3"
       onDragOver={(e) => {
         e.preventDefault()
         setDragOver(true)
@@ -155,9 +154,9 @@ export default function Composer() {
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {attachments.map((a) => (
-            <div key={a.id} className="card tight flex items-center gap-2" style={{ padding: '4px 8px' }}>
+            <div key={a.id} className="card tight flex items-center gap-2" style={{ padding: 'var(--space-1) var(--space-2)' }}>
               {a.previewUrl && a.kind === 'image' ? (
-                <img src={a.previewUrl} alt={a.name} style={{ width: 22, height: 22, borderRadius: 4, objectFit: 'cover' }} />
+                <img src={a.previewUrl} alt={a.name} style={{ width: 22, height: 22, borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
               ) : (
                 <Paperclip size={13} />
               )}
@@ -165,8 +164,7 @@ export default function Composer() {
                 {a.name}
               </span>
               <button
-                className="btn ghost icon"
-                style={{ width: 18, height: 18, padding: 1 }}
+                className="btn ghost icon compact"
                 onClick={() => setAttachments((list) => list.filter((x) => x.id !== a.id))}
               >
                 <X size={11} />
@@ -179,9 +177,9 @@ export default function Composer() {
       <div
         className="card tight flex items-end gap-2"
         style={{
-          padding: 8,
+          padding: 'var(--space-2)',
           borderColor: dragOver ? 'var(--accent)' : 'var(--border)',
-          background: 'var(--surface)'
+          background: 'var(--composer-bg)'
         }}
       >
         <button className="btn ghost icon" onClick={attach} title="Attach files">
@@ -196,7 +194,7 @@ export default function Composer() {
               ? `Ask something about ${activeProject.name}…  (Enter to send, Shift+Enter for newline)`
               : 'Ask a question…  (Enter to send, Shift+Enter for newline)'
           }
-          style={{ border: 'none', background: 'transparent', padding: '6px 2px', maxHeight: 220 }}
+          style={{ border: 'none', background: 'transparent', padding: '0 var(--space-1)', maxHeight: 220 }}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}

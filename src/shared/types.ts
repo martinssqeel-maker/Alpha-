@@ -1,8 +1,10 @@
+import type { ThemePreference } from './theme'
+
 export const APP_NAME = 'Alpha AI Workspace'
 export const APP_ID = 'com.alpha.aiworkspace'
 // Display/telemetry constant. The authoritative runtime version is read from the
 // packaged app itself via `app.getVersion()` (see `app:info` diagnostics).
-export const APP_VERSION = '1.0.4'
+export const APP_VERSION = '1.0.5'
 export const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434'
 
 export const MODES = ['chat', 'assist', 'agent'] as const
@@ -142,7 +144,7 @@ export interface Project {
 }
 
 export interface AppSettings {
-  theme: 'dark' | 'light'
+  theme: ThemePreference
   defaultProviderId?: string | null
   defaultModelId?: string | null
   ollamaUrl: string

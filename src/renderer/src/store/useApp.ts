@@ -16,6 +16,7 @@ import type {
   UpdateEvent,
   UpdateStatus
 } from '@shared/types'
+import { THEME_TOKENS, resolveTheme } from '@shared/theme'
 import { api, onChat, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
 export type View = 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'settings' | 'help'
@@ -233,9 +234,17 @@ export const useApp = create<State>((set, get) => ({
   },
   setInspectorWidth: (inspectorWidth) => set({ inspectorWidth }),
   applyTheme: () => {
-    const theme = get().settings?.theme ?? 'dark'
-    document.documentElement.setAttribute('data-theme', theme)
-    void api.setTheme(theme === 'dark')
+    const preference = get().settings?.theme ?? 'dark'
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const theme = resolveTheme(preference, prefersDark)
+    const root = document.documentElement
+    root.dataset.theme = theme
+    root.dataset.themePreference = preference
+    root.style.colorScheme = theme === 'light' ? 'light' : 'dark'
+    for (const [token, value] of Object.entries(THEME_TOKENS[theme])) {
+      root.style.setProperty(token, value)
+    }
+    void api.setTheme(theme)
   },
 
   saveSettings: async (patch) => {

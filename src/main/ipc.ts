@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { ZodTypeAny } from 'zod'
 import type { ChatEvent, TerminalEvent } from '@shared/types'
 import {
+  zAppTheme,
   zApproval,
   zAttachmentAnalyze,
   zChatSend,
@@ -37,6 +38,7 @@ import {
   zVoiceTranscribe
 } from '@shared/schemas'
 import type { DiagnosticsInfo } from '@shared/ipc'
+import { THEME_TOKENS } from '@shared/theme'
 import { CH } from '@shared/channels'
 import type { AppContext } from './context'
 
@@ -72,15 +74,17 @@ export function registerIpc(ctx: AppContext): void {
   handle(CH.platformSignOut, null, () => ctx.platform.signOut())
   handle(CH.platformRefresh, null, () => ctx.platform.refresh())
 
-  handle(CH.appTheme, null, (p) => {
-    const dark = Boolean((p as { dark?: boolean })?.dark)
+  handle(CH.appTheme, zAppTheme, (p) => {
+    const theme = (p as { theme: keyof typeof THEME_TOKENS }).theme
+    const tokens = THEME_TOKENS[theme]
     for (const win of BrowserWindow.getAllWindows()) {
       try {
         win.setTitleBarOverlay?.({
-          color: dark ? '#0e1016' : '#f7f8fa',
-          symbolColor: dark ? '#cbd5e1' : '#334155',
+          color: tokens['--surface-1'],
+          symbolColor: tokens['--text-secondary'],
           height: 40
         })
+        win.setBackgroundColor(tokens['--surface-0'])
       } catch {
         /* not supported */
       }

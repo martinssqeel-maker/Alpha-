@@ -16,7 +16,7 @@ import HelpPage from './pages/HelpPage'
 
 /** How long the launch splash is held, and how long its fade-out takes. */
 const SPLASH_HOLD_MS = 1600
-const SPLASH_FADE_MS = 500
+const SPLASH_FADE_MS = 160
 /**
  * Upper bound on how long the splash may stay up when startup is slow. The
  * overlay covers the whole window, so a stalled init must never be able to keep
@@ -31,6 +31,7 @@ export default function App() {
   const inspectorOpen = useApp((s) => s.inspectorOpen)
   const inspectorWidth = useApp((s) => s.inspectorWidth)
   const setInspectorWidth = useApp((s) => s.setInspectorWidth)
+  const settingsTheme = useApp((s) => s.settings?.theme)
   const [startupError, setStartupError] = useState<string | null>(null)
   const [splashPhase, setSplashPhase] = useState<'show' | 'leaving' | 'done'>('show')
   const dragging = useRef(false)
@@ -38,6 +39,15 @@ export default function App() {
   useEffect(() => {
     init().catch((e) => setStartupError((e as Error).message))
   }, [init])
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-color-scheme: dark)')
+    const applySystemTheme = (): void => {
+      if (useApp.getState().settings?.theme === 'system') useApp.getState().applyTheme()
+    }
+    preference.addEventListener('change', applySystemTheme)
+    return () => preference.removeEventListener('change', applySystemTheme)
+  }, [settingsTheme])
 
   // Advance the splash exactly one phase at a time.
   //

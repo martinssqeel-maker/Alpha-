@@ -1,6 +1,7 @@
 import path from 'node:path'
-import { app, BrowserWindow, session, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, session, shell } from 'electron'
 import { APP_ID } from '@shared/types'
+import { THEME_TOKENS, resolveTheme } from '@shared/theme'
 import { buildContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
 import { getLogger } from './services/logger'
@@ -56,6 +57,9 @@ function hardenSession(): void {
 }
 
 async function createWindow(): Promise<void> {
+  const preference = ctx?.settings.get().theme ?? 'dark'
+  const theme = resolveTheme(preference, nativeTheme.shouldUseDarkColors)
+  const tokens = THEME_TOKENS[theme]
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -64,17 +68,18 @@ async function createWindow(): Promise<void> {
     show: false,
     // Packaged builds take the icon from the exe resource; dev needs it explicit.
     icon: isDev ? path.join(app.getAppPath(), 'build', 'icon.ico') : undefined,
-    backgroundColor: '#0b0d12',
+    backgroundColor: tokens['--surface-0'],
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0e1016', symbolColor: '#cbd5e1', height: 40 },
+    titleBarOverlay: { color: tokens['--surface-1'], symbolColor: tokens['--text-secondary'], height: 40 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
       webSecurity: true,
-      spellcheck: false
+      spellcheck: false,
+      additionalArguments: [`--alpha-theme=${theme}`]
     }
   })
 

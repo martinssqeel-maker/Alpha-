@@ -1,6 +1,7 @@
 import { CH, EVENTS } from '@shared/channels'
 import type { ChannelName, IpcContract } from '@shared/ipc'
 import type { ChatEvent, PlatformStatus, TerminalEvent, UpdateEvent } from '@shared/types'
+import type { ResolvedTheme } from '@shared/theme'
 
 async function invoke<K extends ChannelName>(
   channel: K,
@@ -23,7 +24,7 @@ export function onUpdate(cb: (event: UpdateEvent) => void): () => void {
 
 export const api = {
   diagnostics: () => invoke(CH.diagnostics, undefined),
-  setTheme: (dark: boolean) => invoke(CH.appTheme, { dark }),
+  setTheme: (theme: ResolvedTheme) => invoke(CH.appTheme, { theme }),
   revealPath: (path: string) => invoke(CH.revealPath, { path }),
 
   updates: {

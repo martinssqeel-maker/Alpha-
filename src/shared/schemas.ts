@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RESOLVED_THEME_OPTIONS } from './theme'
 
 export const zPermissionLevel = z.enum(['allow', 'ask', 'deny'])
 export const zPermissionMode = z.enum(['chat', 'assist', 'agent'])
@@ -181,4 +182,8 @@ export const zVoiceTranscribe = z.object({
 
 export const zSettingsSet = z.object({
   patch: z.record(z.any())
+})
+
+export const zAppTheme = z.object({
+  theme: z.enum(RESOLVED_THEME_OPTIONS)
 })

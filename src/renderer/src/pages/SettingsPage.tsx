@@ -1,5 +1,6 @@
 import type { PermissionLevel, PermissionMode, PermissionSettings, UpdateStatus } from '@shared/types'
 import { permissionsForMode } from '@shared/permissions'
+import { THEME_OPTIONS } from '@shared/theme'
 import { useApp } from '../store/useApp'
 
 const PERMISSION_ROWS: { key: keyof Omit<PermissionSettings, 'mode'>; label: string; hint: string }[] = [
@@ -52,8 +53,9 @@ export default function SettingsPage() {
         <Section title="Appearance">
           <Row label="Theme" hint="Applies to the whole workspace.">
             <select className="select" value={settings.theme} onChange={(e) => void save({ theme: e.target.value })}>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
+              {THEME_OPTIONS.map((theme) => (
+                <option key={theme.id} value={theme.id}>{theme.label}</option>
+              ))}
             </select>
           </Row>
         </Section>

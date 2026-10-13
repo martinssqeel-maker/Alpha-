@@ -4,10 +4,13 @@ import { APP_ID } from '@shared/types'
 import { THEME_TOKENS, resolveTheme } from '@shared/theme'
 import { buildContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
+import { EVENTS } from '@shared/channels'
+import { BrowserPreviewService } from './services/browserPreview'
 import { getLogger } from './services/logger'
 
 let ctx: AppContext | null = null
 let mainWindow: BrowserWindow | null = null
+let browserPreview: BrowserPreviewService | null = null
 
 const isDev = !app.isPackaged
 
@@ -85,8 +88,10 @@ async function createWindow(): Promise<void> {
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => {
+    browserPreview?.dispose()
     mainWindow = null
   })
+  if (browserPreview) browserPreview.attach(mainWindow)
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
@@ -159,7 +164,8 @@ if (!gotLock) {
     hardenSession()
     try {
       ctx = await buildContext(app.getPath('userData'), emit)
-      registerIpc(ctx)
+      browserPreview = new BrowserPreviewService((state) => emit(EVENTS.browser, state))
+      registerIpc(ctx, browserPreview)
     } catch (e) {
       // If context failed we still want a window to show the error.
       try {

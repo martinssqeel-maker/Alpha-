@@ -182,6 +182,20 @@ export interface AppSettings {
     requireVerifiedRemote: boolean
   }
   permissions: PermissionSettings
+  skills: {
+    enabled: Record<string, boolean>
+  }
+}
+
+export interface ProductSkill {
+  id: string
+  name: string
+  description: string
+  category: string
+  version: string
+  enabledByDefault: boolean
+  enabled: boolean
+  instructions: string
 }
 
 export type InspectorTab =
@@ -192,6 +206,15 @@ export type InspectorTab =
   | 'terminal'
   | 'tests'
   | 'git'
+  | 'browser'
+
+export interface BrowserPreviewState {
+  url: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  error: string | null
+}
 
 export interface ChatUsage {
   promptTokens?: number
@@ -216,7 +239,7 @@ export type TerminalEvent =
   | { type: 'start'; runId: string; command: string; cwd: string }
   | { type: 'stdout'; runId: string; data: string }
   | { type: 'stderr'; runId: string; data: string }
-  | { type: 'exit'; runId: string; code: number | null; signal?: string; durationMs: number }
+  | { type: 'exit'; runId: string; code: number | null; signal?: string; durationMs: number; cancelled?: boolean }
   | { type: 'error'; runId: string; error: string }
 
 export interface ToolCallRequest {

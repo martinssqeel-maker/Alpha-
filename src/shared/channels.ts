@@ -15,6 +15,9 @@ export const CH = {
   secretsDelete: 'secrets:delete',
   secretsHas: 'secrets:has',
 
+  skillsList: 'skills:list',
+  skillsSetEnabled: 'skills:setEnabled',
+
   providersList: 'providers:list',
   providersSave: 'providers:save',
   providersRemove: 'providers:remove',
@@ -58,6 +61,14 @@ export const CH = {
   terminalRun: 'terminal:run',
   terminalCancel: 'terminal:cancel',
 
+  browserNavigate: 'browser:navigate',
+  browserBack: 'browser:back',
+  browserForward: 'browser:forward',
+  browserReload: 'browser:reload',
+  browserOpenExternal: 'browser:openExternal',
+  browserLayout: 'browser:layout',
+  browserState: 'browser:state',
+
   gitStatus: 'git:status',
   gitDiff: 'git:diff',
   gitStage: 'git:stage',
@@ -93,6 +104,7 @@ export const CH = {
 export const EVENTS = {
   chat: 'evt:chat',
   terminal: 'evt:terminal',
+  browser: 'evt:browser',
   providerStatus: 'evt:provider-status',
   project: 'evt:project',
   update: 'evt:update',

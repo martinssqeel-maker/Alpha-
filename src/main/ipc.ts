@@ -5,6 +5,8 @@ import {
   zAppTheme,
   zApproval,
   zAttachmentAnalyze,
+  zBrowserLayout,
+  zBrowserNavigate,
   zChatSend,
   zCheckpointRestore,
   zConversationAppend,
@@ -35,6 +37,7 @@ import {
   zRequestId,
   zRunId,
   zSearch,
+  zSkillEnable,
   zSettingsSet,
   zTerminalRun,
   zVoiceTranscribe
@@ -43,10 +46,11 @@ import type { DiagnosticsInfo } from '@shared/ipc'
 import { THEME_TOKENS } from '@shared/theme'
 import { CH } from '@shared/channels'
 import type { AppContext } from './context'
+import type { BrowserPreviewService } from './services/browserPreview'
 
 type Handler = (payload: unknown) => unknown | Promise<unknown>
 
-export function registerIpc(ctx: AppContext): void {
+export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewService): void {
   const handle = (channel: string, schema: ZodTypeAny | null, fn: Handler): void => {
     ipcMain.handle(channel, async (_event, payload) => {
       let args: unknown = payload
@@ -113,6 +117,12 @@ export function registerIpc(ctx: AppContext): void {
     return { ok: true }
   })
   handle(CH.secretsHas, null, (p) => ({ has: ctx.secrets.has((p as { ref: string }).ref) }))
+
+  handle(CH.skillsList, null, () => ctx.skills.list())
+  handle(CH.skillsSetEnabled, zSkillEnable, (p) => {
+    const { id, enabled } = p as { id: string; enabled: boolean }
+    return ctx.skills.setEnabled(id, enabled)
+  })
 
   handle(CH.providersList, null, () => ctx.registry.list())
   handle(CH.providersSave, zProviderSave, (p) => ctx.registry.save(p as never))
@@ -263,6 +273,18 @@ export function registerIpc(ctx: AppContext): void {
 
   handle(CH.terminalRun, zTerminalRun, (p) => ctx.terminal.run(p as never, termEvent))
   handle(CH.terminalCancel, zRunId, (p) => ({ ok: ctx.terminal.cancel((p as { runId: string }).runId) }))
+
+  handle(CH.browserNavigate, zBrowserNavigate, (p) => browserPreview.navigate((p as { url: string }).url))
+  handle(CH.browserBack, null, () => browserPreview.back())
+  handle(CH.browserForward, null, () => browserPreview.forward())
+  handle(CH.browserReload, null, () => browserPreview.reload())
+  handle(CH.browserOpenExternal, null, () => browserPreview.openExternally())
+  handle(CH.browserLayout, zBrowserLayout, (p) => {
+    const { visible, bounds } = p as { visible: boolean; bounds: { x: number; y: number; width: number; height: number } }
+    browserPreview.setLayout(visible, bounds)
+    return { ok: true }
+  })
+  handle(CH.browserState, null, () => browserPreview.getState())
 
   handle(CH.gitStatus, zProjectId, (p) => ctx.git.status((p as { projectId: string }).projectId))
   handle(CH.gitDiff, zGitDiff, (p) => {

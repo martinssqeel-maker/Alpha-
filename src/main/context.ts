@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { safeStorage } from 'electron'
+import { app, safeStorage } from 'electron'
 import type { AppSettings } from '@shared/types'
 import { AttachmentService } from './services/attachments'
 import { ChatService } from './services/chat'
@@ -21,6 +21,7 @@ import {
   SettingsRepo
 } from './services/store'
 import { TerminalService } from './services/terminal'
+import { SkillsService } from './services/skills'
 import { UpdateService } from './services/updater'
 
 class SafeStorageCipher implements Cipher {
@@ -66,6 +67,7 @@ export interface AppContext {
   git: GitService
   github: GithubService
   terminal: TerminalService
+  skills: SkillsService
   permissions: PermissionService
   broker: ApprovalBroker
   attachments: AttachmentService
@@ -109,6 +111,10 @@ export async function buildContext(
   const github = new GithubService(secrets)
   const permissions = new PermissionService(settings)
   const terminal = new TerminalService(projectService, permissions)
+  const skillsDirectory = app.isPackaged
+    ? path.join(process.resourcesPath, 'product-skills')
+    : path.join(app.getAppPath(), 'product-skills')
+  const skills = new SkillsService(skillsDirectory, settings)
   const broker = new ApprovalBroker()
   const attachments = new AttachmentService()
 
@@ -124,6 +130,7 @@ export async function buildContext(
     permissions,
     broker,
     settings,
+    skills,
     emit: (event) => emit('evt:chat', event)
   })
 
@@ -172,6 +179,7 @@ export async function buildContext(
     git,
     github,
     terminal,
+    skills,
     permissions,
     broker,
     attachments,

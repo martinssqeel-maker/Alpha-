@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { getLogger } from './logger'
 import { safeResolve } from './pathGuard'
 import type { ProjectService } from './projectService'
@@ -61,6 +61,7 @@ export interface CommandAssessment {
 }
 
 export interface TerminalRunInput {
+  runId?: string
   projectId: string
   command: string
   cwd?: string
@@ -99,6 +100,25 @@ interface ActiveRun {
   child: ChildProcessWithoutNullStreams | null
   cancelled: boolean
   timer: NodeJS.Timeout | null
+}
+
+function killProcessTree(child: ChildProcessWithoutNullStreams): void {
+  const pid = child.pid
+  if (!pid) {
+    child.kill()
+    return
+  }
+  if (process.platform === 'win32') {
+    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      if (error && !child.killed) child.kill()
+    })
+    return
+  }
+  try {
+    process.kill(-pid, 'SIGTERM')
+  } catch {
+    if (!child.killed) child.kill('SIGTERM')
+  }
 }
 
 export class TerminalService {
@@ -152,7 +172,7 @@ export class TerminalService {
       }
     }
 
-    const runId = randomUUID()
+    const runId = input.runId ?? randomUUID()
     this.start(runId, command, cwd, input.timeoutMs ?? 120000, emit)
     return { runId, approved: true, command, cwd, reason: assessment.reason }
   }
@@ -171,6 +191,7 @@ export class TerminalService {
       child = spawn(command, {
         cwd,
         shell: true,
+        detached: process.platform !== 'win32',
         windowsHide: true,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       })
@@ -206,6 +227,7 @@ export class TerminalService {
         runId,
         code,
         signal: signal ?? undefined,
+        cancelled: state.cancelled,
         durationMs: Date.now() - started
       })
     })
@@ -213,11 +235,7 @@ export class TerminalService {
     state.timer = setTimeout(() => {
       if (this.runs.has(runId)) {
         state.cancelled = true
-        try {
-          child.kill('SIGTERM')
-        } catch {
-          /* ignore */
-        }
+        killProcessTree(child)
         emit({ type: 'stderr', runId, data: '\n[command timed out and was terminated]\n' })
       }
     }, timeoutMs)
@@ -227,12 +245,7 @@ export class TerminalService {
     const state = this.runs.get(runId)
     if (!state) return false
     state.cancelled = true
-    try {
-      state.child?.kill()
-    } catch {
-      /* ignore */
-    }
-    this.runs.delete(runId)
+    if (state.child) killProcessTree(state.child)
     return true
   }
 
@@ -250,6 +263,7 @@ export class TerminalService {
         child = spawn(command, {
           cwd,
           shell: true,
+          detached: process.platform !== 'win32',
           windowsHide: true,
           env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
         })
@@ -262,11 +276,7 @@ export class TerminalService {
       let outBytes = 0
       let errBytes = 0
       const timer = setTimeout(() => {
-        try {
-          child.kill()
-        } catch {
-          /* ignore */
-        }
+        killProcessTree(child)
         stderr += '\n[command timed out and was terminated]\n'
       }, timeoutMs)
       child.stdout.on('data', (d: Buffer) => {

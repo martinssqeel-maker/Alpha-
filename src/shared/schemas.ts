@@ -60,6 +60,7 @@ export const zConversationUpdate = z.object({
 })
 export const zConversationSearch = z.object({ query: z.string().min(1).max(500) })
 export const zProjectRename = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(100) })
+export const zSkillEnable = z.object({ id: z.string().min(2).max(64), enabled: z.boolean() })
 
 export const zId = z.object({ id: z.string().min(1) })
 
@@ -124,12 +125,24 @@ export const zCheckpointRestore = z.object({
 })
 
 export const zTerminalRun = z.object({
+  runId: z.string().uuid().optional(),
   projectId: z.string().min(1),
   command: z.string().min(1).max(4000),
   cwd: z.string().optional(),
   timeoutMs: z.number().int().min(1000).max(30 * 60 * 1000).optional(),
   purpose: z.string().max(300).optional(),
   approved: z.boolean().optional()
+})
+
+export const zBrowserNavigate = z.object({ url: z.string().min(1).max(2048) })
+export const zBrowserLayout = z.object({
+  visible: z.boolean(),
+  bounds: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite(),
+    height: z.number().finite()
+  })
 })
 
 export const zGitCommit = z.object({

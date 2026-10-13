@@ -47,7 +47,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     requireVerifiedRemote: true
   },
   platform: { ...PLATFORM_DEFAULTS },
-  permissions: DEFAULT_PERMISSIONS
+  permissions: DEFAULT_PERMISSIONS,
+  skills: { enabled: {} }
 }
 
 function deepMerge<T>(base: T, patch: unknown): T {

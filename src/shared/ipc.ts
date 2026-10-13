@@ -3,6 +3,7 @@ import type {
   ActivityItem,
   AppSettings,
   AttachmentRef,
+  BrowserPreviewState,
   ChatMessage,
   Conversation,
   DiffFile,
@@ -12,6 +13,7 @@ import type {
   PendingApproval,
   PlatformStatus,
   Project,
+  ProductSkill,
   ProviderConfig,
   ProviderStatus,
   SearchResult,
@@ -94,6 +96,9 @@ export interface IpcContract {
   [CH.secretsDelete]: { req: { ref: string }; res: { ok: true } }
   [CH.secretsHas]: { req: { ref: string }; res: { has: boolean } }
 
+  [CH.skillsList]: { req: void; res: ProductSkill[] }
+  [CH.skillsSetEnabled]: { req: { id: string; enabled: boolean }; res: ProductSkill[] }
+
   [CH.providersList]: { req: void; res: ProviderConfig[] }
   [CH.providersSave]: { req: unknown; res: ProviderConfig }
   [CH.providersRemove]: { req: { id: string }; res: { ok: true } }
@@ -136,6 +141,14 @@ export interface IpcContract {
 
   [CH.terminalRun]: { req: unknown; res: TerminalRunResult }
   [CH.terminalCancel]: { req: { runId: string }; res: { ok: true } }
+
+  [CH.browserNavigate]: { req: { url: string }; res: BrowserPreviewState }
+  [CH.browserBack]: { req: void; res: void }
+  [CH.browserForward]: { req: void; res: void }
+  [CH.browserReload]: { req: void; res: void }
+  [CH.browserOpenExternal]: { req: void; res: { ok: boolean; message?: string } }
+  [CH.browserLayout]: { req: { visible: boolean; bounds: { x: number; y: number; width: number; height: number } }; res: { ok: true } }
+  [CH.browserState]: { req: void; res: BrowserPreviewState }
 
   [CH.gitStatus]: { req: { projectId: string }; res: GitStatus }
   [CH.gitDiff]: { req: unknown; res: { patch: string } }

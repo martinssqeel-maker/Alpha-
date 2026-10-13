@@ -19,6 +19,7 @@ import { executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './t
 import type { EditService } from './editService'
 import type { GitService } from './git'
 import type { TerminalService } from './terminal'
+import type { SkillsService } from './skills'
 
 export interface ChatDeps {
   providers: ProviderRegistry
@@ -27,6 +28,7 @@ export interface ChatDeps {
   edits: EditService
   git: GitService
   terminal: TerminalService
+  skills: SkillsService
   permissions: PermissionService
   broker: ApprovalBroker
   settings: SettingsRepo
@@ -373,6 +375,8 @@ export class ChatService {
       }
     }
     if (provider) lines.push(`Provider: ${provider.name} (${provider.isLocal ? 'local' : 'cloud'}).`)
+    const skillContext = this.deps.skills.promptContext()
+    if (skillContext) lines.push(skillContext)
     return lines.join('\n')
   }
 }

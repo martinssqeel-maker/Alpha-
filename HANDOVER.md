@@ -574,3 +574,121 @@ installer/taskbar icon becomes the Alpha logo (`npm run dist`, publish, then con
 website's `app.js` picks the new tag); (b) if you ever revisit the platform Function,
 un-gate `/downloads/latest` or delete it — no web caller remains; (c) optional legal +
 support pages (§4). **Do not** reintroduce login, admin, plans or billing anywhere.
+
+---
+
+## 15. Session log — 2026-10-13 (third agent), desktop branding only
+
+Scope from the operator: update the **desktop** Alpha AI Workspace branding; the
+website logo/download work was declared done and was **not touched**.
+
+### ROOT CAUSE — why the desktop still showed the purple "A"
+
+The repository source was already migrated in §14. What the operator is looking
+at is the **installed application**, which predates that change:
+
+| | installed app | repo build |
+|---|---|---|
+| path | `C:\Program Files\Alpha AI Workspace\Alpha AI Workspace.exe` | `out/`, `release/` |
+| version | 1.0.4, exe dated **2026-10-12 22:32** | logo assets generated **2026-10-13** |
+| renderer CSS | `index-BB0Ukv3j.css` | `index-C_9USdSc.css` |
+| `.splash-mark` | `background: linear-gradient(135deg, #6d7cff, #4cc9f0); font-size: 32px` (the purple A) | `<img class="splash-mark" src="alpha-logo.png">` |
+| `alpha-logo` in `app.asar` | **0 occurrences** | bundled |
+| exe icon resource | purple circle + letter A | Alpha mark |
+
+Verified by reading the installed archive directly:
+`resources/app.asar` (64,600,435 bytes) contains the literal old rule
+`.splash-mark { color:#fff; background: linear-gradient(135deg, #6d7cff, #4cc9f0); … font-size: 32px; font-weight: 800; … }`
+and `/alpha-logo/.test(asar) === false`. `resources/icon.ico` there hashes
+`14bd5868…` vs the regenerated `build/icon.ico` `8bbbeb00…`.
+
+Note: the earlier "the app is not installed on this machine" conclusion in §14
+was **wrong** — it checked `%LOCALAPPDATA%\Programs` only. This install is a
+**machine-wide** one under `C:\Program Files` (the NSIS installer lets the user
+pick the directory), which is also why it needs elevation to replace.
+
+### BRANDING REFERENCES AUDITED (desktop)
+
+`grep` over `src/` for `6d7cff, #4cc9f0`, `splash-mark`, `>\s*A\s*<`, `'A'`,
+`favicon`, `icon.png`, `icon.ico` returned no leftover placeholder. Remaining
+hits are all legitimate and were left alone:
+- `--accent: #6d7cff` — the theme colour token, not the logo.
+- `ChangesPanel.tsx` `added: 'A'` and `git.ts` `if (code.includes('A'))` — git
+  status letters, unrelated to branding.
+- `src/renderer/index.html` has **no** favicon link (Electron windows take their
+  icon from `main/index.ts`), so there was nothing stale to replace there.
+
+Already in place from §14 and confirmed working this session:
+`Splash.tsx`, `TitleBar.tsx`, `MessageList.tsx`, `styles.css .splash-mark`,
+`main/index.ts` window `icon`, `electron-builder.yml win.icon`.
+
+### CHANGES MADE THIS SESSION
+
+- `package.json` / `package-lock.json`: version `1.0.4` → `1.0.5` so the new
+  installer is distinguishable from the published 1.0.4.
+- No source/UI code changed — the branding fix from §14 was already correct.
+- New local artifact: `release/Alpha AI Workspace-Setup-1.0.5.exe` (+ `.blockmap`).
+
+### TESTS ACTUALLY RUN
+
+1. **Dev build over CDP** (`npx electron . --remote-debugging-port=9222`, separate
+   `--user-data-dir` because `requestSingleInstanceLock()` otherwise hands off to
+   the running 1.0.4 instance):
+   - splash: `.splash-mark` is an `IMG`, `src=alpha-logo-s7rQ08ym.png`,
+     `complete && naturalWidth>0`, computed `background-image: none`, no text node.
+   - workspace: two visible `alpha-logo` images, natural 512×512, boxes 22×22
+     (title bar) and 56×56 (empty state); `oldGradientInCss: false`.
+   - Screenshots read back and visually confirmed: Alpha mark in the title bar,
+     the launch splash, and the workspace empty state. No purple A anywhere.
+2. **Packaged 1.0.5 build** (`win-unpacked/Alpha AI Workspace.exe --remote-debugging-port=9223`):
+   same image inventory result, and `npm run smoke:desktop -- --port 9223` →
+   **13 passed, 1 warning, 0 failed** (the warning is `git status did not answer —
+   no project to probe with`, expected on a throwaway profile).
+3. `npm run typecheck` clean; `npm test` → 62 passed / 7 files.
+4. **Exe icon comparison**: `ExtractAssociatedIcon` from the installed 1.0.4 exe
+   renders the purple circle + letter A; from the new 1.0.5 exe it renders the
+   Alpha mark. Different MD5s, both inspected as images.
+
+### FAILED ATTEMPTS / TRAPS
+
+- `npm run dist` failed: `EPERM: operation not permitted, rename
+  'release\win-unpacked.tmp' -> 'release\win-unpacked'`. The `.tmp` tree is now
+  undeletable (`EBUSY` on `resources/default_app.asar`, `EACCES` on move) —
+  a handle is being held inside it, most plausibly Defender/OneDrive scanning
+  the freshly extracted 250 MB tree under `OneDrive\Documents`.
+  **Workaround that worked:** build to a non-OneDrive output directory —
+  `npx electron-builder --win nsis --config.directories.output="%TEMP%\alpha-release"` —
+  then copy the setup exe into `release/`. `release/win-unpacked.tmp` is still
+  sitting there; a reboot or an admin delete will clear it. It is gitignored.
+- Killing the background `npx electron` task left four orphaned `electron.exe`
+  processes alive (TaskStop kills the wrapper, not Electron's children). They had
+  to be stopped by PID.
+- `npx asar extract-file` and `@electron/asar`'s `extractFile` both failed to
+  resolve a path that `listPackage` had just reported (leading-backslash / header
+  mismatch). Reading the asar bytes directly was the reliable probe.
+
+### MANUAL ACTIONS FOR THE OPERATOR — the Windows icon
+
+The in-app logo is fixed in source and in the new build. **The taskbar, desktop
+shortcut and Start Menu icons will not change until the installed app is
+replaced**, because those come from the exe's icon resource, which is baked in
+at package time. Steps:
+
+1. Close the running Alpha AI Workspace (four processes are live right now).
+2. Run `release\Alpha AI Workspace-Setup-1.0.5.exe`. It is unsigned, so accept
+   the SmartScreen prompt (**More info → Run anyway**). Install to the same
+   folder, `C:\Program Files\Alpha AI Workspace` — that location needs elevation,
+   so approve the UAC prompt.
+3. If the taskbar/shortcut icon still looks old, that is the Windows icon cache:
+   `ie4uinit.exe -show` in a normal terminal, or sign out and back in.
+4. Optional — publish so the website's download button resolves the new build:
+   `npm run release` (or upload `release\Alpha AI Workspace-Setup-1.0.5.exe` +
+   `.blockmap` + `latest.yml` to a new GitHub release tagged `v1.0.5` on
+   `martinssqeel-maker/Alpha-`). `website/assets/app.js` reads
+   `releases/latest` automatically, so **no website edit is needed** — but until
+   this is done, visitors keep downloading 1.0.4 with the old icon.
+
+### NEXT STEP
+
+Nothing pending on desktop branding. If the operator wants the public download to
+carry the new icon, step 4 above is the only remaining action.

@@ -1,6 +1,6 @@
 {
   "name": "alpha-ai-workspace",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Alpha AI Workspace - a premium local-first Windows desktop AI development environment that connects to your existing Ollama models, cloud providers, project folders and GitHub.",
   "main": "./out/main/index.js",
   "author": "Alpha AI Workspace",

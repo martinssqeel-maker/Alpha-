@@ -5,8 +5,8 @@
 > Every claim carries one of these statuses:
 >
 > **VERIFIED** (implemented and actually tested) · **IMPLEMENTED — NOT VERIFIED** ·
-> **PARTIAL** · **NOT STARTED** · **FAILED** · **BLOCKED** (with the reason) ·
-> **DEFERRED** (intentionally postponed) · **UNKNOWN — NEEDS VERIFICATION**
+> **PARTIAL** · **NOT STARTED** · **FAILED** · **BLOCKED (reason)** ·
+> **DEFERRED (reason)**
 >
 > **DIRECTION CHANGE (2026-10-13).** The product is now a **public landing page +
 > free direct download + AI Workspace**. The Admin portal, SaaS surfaces and all
@@ -26,306 +26,120 @@
 
 ---
 
-## 1. Project overview and architecture
+## 1. Current product and architecture snapshot (audited 2026-10-13)
 
-| Part | Where | Stack | Status |
-|---|---|---|---|
-| Desktop app | `src/main`, `src/preload`, `src/renderer` | Electron 44 + React 19 + TS, electron-vite | **VERIFIED** working (v1.0.4) |
-| Website | `website/` | Static HTML/CSS/ES modules, served by Vercel | **VERIFIED** live |
-| Admin portal | `admin/` | Vite + React 19 + TS, static build | **VERIFIED** (control center, see §5) |
-| Backend | `platform/api/` | Hono on a **Neon Function** (Node), `pg` pool | **VERIFIED** deployed |
-| Database | `database/migrations/` | Neon Postgres, 3 migrations | **VERIFIED** applied |
-| Tests | `tests/` | Vitest (72 tests) | **VERIFIED** green |
+This section is the current state. Sections 12–16 below are retained as historical session logs; they describe earlier states and are not current instructions. `HANDOVER_NOTE.md` and `docs/handover/*` are history only where they conflict with this snapshot.
 
-**Production endpoints**
-
-- API: `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech`
-- Website: `https://alpha-website-lime.vercel.app` (Vercel project `alpha--website`, root
-  `website`, **no build command** — see §7 "Trap 1")
-- Repository: `https://github.com/martinssqeel-maker/Alpha-`, branch `main`
-- Neon project `alpha-platform` (`billowing-brook-66269785`), branch `production`
-
-**Identity model.** One `public.users` row per email, three ways to authenticate (Google,
-administrator password, emailed one-time link). All three mint the *same* session shape
-through one helper in `platform/api/auth.ts`, which is what lets the website and the
-desktop app share an account.
-
-**Authorization.** `public.require_admin(perm)` raises unless the caller holds the
-permission, and every `admin_*` function calls it. The API never trusts a client-supplied
-role; `POST /admin/rpc` builds SQL from the allow-list in `platform/api/adminSignatures.ts`.
-
----
-
-## 2. Completed and verified (this session)
-
-| # | Change | Status | Evidence |
-|---|---|---|---|
-| 1 | Website deployments fixed (had failed on **every** push since `4c4321a`) | **VERIFIED** | Vercel `success`; `/account`, `/config.js` went `404 → 200` |
-| 2 | Google sign-in, server-side (state signing, code exchange, id_token verification, identity linking) | **IMPLEMENTED — NOT VERIFIED** (see §10, BLOCKED on OAuth client) | everything either side of Google is verified; the Google round trip is not |
-| 3 | Administrator email + password sign-in | **VERIFIED** | live login, `/admin/rpc` authorized, non-admin refused, throttled |
-| 4 | Administrator password bootstrap script | **VERIFIED** | digest format accepted by the live API |
-| 5 | Gated desktop download + `releases` table | **VERIFIED** | `401` anonymous, `403` suspended, `1.0.4` when signed in |
-| 6 | CORS wildcard closed (`ALLOWED_ORIGINS=*` → pinned) | **VERIFIED** | smoke went 1 warning → 0 |
-| 7 | Maintenance mode, enforced by the API | **VERIFIED** | UI toggle → API answers `503 maintenance` to ordinary sign-ins |
-| 8 | Admin Control Center (12 panels, all wired to real RPCs) | **VERIFIED** | driven in a browser against production (see §5) |
-| 9 | Download telemetry (`public.downloads`) | **VERIFIED** | one row per signed-in download, shown on the Downloads panel |
-| 10 | Session revocation (one session / all sessions) | **VERIFIED** | revoked from the portal, audit row written |
-| 11 | Role grant/removal from the portal, with lockout guards | **VERIFIED** | `admin_set_user_admin`, refuses self-removal and last-owner removal |
-| 12 | `npm run verify:auth` live verifier | **VERIFIED** | 27/27 with `--with-write`, 8/8 read-only |
-| 13 | **Authorization cannot be faked by a client** — a genuine non-admin session gets `403` from `/admin/rpc` and `/admin/system`, and a *correctly signed* token that merely claims `role:admin` is refused too | **VERIFIED** | `verify-auth.mjs` checks 9–10, against production |
-| 14 | **Role changes take effect live from the database** — the same session is refused, then allowed after `admin_set_user_admin`, then refused again after revocation | **VERIFIED** | `verify-auth.mjs` checks 11–12 |
-| 15 | **Every control in the portal changes real product behaviour** — flag, announcement, app-version setting, maintenance, account status and release are each changed through the portal's own RPC and then read back through the *user-facing* surface (`/platform/config`, `/downloads/latest`, `/auth/request`) | **VERIFIED** | `npm run verify:admin` → 15 passed, 0 failed |
-| 16 | `/admin/rpc` status mapping: authorization refusals (`cannot_remove_own_admin`, `cannot_remove_last_owner`) answered `400`; now `403` | **VERIFIED** | `verify-auth.mjs` check 12 went `400 → 403` after the fix and redeploy |
-| 17 | Website no longer routes visitors around the gated download: the landing page's "All releases on GitHub Releases" link and the footer "Releases" link were removed, and `download.html` no longer links to the public release page | **VERIFIED** in source; **IMPLEMENTED — NOT VERIFIED** on the live site (needs the commit pushed — see §10.6) | `curl` of the deployed pages still shows 2 GitHub-release links |
-
-| 18 | **Admin visual system rebuilt** — one instrument panel instead of twelve boxed cards, serif plate titles, tabular numerals for every reading, hairlines instead of borders, sticky row actions, a real light palette with a persisted toggle | **VERIFIED** | measured in the live browser: 0 contrast failures in either palette, no horizontal page scroll at 430/820/1440 px, `admin` build exit 0 |
-
-## 3. In progress / partial
-
-- **Cloud AI is not usable.** `507`-style failures are expected: no Neon AI Gateway and no
-  provider key is configured, so `/gateway/chat/completions` returns `502
-  provider_unavailable`. **VERIFIED** as configured this way; **BLOCKED** on credentials.
-- **Email delivery is off.** `EMAIL_PROVIDER=log` writes the sign-in code to the Function
-  log and sends no mail while the API still replies "we sent a code". **VERIFIED**
-  (deliberate), **DEFERRED** until a domain + provider exist.
-- **Desktop Google sign-in.** The API already returns the browser to
-  `alpha://auth/callback`, so no desktop change is needed; **IMPLEMENTED — NOT VERIFIED**
-  because the Google client is missing.
-- **Plans panel** edits entitlements (verified) but has no plan *creation* form. **PARTIAL**.
-- **The installer file itself is public. `PARTIAL` — the one real gap in download gating.**
-  Our API and our pages are gated (anonymous `401`, suspended `403`, URL only revealed to a
-  signed-in active account). But the artifact is a GitHub release asset, and the repository
-  is public, so an unregistered visitor can still fetch it directly. Measured anonymously
-  on 2026-10-13: GitHub API for the repo `200`, release page `200`, installer asset
-  `206` (range request). Nothing in the repo can change this — it is a hosting decision.
-  Options: (a) private bucket + short-lived signed URLs served through the API, keeping
-  `latest.yml` public for auto-update; (b) make the repo private, which **breaks
-  electron-updater** for existing installs unless the updater carries a token; (c) accept
-  it and treat the installer as public, gating only the product surface. Recommend (a).
-- **No administrator account exists right now.** `select count(*) from public.admin_users`
-  = **0**, and `system_settings.bootstrap_admin_email` is `""`. The portal is fully built
-  and verified but nobody can sign into it until §10.1 is done. **BLOCKED** (operator).
-- **Ordinary users cannot sign in yet.** The only non-admin paths are the emailed one-time
-  link (`EMAIL_PROVIDER=log` → no mail is sent) and Google (`google:false`). So today the
-  product is usable by *nobody* except an administrator with a password. Both are
-  **BLOCKED** on credentials, not on code.
-
-## 4. Not started
-
-- Private installer hosting (R2 + signed URLs) so the GitHub asset stops being publicly
-  fetchable — see §3 for the measurements and the three options.
-- Per-account usage dashboards, subscription/billing provider integration.
-- Desktop-side surfaces for announcements/maintenance banners (the data is delivered in
-  `get_my_platform_config`; the UI does not render a dedicated banner yet).
-- Admin portal: role *editing* (grant/remove works; choosing between owner/admin/support
-  per user is not exposed beyond the role code argument).
-- **Website legal + support pages.** `website/` has `index.html`, `account.html` and
-  `download.html` and nothing else — no privacy, terms or support/contact page, and the FAQ
-  is a section on the landing page. App-store-grade sign-off will want them; nothing in the
-  product depends on them today. **NOT STARTED.**
-
-## 5. Admin Control Center (this is the part that replaced the old single-file page)
-
-`admin/src/App.tsx` + `admin/src/styles.css` were rebuilt. Sidebar navigation, sticky
-header, stat grids, real tables with search/filter/sort, drawers, modals, confirmation
-dialogs, toasts, loading/empty/error states, responsive under 900 px.
-
-| Panel | Backed by | Verified |
+| Area | Current implementation | Status |
 |---|---|---|
-| Dashboard | `admin_metrics`, `admin_audit_log` | **VERIFIED** (users=6, providers 3/3, models, sessions, downloads) |
-| Users | `admin_list_users`, `admin_get_user` | **VERIFIED** (search/filter/sort, drawer loads full account) |
-| Downloads | `admin_list_downloads` | **VERIFIED** (rows appear from real downloads) |
-| Releases | `admin_list_releases`, `admin_upsert_release` | **VERIFIED** (publish/unpublish, edit modal) |
-| AI models | `admin_list_catalog`, `admin_upsert_provider`, `admin_upsert_model` | **VERIFIED** (panel data; enable/disable calls the RPC) |
-| Features | `admin_upsert_flag` | **VERIFIED** (toggle writes to the DB) |
-| Announcements | `admin_upsert_announcement` | **VERIFIED** (list + editor) |
-| Plans | `admin_list_catalog`, `admin_set_plan_feature` | **VERIFIED** (feature edit) |
-| System health | `GET /admin/system` (real endpoint) | **VERIFIED** (db latency/size/migration, env presence, auth config) |
-| Security | `admin_security_overview`, `GET /admin/system` | **VERIFIED** (admins, refused attempts, live sessions, revoke) |
-| Activity log | `admin_audit_log` | **VERIFIED** (filterable) |
-| Settings | `admin_set_setting` | **VERIFIED** (JSON editor + maintenance banner text) |
+| Desktop | Electron 44, React 19, TypeScript, electron-vite, Tailwind v4, Zustand | **VERIFIED** by fresh `npm run build` + typecheck |
+| Storage/security | sql.js SQLite; settings/conversations/projects persisted locally; `safeStorage` secret store; pathGuard; allow-listed `window.alpha` IPC | **PARTIAL** — source paths and unit tests exist; complete security/runtime regression pass remains |
+| Navigation | Chat, Projects, Models, AI Providers, GitHub, Settings, Help & Diagnostics; no Home, Skills, or Archives route | **PARTIAL** |
+| Website | Static public landing + direct-download page; no account gate or admin portal in current direction | **IMPLEMENTED — NOT VERIFIED** in this audit; local route/link/responsive check remains |
+| Optional platform layer | Neon/Hono account and gateway code remains in the repository; personal/offline core is not intended to depend on it | **PARTIAL** — do not extend or gate core flows on it; live credential flow is not verified |
 
-`GET /admin/system` exists because some facts (which env vars are configured) are only
-visible to the Function. It sends **names and booleans, never values**.
+Architecture flow: React pages/components → typed `src/renderer/src/lib/api.ts` → preload `window.alpha` bridge → zod-validated IPC in `src/main/ipc.ts` → services in `src/main/services/*` → local SQLite/filesystem, child processes, Git, or provider HTTP APIs. IPC channel types/schemas are in `src/shared/`. Renderer does not access Node APIs directly. Website remains plain static HTML/CSS/ES modules.
 
-## 6. Files created / modified this session
+## 2. Repository state and baseline evidence
 
-**Backend:** `platform/api/{oauth,password,releases,downloads,maintenance}.ts` (new),
-`platform/api/{auth,admin,index,adminSignatures}.ts`, `neon.ts`
-**Database:** `database/migrations/0002_auth.sql`, `0003_control_center.sql` (new)
-**Website:** `website/download.html`, `assets/{session,download}.js` (new),
-`account.html`, `assets/{account,app}.js`, `assets/styles.css`, `index.html`,
-`config.js` (now committed), `vercel.json` (build command removed)
-**Admin:** `admin/src/App.tsx`, `admin/src/styles.css`, `admin/src/supabase.ts`
-**Tooling:** `scripts/{admin-password,verify-auth}.mjs` (new), `scripts/verify-admin.mjs`
-(new, session 2), `package.json` (+ `verify:admin`)
-**Tests:** `tests/auth.test.ts` (new, 16 tests); `tests/adminRpc.test.ts` (10 tests)
-**Session 2 (2026-10-13):** `platform/api/admin.ts` (403 mapping), `scripts/verify-auth.mjs`
-(checks 9–12 added), `scripts/verify-admin.mjs` (new), `website/index.html`,
-`website/download.html` (public release links removed), `package.json`
-**Session 2, design pass:** `admin/src/styles.css` (rewritten — tokens, both palettes,
-components), `admin/src/App.tsx` (theme state + toggle, environment chip, `th.actions`),
-`admin/src/supabase.ts` (exports `apiHost`)
-**Docs:** `docs/platform/{environment,MANUAL-TODO,verification}.md`, `website/README.md`,
-`docs/handover/RECOVERY_REPORT.md`, this file
-**Untouched:** the two document deletions at the repo root (`Ai agent upgrade.docx`,
-`premium-ai-workspace-master-prompt.md`) are **not mine** — left uncommitted.
+- **Branch:** `main`; **HEAD:** `72edde2` (`Record the desktop logo report as resolved: a stale pre-install window`).
+- `git status --short` was empty before audit; `git diff` and `git diff --staged` were empty. No pre-existing edits needed preservation.
+- `npm run typecheck` — **VERIFIED**, exit 0 (`typecheck:node` and `typecheck:web`).
+- `npm test` — **VERIFIED**, exit 0; 7 files, 62 tests passed.
+- `npm run build` — **VERIFIED**, exit 0; main, preload, and renderer bundles produced. Renderer JS bundle reported 1,554.01 kB.
+- Live installed app was visible and rendered the Chat workspace at 1440×816. The screenshot showed a generic assistant robot glyph, “New chat” despite an existing conversation, and the Git panel’s honest “Open a project to use Git” empty state. No settings were changed during the observation. The installed app showed a registered project but no active project. A safe Settings click-through was deferred because the window bounds changed during UI automation; do it in a controlled dev session.
+- Build output is ignored under `out/`; no dependency or application-code changes have been made for the audit.
 
-## 7. Traps and root causes worth knowing
+## 3. Feature inventory (source traced; runtime confidence stated honestly)
 
-1. **A Vercel `buildCommand` broke every deployment for days.** The only diff at the
-   failure boundary was `"buildCommand": "node gen-config.mjs"` in `website/vercel.json`.
-   The generated file only held a *public* API URL, so `config.js` is committed and the
-   command is gone. **Do not add a build command back.**
-2. **`neon deploy --env .env.local` is broken on CLI 8.3.5.** Always `npm run deploy`
-   (it parses the env file itself and refuses dangerous states).
-3. **Deleting a user fails if `audit_logs` rows reference it** (no `ON DELETE`). Delete the
-   audit rows first — `verify-auth.mjs` does this in its cleanup.
-4. **The desktop app calls the API from the main process**, so CORS never applies to it.
-   Pinning `ALLOWED_ORIGINS` cannot break it; a *browser* host not in the list will break.
-5. **A raised exception only becomes a `403` if its text matches the pattern in
-   `platform/api/admin.ts`** (`forbidden|not_authorized|permission|require_admin|
-   cannot_remove_own_admin|cannot_remove_last_owner`). Postgres `raise exception
-   'some_new_guard'` otherwise surfaces as `400`. When you add a guard, add its name there
-   too — `verify-auth.mjs` check 12 is what caught this.
-6. **New admin RPCs must be added to `platform/api/adminSignatures.ts`** or
-   `POST /admin/rpc` rejects them (`unknown_function`).
+The code paths below were traced from renderer through `lib/api.ts`, preload/IPC, and service implementations where present. “Implemented — not verified” means present in code but not exercised end-to-end in this pass.
 
-## 8. Tests and commands actually run
+| Feature | Evidence / current limits | Status |
+|---|---|---|
+| Project open/list/remove | Sidebar + Projects page → `api.projects` → project IPC → `projectService`; folder picker, root-confined tree/read/write, Git status. Sidebar lists only four projects; project rows do not expand into chats; no label rename. Active-project restoration across restart and cross-project stale-state isolation are not proved. | **PARTIAL** |
+| Conversations | SQLite repo via `api.conversations`; create/open/rename/delete paths exist. Search filters titles only. New chats stay “New chat”; there is no archive flow or content search. | **PARTIAL** |
+| Chat and tools | `chat.ts` streams provider deltas, tool calls/results, activity, approvals, completion/errors/cancellation; store consumes real events. Tool definitions enforce permission decisions. UI still uses robot identity and has not been exercised on a real multi-step task in this pass. | **IMPLEMENTED — NOT VERIFIED** |
+| Providers/models | Ollama + OpenAI-compatible provider registry, model refresh/status/test, secret storage through `safeStorage`; provider adapter tests pass. No fresh end-to-end provider stream was run. | **PARTIAL** |
+| Permission model | `chat/assist/agent` and per-capability allow/ask/deny are in shared resolver and service paths; six permission tests pass. Approval UI exists. Full real approval/deny regression is pending. | **PARTIAL** |
+| Inspector panels | Explorer, Changes, Diff, Activity, Terminal, Tests, Git components and IPC APIs exist; Browser is absent. Actual data refresh and project-switch correctness are pending runtime verification. | **PARTIAL** |
+| Terminal | Custom subprocess streaming in `terminal.ts`, correct-project root is supplied by tool context. No PTY/emulator or stdin interface; cancellation calls `child.kill()` and process-tree cleanup has not been demonstrated. | **PARTIAL** |
+| Git/GitHub | Git service/panel supports status, diff, stage/commit/push/pull/branches/remotes. GitHub uses a stored PAT or installed `gh`; “device” flow is an explicit placeholder because there is no app client ID. Prompt’s system-browser OAuth flow is not implemented. | **PARTIAL** |
+| Settings | Existing real controls cover two themes, Ollama/default model, permissions, voice, Git publishing, privacy/log level, optional platform URL, and updater. One long page; no settings navigation, project settings, Skills, shortcuts reference, Archives, Browser, MCP state, or browser integration. Developer API is already absent from the app route/nav. | **PARTIAL** |
+| Appearance | `styles.css` has dark/light CSS variables and focus-visible styling, but no primitive/semantic/component token layers, no presets/System mode, and many raw colours/sizes remain in components. Website has a separate palette. | **PARTIAL** |
+| Updates | `updater.ts` uses real `electron-updater` check/download/install events, surfaced in Settings. Current app version is runtime `app.getVersion()`; `package.json` is 1.0.5 while `src/shared/types.ts` still says 1.0.4 (stale constant to correct). | **PARTIAL** |
+| Website | Static pages and direct public GitHub release download are present; no admin/auth gate (matches settled direction). Local crawl at mobile/desktop sizes and current deployment state are not freshly checked here. | **IMPLEMENTED — NOT VERIFIED** |
+| Skills, Browser preview, Home, archives, auto-titles | No product-skill discovery/injection, in-app Browser panel, Home dashboard, archived-conversation model, or automatic local chat title generation found. | **NOT STARTED** |
+| Logo/icon | Existing approved Alpha logo is wired to the app/site/build and explicitly out of redesign scope. Only regression-check references. | **VERIFIED** by current live window and prior packaged v1.0.5 evidence in §15–16 |
 
-```bash
-npm run typecheck                 # exit 0
-npx vitest run                    # 72 passed (8 files)
-npm run verify:auth               # 8 passed, 0 failed  (read-only, safe on prod)
-npm run verify:auth -- --with-write   # 27 passed, 0 failed, cleanup 0 leftover
-npm run verify:admin              # 15 passed, 0 failed, settings restored, 0 leftover
-npm run smoke -- --website https://alpha-website-lime.vercel.app   # 7 passed, 0 warnings
-npm run admin:password            # sets an administrator password locally
-npm run deploy                    # deploys the Function
-node scripts/db-migrate.mjs       # applies database/migrations/*
-cd admin && npm run build         # tsc + vite build, exit 0
+## 4. Audit findings and priority order
+
+1. **Appearance foundation:** establish semantic CSS tokens and theme remapping before migrating components; preserve existing Alpha logo/icon unchanged.
+2. **Workspace continuity:** add a Home landing state and complete project/chat organization, local titles, content search where feasible, and correct active-project restoration/isolation.
+3. **Execution presentation:** evolve existing event-driven timeline/cards; preserve actual approval and cancellation semantics.
+4. **Developer tools:** document terminal trade-offs, harden process-tree cancellation/cwd behavior, and add a secure embedded Browser preview only if Electron 44 supports it without weakening isolation.
+5. **Skills and Settings:** add file-backed skills with real prompt injection; organize truthful settings sections; keep unsupported MCP honest; retain real updater status; keep Developer API absent.
+6. **GitHub auth:** retain current PAT/`gh` fallback while determining a supported public desktop flow. No OAuth secret or client registration is present; stop at a documented credential/configuration boundary if required.
+7. **Website + hardening:** locally crawl links and responsive states, then repeat typecheck/tests/build, package, and exercise the packaged app. Do not publish/deploy as part of local verification.
+
+Known drift to fix/document during implementation: `APP_VERSION` is 1.0.4 vs package 1.0.5; README and older handover sections still describe removed Alpha Cloud/admin website flows; no renderer error boundary was found; current styles use raw values outside the token declarations. Website release links must remain public and ungated per product direction.
+
+## 5. Changes made during this execution
+
+**Phase 1 — Audit & protect:** only this current-state handover block is being replaced/updated. No application source, dependencies, settings, user data, or Git history were changed. The directory remains clean aside from this documentation edit.
+
+## 6. Design and architecture decisions
+
+- Keep the current Electron/React/TypeScript, Tailwind v4, Zustand, sql.js, and static website stack. No dependency is justified yet.
+- Treat `HANDOVER.md` as the live continuation record and sections 12–16 as historical logs. Do not use old admin/auth claims as present-day product scope.
+- Build themes by remapping semantic CSS variables, then migrate controls and screens in small increments. Do not alter approved logo/icon art.
+- Keep the desktop core local-first. The optional platform backend remains out of scope; do not add sign-in gates.
+- Preserve security boundaries (`contextIsolation`, `nodeIntegration: false`, allow-listed IPC, pathGuard, permission service, safeStorage). No browser integration may weaken them.
+
+## 7. Test/build/package results
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | **VERIFIED**, exit 0 |
+| `npm test` | **VERIFIED**, 62/62 passed, 7 files |
+| `npm run build` | **VERIFIED**, exit 0; Electron main/preload/renderer bundled |
+| `npm run dist` | **NOT STARTED** in this pass; release-phase packaging and app launch remain in Phase 7 |
+| Desktop click-through / multi-step agent / approval / project switch | **PARTIAL**; screenshot captured, controlled runtime test not completed |
+| Website route/link/responsive check | **NOT STARTED** in this pass |
+
+## 8. Phase plan and gates
+
+| Phase | Scope | Status / exit gate |
+|---|---|---|
+| 1 — Audit & protect | Current docs, Git state, baseline checks, feature inventory | **VERIFIED**: audit and baseline above; only handover documentation changed |
+| 2 — Design system foundation | Three-layer tokens, theme engine, shell/component states | **NOT STARTED**: gate is a real theme switch across migrated shell and dialog, contrast check, screenshots |
+| 3 — Core workspace | Projects, local auto-titles, Home/navigation, real execution timeline | **NOT STARTED**: gate is persisted workspace state and a real multi-step task with accurate events |
+| 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth boundary | **NOT STARTED**: gate is local preview, accurate/cancellable terminal, GitHub at supported auth boundary |
+| 5 — Skills & Settings | Skill injection, settings IA, themes, browser settings, Developer API removal check | **NOT STARTED**: gate is persisted skill effect and click-through of implemented settings |
+| 6 — Website | Public static landing/download polish and responsive/link checks | **NOT STARTED**: gate is local link crawl at 375 px and desktop widths; report deployment separately |
+| 7 — Hardening and packaging | Regression check, full validation, Windows dist, packaged runtime | **NOT STARTED**: gate is actual package launch/click-through or explicit NOT VERIFIED with reason |
+
+Do not advance past a phase gate without recording its shortfall here. Commit coherent verified code milestones per the user-provided execution prompt; do not push/deploy or publish releases.
+
+## 9. Manual steps and external boundaries
+
+- **No user action is needed for Phase 1.**
+- GitHub browser authentication may need a registered public client ID. Inspect current official GitHub support before selecting an OAuth/device flow; if app registration is required, give the exact local configuration steps and never request a secret in chat. Existing PAT/`gh` support remains until the replacement is verified.
+- No platform credentials, website deployment, release publishing, or account setup is required for the local-first product work.
+
+## 10. Exact commands for continuation
+
+```powershell
+npm run typecheck
+npm test
+npm run build
+npm run dev
+npm run dist
+npm run smoke:desktop -- --port <debug-port>   # only when packaged app was launched with that port
 ```
 
-`verify-auth.mjs --with-write` creates two throwaway accounts, proves login/admin/
-download/suspension/single-use-code behaviour against production, then deletes them
-**including their sessions, credentials, identities and audit rows**. It refuses to run
-without `DATABASE_URL`.
-
-`verify-admin.mjs` is the *effects* half: it creates one throwaway administrator and one
-throwaway user, then changes a feature flag, an announcement, `desktop_versions`,
-maintenance mode and an account status — each through the RPC the portal calls, each read
-back through a user-facing surface — and checks the audit log recorded all of it. It then
-restores every `system_settings` value to the exact value it found, deletes the temp
-accounts, and prints the restored rows so a reader can see nothing was left switched on.
-
-**Session 2 re-ran all of this after its own repair** (earlier passes do not cover later
-changes): `npm run deploy` → `verify:auth --with-write` **27/27** → `verify:admin` **15/15**
-→ `npm run smoke -- --website https://alpha-website-lime.vercel.app` **7 passed,
-0 warnings, 0 failed, exit 0** → a final residue sweep: `0` test accounts, `0` test flags,
-`0` test announcements, `maintenance = {active:false,message:""}`, `desktop_versions = {}`,
-live gate `401`. Database holds **6 users, 0 administrators**.
-
-## 9. Git and deployment state at handover
-
-- Branch `main`, pushed to `martinssqeel-maker/Alpha-`.
-- Latest verified commits: `e52313e` (auth verifier) and the control-center commit that
-  follows it. CI and Vercel are `success` on each. `main` is level with `origin/main`
-  (`0 0` ahead/behind) at `e52313e`.
-- Migrations `0001`–`0003` applied to Neon `production` (`schema_migrations` lists all
-  three; 28 `admin_*` functions exist). The Function is deployed — session 2 redeployed it
-  after the `/admin/rpc` status fix.
-- **Working tree is dirty: the entire Admin Control Center is still uncommitted.** `main`
-  does not contain it yet.
-
-```
- D "Ai agent upgrade.docx"               <- not ours, pre-existing, leave alone
- D premium-ai-workspace-master-prompt.md <- not ours, pre-existing, leave alone
- M admin/src/App.tsx            M admin/src/styles.css      M admin/src/supabase.ts
- M package.json                 M platform/api/admin.ts      M platform/api/adminSignatures.ts
- M platform/api/auth.ts         M platform/api/downloads.ts  M scripts/verify-auth.mjs
- M website/index.html           M website/download.html
-?? HANDOVER.md (new)            ?? database/migrations/0003_control_center.sql
-?? platform/api/maintenance.ts  ?? scripts/verify-admin.mjs
-```
-
-  Nothing was committed in session 2 — no commit was authorised. Note the asymmetry: the
-  **API** half of session 2 is already live (deployed with `npm run deploy`), the **website**
-  half is not (it only reaches production when this tree is committed and pushed).
-
-## 10. Manual actions required from the operator
-
-0. **Create your administrator account — the product currently has none.**
-   `public.admin_users` is empty and `bootstrap_admin_email` is blank, so there is no way
-   into the control center. Two ways in:
-
-   ```sql
-   -- (a) make an account that already exists the owner
-   insert into public.admin_users (user_id, role_id)
-   select u.id, r.id from public.users u join public.admin_roles r on r.code = 'owner'
-    where lower(u.email) = lower('you@example.com') on conflict (user_id) do nothing;
-
-   -- (b) or set the bootstrap so the next sign-in with that email becomes the owner
-   update public.system_settings
-      set value = '"you@example.com"'::jsonb, updated_at = now()
-    where key = 'bootstrap_admin_email';
-   ```
-
-   (b) is chicken-and-egg today because that sign-in needs email delivery — use (a), or
-   insert the user with `select public.provision_user('you@example.com');` first. Then
-   `npm run admin:password` and sign into the portal. Verify:
-   `select count(*) from public.admin_users;` → non-zero.
-1. **Google OAuth client** — `BLOCKED` until this exists. Steps: `docs/platform/MANUAL-TODO.md` §7b.
-   Redirect URI must be exactly
-   `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/google/callback`,
-   then `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env.local` and `npm run deploy`.
-   Verify: `GET /auth/providers` → `"google":true`.
-2. **Administrator password** — `npm run admin:password` (hidden prompt; nothing printed).
-   Until this is set, the portal cannot be signed into except by an admin who already has a
-   credential.
-3. **Admin host origin** — if the portal is hosted anywhere other than `localhost:5173`,
-   add that origin to `ALLOWED_ORIGINS` and redeploy, or the browser blocks its API calls.
-4. **Install the desktop build** — `release/Alpha AI Workspace-Setup-1.0.4.exe`
-   (125,197,395 bytes). Builds older than 1.0.4 are unusable.
-5. **Real email delivery** (before any ordinary user can sign in): set
-   `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, a verified `EMAIL_FROM`, then
-   `npm run deploy`. Until then only an administrator with a password can authenticate.
-6. **Commit and push the working tree** if you want the fixes live: the API fix is already
-   deployed, but the website link fix and the control centre only reach production when
-   this tree is committed and pushed (Vercel deploys `website/` from the push; there is no
-   build step to run). Do not commit the two deleted documents unless you deleted them.
-7. **Host `admin/dist/`** somewhere private and add that origin to `ALLOWED_ORIGINS`
-   (`localhost:5173`/`3000` are already allowed for local development).
-
-## 11. The exact next step for the next agent
-
-**Highest priority: make the product usable by a real person.** Right now there is no
-administrator account and no way for an ordinary user to sign in, so everything else is
-academic. Both halves are operator-credential work (§10.0 and §10.5); the code paths are
-tested and ready. If you have no credentials to set, the highest-value *code* task left is
-giving the desktop a real announcement/maintenance surface (§3) or private installer
-hosting (§4) — pick one, verify it the same way `verify:admin` does, and record the result
-here.
-
-Once the credentials exist, finish the Google round trip (10 minutes):
-
-```bash
-grep -c GOOGLE_CLIENT_ID .env.local      # 1 when configured
-npm run deploy
-curl -s https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/providers
-# expect {"ok":true,"google":true,...}
-# then: browser → /account → Continue with Google → sign in → must land back on /account signed in
-# and confirm the account shows up in the admin Users panel with identityProviders ["google"]
-```
-
-After that, in priority order: (a) private installer hosting with signed URLs,
-(b) plan-creation form + subscription fields, (c) desktop maintenance/announcement banners,
-(d) role selection (owner/admin/support) in the user drawer.
-
-**Do not** re-do the website deployment fix, the auth layer or the admin rebuild — they are
-verified and live. Extend them.
+**Next task:** Phase 2, beginning with the style/token inventory and semantic token/theme architecture. Current highest-priority issue: the visual system is only a two-palette variable set while UI components still contain hard-coded styling.
 
 ---
-
 ## 12. Session log — 2026-10-13 (second agent, no access to session 1)
 
 **What this session did**, in order, with the evidence:

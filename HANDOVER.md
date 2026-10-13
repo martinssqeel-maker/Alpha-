@@ -681,14 +681,51 @@ at package time. Steps:
    so approve the UAC prompt.
 3. If the taskbar/shortcut icon still looks old, that is the Windows icon cache:
    `ie4uinit.exe -show` in a normal terminal, or sign out and back in.
-4. Optional — publish so the website's download button resolves the new build:
-   `npm run release` (or upload `release\Alpha AI Workspace-Setup-1.0.5.exe` +
-   `.blockmap` + `latest.yml` to a new GitHub release tagged `v1.0.5` on
-   `martinssqeel-maker/Alpha-`). `website/assets/app.js` reads
-   `releases/latest` automatically, so **no website edit is needed** — but until
-   this is done, visitors keep downloading 1.0.4 with the old icon.
+4. ~~Publish so the website's download button resolves the new build.~~
+   **Done by this agent** — see "RELEASE PUBLISHED" below. Nothing left to do on
+   the website side: `website/assets/app.js` reads `releases/latest`, which now
+   returns `v1.0.5`.
+
+### RELEASE PUBLISHED — v1.0.5 (2026-10-13)
+
+`node scripts/ensure-release.mjs` created and published release `v1.0.5`
+(id 411793900) with all three assets:
+`Alpha-AI-Workspace-Setup-1.0.5.exe` (125,463,494 B), `.blockmap` (132,165 B),
+`latest.yml` (360 B). Verified as an anonymous visitor:
+`releases/latest` → `v1.0.5`, and the asset URL answers
+`302 → 200, application/octet-stream, Content-Length 125463494`; a range probe
+with `-r 0-1023` follows to `206` with 1024 bytes.
+
+**Trap — large asset uploads reset at full speed.** The script's first run
+created the release and then failed the exe upload three times
+(`HTTP 408`, then `curl: (56) Recv failure: Connection was reset`, then
+`curl: (55) Send failure: Connection was reset`). What worked was a single
+rate-limited HTTP/1.1 POST straight to the upload endpoint:
+
+```
+curl --http1.1 --limit-rate 3M -X POST \
+  -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+  --data-binary "@Alpha-AI-Workspace-Setup-1.0.5.exe" \
+  "https://uploads.github.com/repos/martinssqeel-maker/Alpha-/releases/<id>/assets?name=Alpha-AI-Workspace-Setup-1.0.5.exe"
+```
+
+→ `HTTP 201`. Re-running `ensure-release.mjs` afterwards then reported
+`ok … (already correct)` for the exe and uploaded only the two small assets, so
+the two-step approach is idempotent and safe. **Do not leave an empty release
+published** — a `releases/latest` with no exe makes `app.js` fall back to the
+releases HTML page, which is a worse download than the direct asset link.
+
+**Bug worth fixing in `scripts/ensure-release.mjs`:** when a `curl` upload fails,
+`execFileAsync` rejects with an error whose message contains the full argv —
+including `-H Authorization: Bearer <GH_TOKEN>` — so the token is written in
+plaintext into whatever captured the run's output. Redact the header (or catch
+and rethrow a sanitised message) before the next release. The token used here is
+a fine-grained contents-write PAT and is now present in a local task-output file
+under `%TEMP%\qoder-cli\…`; rotate it if that machine is shared.
 
 ### NEXT STEP
 
-Nothing pending on desktop branding. If the operator wants the public download to
-carry the new icon, step 4 above is the only remaining action.
+Nothing pending. Desktop branding is fixed in source, in the 1.0.5 build, and in
+the published release. The only remaining action is the operator's own machine:
+steps 1–3 above (install 1.0.5, then clear the Windows icon cache if the
+taskbar icon lags).

@@ -39,21 +39,58 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck (desktop + preload + shared + platform API)
+      # --- Desktop ---------------------------------------------------------
+      # The desktop shell, the preload bridge and the optional platform API all
+      # live under one tsconfig.node project, and the renderer under tsconfig.web,
+      # so these two cover the main process, the renderer and the backend.
+      - name: Desktop — typecheck (main, preload, renderer, shared)
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: Desktop, backend and shared — unit tests
         run: npm test
 
-      - name: Build desktop bundles
-        run: npm run build
+      # --- Backend ---------------------------------------------------------
+      # platform/** and neon.ts are included by tsconfig.node.json, so the typecheck
+      # above compiles the API. This step asserts the SQL migrations are present and
+      # non-empty, which is the part a typecheck cannot see.
+      - name: Backend — platform migrations are present and non-empty
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(database/migrations/*.sql)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No migrations found under database/migrations"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::Migration is empty: $f"
+              exit 1
+            fi
+            printf 'migration ok: %s (%s bytes)\n' "$f" "$(wc -c < "$f")"
+          done
 
+      # --- Packaging -------------------------------------------------------
+      # Building the unpacked app catches packaging and asar problems that
+      # electron-vite alone cannot. Kept to --dir so CI does not sign or ship an
+      # installer it has no release credentials for.
+      - name: Desktop — build the unpacked Windows app
+        run: npm run dist:dir
+
+      # --- Website ---------------------------------------------------------
       # The committed website/config.js is what ships, so the generator is not a
       # deploy step. Exercise it into a temp dir with no API_BASE_URL: it must
       # still succeed and write an unconfigured config, leaving the tracked file alone.
-      - name: Website config generator (temp output)
+      - name: Website — config generator (temp output)
         shell: bash
         run: |
           node website/gen-config.mjs "$RUNNER_TEMP/site-config"
           test -f "$RUNNER_TEMP/site-config/config.js"
           git diff --quiet -- website/config.js
+
+      # The site is static, so a dead link only surfaces in a browser. This checks
+      # every local reference, keeps the download public, and refuses any
+      # authentication or admin route coming back.
+      - name: Website — static link, asset and download-flow check
+        run: node scripts/verify-website.mjs

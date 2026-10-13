@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify (desktop + backend + admin + website)
+    name: Verify (desktop + backend + website)
     runs-on: windows-latest
 
     steps:
@@ -46,14 +46,6 @@ jobs:
         run: npm test
 
       - name: Build desktop bundles
-        run: npm run build
-
-      - name: Install admin dependencies
-        working-directory: admin
-        run: npm ci
-
-      - name: Typecheck + build admin dashboard
-        working-directory: admin
         run: npm run build
 
       # The committed website/config.js is what ships, so the generator is not a

@@ -78,6 +78,12 @@ const MIGRATIONS: string[] = [
     detail TEXT,
     created_at INTEGER NOT NULL
   );
+  `,
+  // v2 — conversation naming, archive state, and workspace continuity.
+  `
+  ALTER TABLE conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'manual';
+  ALTER TABLE conversations ADD COLUMN archived_at INTEGER;
+  UPDATE conversations SET title_source = 'auto' WHERE title = 'New chat';
   `
 ]
 

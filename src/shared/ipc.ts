@@ -106,10 +106,14 @@ export interface IpcContract {
   [CH.chatApproval]: { req: { requestId: string; approvalId: string; approved: boolean; remember?: boolean }; res: { ok: true } }
 
   [CH.conversationsList]: { req: void; res: Conversation[] }
+  [CH.conversationsSearch]: { req: { query: string }; res: Conversation[] }
+  [CH.conversationsArchived]: { req: void; res: Conversation[] }
   [CH.conversationsGet]: { req: { id: string }; res: { conversation: Conversation; messages: ChatMessage[] } }
   [CH.conversationsCreate]: { req: unknown; res: Conversation }
   [CH.conversationsUpdate]: { req: unknown; res: Conversation }
   [CH.conversationsDelete]: { req: { id: string }; res: { ok: true } }
+  [CH.conversationsArchive]: { req: { id: string }; res: { ok: true } }
+  [CH.conversationsUnarchive]: { req: { id: string }; res: { ok: true } }
   [CH.conversationsAppend]: { req: unknown; res: ChatMessage }
   [CH.conversationsClear]: { req: { id: string }; res: { ok: true } }
 
@@ -117,6 +121,7 @@ export interface IpcContract {
   [CH.projectOpen]: { req: { path: string }; res: ProjectInfo }
   [CH.projectList]: { req: void; res: Project[] }
   [CH.projectRemove]: { req: { id: string }; res: { ok: true } }
+  [CH.projectRename]: { req: { id: string; name: string }; res: Project }
   [CH.projectInfo]: { req: { id: string }; res: ProjectInfo }
   [CH.projectTree]: { req: unknown; res: FileNode[] }
   [CH.projectRead]: { req: unknown; res: FileReadResult }

@@ -1,6 +1,11 @@
+import { useEffect, useState } from 'react'
+import { Archive, RotateCcw, Trash2 } from 'lucide-react'
 import type { PermissionLevel, PermissionMode, PermissionSettings, UpdateStatus } from '@shared/types'
 import { permissionsForMode } from '@shared/permissions'
+import type { Conversation } from '@shared/types'
 import { THEME_OPTIONS } from '@shared/theme'
+import { api } from '../lib/api'
+import { relativeTime } from '../lib/relativeTime'
 import { useApp } from '../store/useApp'
 
 const PERMISSION_ROWS: { key: keyof Omit<PermissionSettings, 'mode'>; label: string; hint: string }[] = [
@@ -232,8 +237,55 @@ export default function SettingsPage() {
             )}
           </Row>
         </Section>
+        <ArchivedConversations />
       </div>
     </div>
+  )
+}
+
+function ArchivedConversations() {
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const load = async (): Promise<void> => {
+    setLoading(true)
+    try {
+      setConversations(await api.conversations.archived())
+      setError('')
+    } catch (cause) {
+      setError((cause as Error).message || 'Could not load archived conversations.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { void load() }, [])
+
+  return (
+    <Section title="Archived conversations" note="Archived conversations stay in your local history until you delete them.">
+      {loading ? <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading archive…</div> : error ? (
+        <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--danger)' }}><span>{error}</span><button className="btn" onClick={() => void load()}>Retry</button></div>
+      ) : conversations.length === 0 ? <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No archived conversations.</div> : (
+        <div className="flex flex-col">
+          {conversations.map((conversation) => <div key={conversation.id} className="flex items-center gap-3 py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <Archive size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <div className="min-w-0 flex-1"><div className="text-sm truncate">{conversation.title}</div><div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(conversation.archivedAt ?? conversation.updatedAt)}</div></div>
+            <button className="btn" onClick={async () => {
+              try {
+                await useApp.getState().unarchiveConversation(conversation.id)
+                await load()
+              } catch (cause) { setError((cause as Error).message) }
+            }}><RotateCcw size={13} /> Unarchive</button>
+            <button className="btn danger" onClick={async () => {
+              if (!window.confirm(`Delete “${conversation.title}” and its conversation history?`)) return
+              try {
+                await api.conversations.remove(conversation.id)
+                await load()
+              } catch (cause) { setError((cause as Error).message) }
+            }}><Trash2 size={13} /> Delete</button>
+          </div>)}
+        </div>
+      )}
+    </Section>
   )
 }
 

@@ -34,7 +34,7 @@ This section is the current state. Sections 12–16 below are retained as histor
 |---|---|---|
 | Desktop | Electron 44, React 19, TypeScript, electron-vite, Tailwind v4, Zustand | **VERIFIED** by fresh `npm run build` + typecheck |
 | Storage/security | sql.js SQLite; settings/conversations/projects persisted locally; `safeStorage` secret store; pathGuard; allow-listed `window.alpha` IPC | **PARTIAL** — source paths and unit tests exist; complete security/runtime regression pass remains |
-| Navigation | Chat, Projects, Models, AI Providers, GitHub, Settings, Help & Diagnostics; no Home, Skills, or Archives route | **PARTIAL** |
+| Navigation | Home, Projects, project-scoped chats, global conversations, Models, AI Providers, GitHub, Settings, Help & Diagnostics; Skills route remains absent | **PARTIAL** |
 | Website | Static public landing + direct-download page; no account gate or admin portal in current direction | **IMPLEMENTED — NOT VERIFIED** in this audit; local route/link/responsive check remains |
 | Optional platform layer | Neon/Hono account and gateway code remains in the repository; personal/offline core is not intended to depend on it | **PARTIAL** — do not extend or gate core flows on it; live credential flow is not verified |
 
@@ -56,19 +56,19 @@ The code paths below were traced from renderer through `lib/api.ts`, preload/IPC
 
 | Feature | Evidence / current limits | Status |
 |---|---|---|
-| Project open/list/remove | Sidebar + Projects page → `api.projects` → project IPC → `projectService`; folder picker, root-confined tree/read/write, Git status. Sidebar lists only four projects; project rows do not expand into chats; no label rename. Active-project restoration across restart and cross-project stale-state isolation are not proved. | **PARTIAL** |
-| Conversations | SQLite repo via `api.conversations`; create/open/rename/delete paths exist. Search filters titles only. New chats stay “New chat”; there is no archive flow or content search. | **PARTIAL** |
-| Chat and tools | `chat.ts` streams provider deltas, tool calls/results, activity, approvals, completion/errors/cancellation; store consumes real events. Tool definitions enforce permission decisions. UI still uses robot identity and has not been exercised on a real multi-step task in this pass. | **IMPLEMENTED — NOT VERIFIED** |
+| Project open/list/remove | Sidebar + Projects page → `api.projects` → project IPC → `projectService`; folder picker, root-confined tree/read/write, Git status. Sidebar expands project chats; label rename, folder reveal, and remove-from-workspace are wired. Project switching restores scoped conversations and cancels active generation; packaged restart persistence still needs a dedicated check. | **PARTIAL** |
+| Conversations | SQLite repo via `api.conversations`; deterministic local auto-title, manual title guard, title/content search, archive/unarchive, delete confirmation, project detachment, and timestamps are implemented. Runtime persistence is partly exercised; restart and archive UI click-through remain. | **PARTIAL** |
+| Chat and tools | `chat.ts` streams provider deltas, tool calls/results, activity, approvals, completion/errors/cancellation; events carry conversation identity and the renderer filters stale events. The execution timeline and approval details use real events. A local model applied a valid EditService proposal through the approval gate; model-generated proposal creation did not complete reliably. | **PARTIAL** |
 | Providers/models | Ollama + OpenAI-compatible provider registry, model refresh/status/test, secret storage through `safeStorage`; provider adapter tests pass. No fresh end-to-end provider stream was run. | **PARTIAL** |
 | Permission model | `chat/assist/agent` and per-capability allow/ask/deny are in shared resolver and service paths; six permission tests pass. Approval UI exists. Full real approval/deny regression is pending. | **PARTIAL** |
 | Inspector panels | Explorer, Changes, Diff, Activity, Terminal, Tests, Git components and IPC APIs exist; Browser is absent. Actual data refresh and project-switch correctness are pending runtime verification. | **PARTIAL** |
 | Terminal | Custom subprocess streaming in `terminal.ts`, correct-project root is supplied by tool context. No PTY/emulator or stdin interface; cancellation calls `child.kill()` and process-tree cleanup has not been demonstrated. | **PARTIAL** |
 | Git/GitHub | Git service/panel supports status, diff, stage/commit/push/pull/branches/remotes. GitHub uses a stored PAT or installed `gh`; “device” flow is an explicit placeholder because there is no app client ID. Prompt’s system-browser OAuth flow is not implemented. | **PARTIAL** |
-| Settings | Existing real controls cover two themes, Ollama/default model, permissions, voice, Git publishing, privacy/log level, optional platform URL, and updater. One long page; no settings navigation, project settings, Skills, shortcuts reference, Archives, Browser, MCP state, or browser integration. Developer API is already absent from the app route/nav. | **PARTIAL** |
+| Settings | Existing real controls cover themes, Ollama/default model, permissions, voice, Git publishing, privacy/log level, optional platform URL, updater, and an archive list with unarchive/delete. Still one long page; Skills, browser settings, project settings, shortcuts reference, MCP state, and full settings navigation remain. Developer API is absent from the app route/nav. | **PARTIAL** |
 | Appearance | Three-layer CSS token foundation and semantic theme remapping now provide Dark, Light, System, Alpine, Dune, Tide, and Ember. Main/preload apply the saved palette before first paint; settings selection updates the renderer and native titlebar. Core shell, composer, controls, and dialog use semantic tokens; remaining screens still have legacy aliases/sizing to migrate. | **PARTIAL** — shell/dialog runtime checked; full app migration is later work |
 | Updates | `updater.ts` uses real `electron-updater` check/download/install events, surfaced in Settings. `APP_VERSION` is now aligned to package version 1.0.5. | **PARTIAL** |
 | Website | Static pages and direct public GitHub release download are present; no admin/auth gate (matches settled direction). Local crawl at mobile/desktop sizes and current deployment state are not freshly checked here. | **IMPLEMENTED — NOT VERIFIED** |
-| Skills, Browser preview, Home, archives, auto-titles | No product-skill discovery/injection, in-app Browser panel, Home dashboard, archived-conversation model, or automatic local chat title generation found. | **NOT STARTED** |
+| Skills and Browser preview | No product-skill discovery/injection or in-app Browser panel. | **NOT STARTED** |
 | Logo/icon | Existing approved Alpha logo is wired to the app/site/build and explicitly out of redesign scope. Only regression-check references. | **VERIFIED** by current live window and prior packaged v1.0.5 evidence in §15–16 |
 
 ## 4. Audit findings and priority order
@@ -89,6 +89,8 @@ Known drift to fix/document during implementation: README and older handover sec
 
 **Phase 2 — Design system foundation:** added a shared theme model, semantic palette tokens, first-paint preload application, native titlebar/background updates, and settings theme selection. Migrated the shared shell, buttons, fields, sidebar, composer, and modal scrim to semantic tokens; added pressed/disabled states and reduced-motion handling. Corrected the stale app version constant to 1.0.5. No dependency was added and approved branding assets were not changed. Contrast checks cover all six resolved palettes; `docs/qa/phase2/` holds dark/light chat and light dialog screenshots. Other pages and panels remain on legacy aliases and will migrate in their scheduled phases.
 
+**Phase 3 — Core workspace:** added a Home route and workspace restoration, project-scoped chat grouping, project label rename/reveal/remove, deterministic offline auto-titles, manual-title protection, conversation content search and archive/unarchive, project-aware switching, stale-event filtering, and an honest execution timeline. Added migration v2 for title/archive metadata and five conversation tests. No dependency was added. A live local-model request applied a valid proposal created by the real EditService through the Assist approval gate in an isolated temp project. Local models did not reliably generate their own valid proposal, so the Phase 3 exit gate is **PARTIAL**. Screenshots in `docs/qa/phase3/` show the approval and completed write; the original file was read before approval and verified against the intended content after apply.
+
 ## 6. Design and architecture decisions
 
 - Keep the current Electron/React/TypeScript, Tailwind v4, Zustand, sql.js, and static website stack. Phase 2 introduced no dependency.
@@ -107,6 +109,11 @@ Known drift to fix/document during implementation: README and older handover sec
 | Phase 2 `npm run typecheck` | **VERIFIED**, exit 0 after theme and shell changes |
 | Phase 2 `npm test` | **VERIFIED**, 66/66 passed, 8 files; includes palette completeness, system resolution, contrast, and token/state checks |
 | Phase 2 `npm run build` | **VERIFIED**, exit 0; main/preload/renderer bundled, renderer JS 1,560.17 kB |
+| Phase 3 `npm run typecheck` | **VERIFIED**, exit 0 after workspace/conversation implementation |
+| Phase 3 `npm test` | **VERIFIED**, 71/71 passed, 9 files, including five conversation/title/archive/search tests |
+| Phase 3 `npm run build` | **VERIFIED**, exit 0; renderer JS 1,588.31 kB |
+| Phase 3 `npm run smoke:desktop -- --port 9225` | **VERIFIED**, 14 passed, 0 warnings, 0 failures in an isolated Electron profile |
+| Phase 3 live approval/write | **PARTIAL**: model called `apply_approved_patch` with a valid EditService proposal; approved only `GUIDE.md` in a disposable project; exact file output and Completed activity verified. Independent model proposal attempts failed with malformed/placeholder proposals or prolonged reasoning. See `docs/qa/phase3/approval.png` and `completion.png`. |
 | `npm run dist` | **NOT STARTED** in this pass; release-phase packaging and app launch remain in Phase 7 |
 | `npm run smoke:desktop -- --port 9224` | **VERIFIED** after restart in an isolated temp user-data profile: 13 passed, 1 warning, 0 failed; theme/palette applied and persisted. Warning: no project was open, so real-project Git status was not exercised. No renderer errors. |
 | Dark/light shell and dialog screenshots | **VERIFIED** by live screenshot inspection: [dark chat](docs/qa/phase2/chat-dark.png), [light chat](docs/qa/phase2/chat-light.png), [light dialog](docs/qa/phase2/dialog-light.png) |
@@ -119,17 +126,17 @@ Known drift to fix/document during implementation: README and older handover sec
 |---|---|---|
 | 1 — Audit & protect | Current docs, Git state, baseline checks, feature inventory | **VERIFIED**: audit and baseline above; only handover documentation changed |
 | 2 — Design system foundation | Three-layer tokens, theme engine, shell/component states | **VERIFIED**: all six concrete palettes meet text contrast gates; dark/light switch was exercised on the running shell and dialog; light choice survived restart; screenshots are stored in `docs/qa/phase2/`. Remaining screens are explicitly scheduled for migration in later phases. |
-| 3 — Core workspace | Projects, local auto-titles, Home/navigation, real execution timeline | **NOT STARTED**: gate is persisted workspace state and a real multi-step task with accurate events |
-| 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth boundary | **NOT STARTED**: gate is local preview, accurate/cancellable terminal, GitHub at supported auth boundary |
-| 5 — Skills & Settings | Skill injection, settings IA, themes, browser settings, Developer API removal check | **NOT STARTED**: gate is persisted skill effect and click-through of implemented settings |
-| 6 — Website | Public static landing/download polish and responsive/link checks | **NOT STARTED**: gate is local link crawl at 375 px and desktop widths; report deployment separately |
-| 7 — Hardening and packaging | Regression check, full validation, Windows dist, packaged runtime | **NOT STARTED**: gate is actual package launch/click-through or explicit NOT VERIFIED with reason |
+| 3 — Core workspace | Projects, local auto-titles, Home/navigation, real execution timeline | **PARTIAL**: implementation, tests, isolated desktop smoke, and real Assist approval/write path are verified. Full autonomous multi-step proposal generation and post-restart state are not verified because installed local Qwen models returned malformed/placeholder proposals or stayed in reasoning. |
+| 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth boundary | **NOT STARTED**: next. Confirm the supported Electron 44 browser API before implementation; no embedded preview exists. Terminal needs live cwd/cancellation verification. |
+| 5 — Skills & Settings | Skill injection, settings IA, themes, browser settings, Developer API removal check | **NOT STARTED**: no product skills exist. Appearance remains partially migrated beyond the shell; Settings still needs navigation and control verification. |
+| 6 — Website | Public static landing/download polish and responsive/link checks | **NOT STARTED**: the public site remains unchanged; local 375 px/desktop link crawl is still required. No deployment performed. |
+| 7 — Hardening and packaging | Regression check, full validation, Windows dist, packaged runtime | **NOT STARTED**: final validation, package, and packaged runtime checks remain. |
 
 Do not advance past a phase gate without recording its shortfall here. Commit coherent verified code milestones per the user-provided execution prompt; do not push/deploy or publish releases.
 
 ## 9. Manual steps and external boundaries
 
-- **No user action is needed for Phases 1–2.**
+- **No user action is needed for Phases 1–3.**
 - GitHub browser authentication may need a registered public client ID. Inspect current official GitHub support before selecting an OAuth/device flow; if app registration is required, give the exact local configuration steps and never request a secret in chat. Existing PAT/`gh` support remains until the replacement is verified.
 - No platform credentials, website deployment, release publishing, or account setup is required for the local-first product work.
 
@@ -144,7 +151,7 @@ npm run dist
 npm run smoke:desktop -- --port <debug-port>   # only when packaged app was launched with that port
 ```
 
-**Next task:** Phase 3 — implement the Home/navigation and workspace continuity work while migrating the remaining core chat/project screens to the token system. Highest-priority global follow-up remains end-to-end project/chat restoration and real multi-step agent verification.
+**Next task:** Phase 4 — verify terminal cwd/cancellation, inspect Electron 44 guidance, and build the embedded Browser preview if the supported API fits the current security model. The highest-priority global follow-up remains a successful model-generated multi-step task; do not overstate Phase 3 as fully verified.
 
 ---
 ## 12. Session log — 2026-10-13 (second agent, no access to session 1)

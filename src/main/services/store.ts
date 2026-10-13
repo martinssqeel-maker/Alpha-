@@ -22,6 +22,7 @@ export const PLATFORM_DEFAULTS: AppSettings['platform'] = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
+  workspace: { activeProjectId: null, activeConversationId: null },
   defaultProviderId: null,
   defaultModelId: null,
   ollamaUrl: DEFAULT_OLLAMA_URL,
@@ -113,7 +114,34 @@ export class ConversationsRepo {
   list(): Conversation[] {
     const rows = this.db.all<Record<string, SqlValue>>(
       `SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
-       FROM conversations c ORDER BY updated_at DESC`
+       FROM conversations c WHERE c.archived_at IS NULL ORDER BY updated_at DESC`
+    )
+    return rows.map(mapConversation)
+  }
+
+  listArchived(): Conversation[] {
+    const rows = this.db.all<Record<string, SqlValue>>(
+      `SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+       FROM conversations c WHERE c.archived_at IS NOT NULL ORDER BY archived_at DESC`
+    )
+    return rows.map(mapConversation)
+  }
+
+  search(query: string): Conversation[] {
+    const needle = query.trim()
+    if (!needle) return this.list()
+    const rows = this.db.all<Record<string, SqlValue>>(
+      `SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+       FROM conversations c
+       WHERE c.archived_at IS NULL AND (
+         INSTR(LOWER(c.title), LOWER(?)) > 0 OR EXISTS (
+           SELECT 1 FROM messages m
+           WHERE m.conversation_id = c.id AND m.role NOT IN ('system', 'tool')
+             AND INSTR(LOWER(m.content), LOWER(?)) > 0
+         )
+       )
+       ORDER BY c.updated_at DESC`,
+      [needle, needle]
     )
     return rows.map(mapConversation)
   }
@@ -131,13 +159,15 @@ export class ConversationsRepo {
       projectId: input.projectId ?? null,
       providerId: input.providerId ?? null,
       modelId: input.modelId ?? null,
+      titleSource: input.titleSource ?? (input.title && input.title !== 'New chat' ? 'manual' : 'auto'),
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      archivedAt: null
     }
     this.db.run(
-      `INSERT INTO conversations (id, title, project_id, provider_id, model_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [conv.id, conv.title, conv.projectId ?? null, conv.providerId ?? null, conv.modelId ?? null, conv.createdAt, conv.updatedAt]
+      `INSERT INTO conversations (id, title, project_id, provider_id, model_id, created_at, updated_at, title_source, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [conv.id, conv.title, conv.projectId ?? null, conv.providerId ?? null, conv.modelId ?? null, conv.createdAt, conv.updatedAt, conv.titleSource ?? 'auto', null]
     )
     return conv
   }
@@ -145,12 +175,41 @@ export class ConversationsRepo {
   update(id: string, patch: Partial<Conversation>): Conversation | null {
     const current = this.get(id)
     if (!current) return null
-    const next = { ...current, ...patch, id, updatedAt: Date.now() }
+    const next = {
+      ...current,
+      ...patch,
+      id,
+      titleSource: patch.title !== undefined ? 'manual' : (patch.titleSource ?? current.titleSource ?? 'manual'),
+      updatedAt: Date.now()
+    }
     this.db.run(
-      `UPDATE conversations SET title = ?, project_id = ?, provider_id = ?, model_id = ?, updated_at = ? WHERE id = ?`,
-      [next.title, next.projectId ?? null, next.providerId ?? null, next.modelId ?? null, next.updatedAt, id]
+      `UPDATE conversations SET title = ?, project_id = ?, provider_id = ?, model_id = ?, updated_at = ?, title_source = ? WHERE id = ?`,
+      [next.title, next.projectId ?? null, next.providerId ?? null, next.modelId ?? null, next.updatedAt, next.titleSource, id]
     )
     return next
+  }
+
+  setAutoTitle(id: string, title: string): Conversation | null {
+    const normalized = title.trim().replace(/\s+/g, ' ').slice(0, 80)
+    if (!normalized || normalized === 'New chat') return this.get(id)
+    this.db.run(
+      `UPDATE conversations SET title = ?, title_source = 'auto', updated_at = ?
+       WHERE id = ? AND title_source = 'auto' AND title = 'New chat' AND archived_at IS NULL`,
+      [normalized, Date.now(), id]
+    )
+    return this.get(id)
+  }
+
+  archive(id: string): void {
+    this.db.run('UPDATE conversations SET archived_at = ?, updated_at = ? WHERE id = ?', [Date.now(), Date.now(), id])
+  }
+
+  unarchive(id: string): void {
+    this.db.run('UPDATE conversations SET archived_at = NULL, updated_at = ? WHERE id = ?', [Date.now(), id])
+  }
+
+  detachProject(projectId: string): void {
+    this.db.run('UPDATE conversations SET project_id = NULL, updated_at = ? WHERE project_id = ?', [Date.now(), projectId])
   }
 
   touch(id: string): void {
@@ -303,6 +362,13 @@ export class ProjectsRepo {
   remove(id: string): void {
     this.db.run('DELETE FROM projects WHERE id = ?', [id])
   }
+
+  rename(id: string, name: string): Project | null {
+    const normalized = name.trim().replace(/\s+/g, ' ').slice(0, 100)
+    if (!normalized) return null
+    this.db.run('UPDATE projects SET name = ? WHERE id = ?', [normalized, id])
+    return this.get(id)
+  }
 }
 
 export class ProvidersRepo {
@@ -380,12 +446,14 @@ function mapConversation(row: Record<string, SqlValue>): Conversation {
   return {
     id: String(row.id),
     title: String(row.title),
+    titleSource: row.title_source === 'manual' ? 'manual' : 'auto',
     projectId: (row.project_id as string) ?? null,
     providerId: (row.provider_id as string) ?? null,
     modelId: (row.model_id as string) ?? null,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
-    messageCount: row.message_count !== undefined ? Number(row.message_count) : undefined
+    messageCount: row.message_count !== undefined ? Number(row.message_count) : undefined,
+    archivedAt: row.archived_at === null || row.archived_at === undefined ? null : Number(row.archived_at)
   }
 }
 

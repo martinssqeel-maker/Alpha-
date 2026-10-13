@@ -58,6 +58,8 @@ export const zConversationUpdate = z.object({
   providerId: z.string().nullable().optional(),
   modelId: z.string().nullable().optional()
 })
+export const zConversationSearch = z.object({ query: z.string().min(1).max(500) })
+export const zProjectRename = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(100) })
 
 export const zId = z.object({ id: z.string().min(1) })
 

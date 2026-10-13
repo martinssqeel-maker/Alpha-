@@ -39,7 +39,15 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
   const [open, setOpen] = useState(false)
   const Icon = iconFor(activity)
   const detail = activity.error || activity.detail
-  const hasDetail = Boolean(detail) || activity.result !== undefined
+  const hasDetail = Boolean(detail) || activity.result !== undefined || activity.args !== undefined
+  const stateLabel: Record<ActivityItem['state'], string> = {
+    proposed: 'Proposed',
+    'awaiting-approval': 'Needs approval',
+    running: 'Running',
+    completed: 'Completed',
+    failed: 'Failed',
+    cancelled: 'Cancelled'
+  }
   return (
     <div className={`activity ${activity.state}`}>
       <span className="dot" />
@@ -48,13 +56,15 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
         <button
           className="flex items-center gap-1 w-full text-left"
           style={{ background: 'none', border: 'none', padding: 0 }}
+          aria-expanded={hasDetail ? open : undefined}
+          aria-label={`${activity.title}, ${stateLabel[activity.state]}${hasDetail ? ', show activity details' : ''}`}
           onClick={() => hasDetail && setOpen((o) => !o)}
         >
           <span className="font-medium mono text-xs" style={{ color: 'var(--text)' }}>
             {activity.title}
           </span>
           <span className="pill" style={{ fontSize: 10, padding: '0 6px' }}>
-            {activity.state}
+            {stateLabel[activity.state]}
           </span>
           {hasDetail && <ChevronRight size={13} className={open ? 'rotate-90' : ''} style={{ transition: 'transform .12s' }} />}
           <div className="flex-1" />
@@ -70,6 +80,14 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
               <pre className="mono text-xs whitespace-pre-wrap m-0" style={{ color: 'var(--text-soft)' }}>
                 {detail}
               </pre>
+            )}
+            {activity.args !== undefined && (
+              <details className="mt-1">
+                <summary className="text-xs cursor-pointer" style={{ color: 'var(--text-tertiary)' }}>Inputs</summary>
+                <pre className="mono text-xs whitespace-pre-wrap m-0 mt-1 max-h-48 overflow-auto rounded p-2" style={{ background: 'var(--code-bg)', color: 'var(--text-soft)' }}>
+                  {JSON.stringify(activity.args, null, 2).slice(0, 4000)}
+                </pre>
+              </details>
             )}
             {activity.result !== undefined && (
               <pre

@@ -1,4 +1,5 @@
-import { FolderOpen, FolderPlus, History, Trash2 } from 'lucide-react'
+import { FolderOpen, FolderPlus, History, Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { api } from '../lib/api'
 import { useApp } from '../store/useApp'
 
@@ -9,6 +10,9 @@ export default function ProjectsPage() {
   const selectProject = useApp((s) => s.selectProject)
   const removeProject = useApp((s) => s.removeProject)
   const setView = useApp((s) => s.setView)
+  const renameProject = useApp((s) => s.renameProject)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [label, setLabel] = useState('')
 
   return (
     <div className="page">
@@ -34,7 +38,18 @@ export default function ProjectsPage() {
           >
             <div className="flex items-center gap-2">
               <FolderOpen size={16} style={{ color: 'var(--accent)' }} />
-              <div className="font-medium">{p.name}</div>
+              {editingId === p.id ? (
+                <input className="input text-sm" style={{ maxWidth: 240, padding: '4px 8px' }} aria-label="Project label" value={label} autoFocus onChange={(event) => setLabel(event.target.value)} onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    if (label.trim()) void renameProject(p.id, label.trim())
+                    setEditingId(null)
+                  }
+                  if (event.key === 'Escape') setEditingId(null)
+                }} onBlur={() => {
+                  if (label.trim() && label.trim() !== p.name) void renameProject(p.id, label.trim())
+                  setEditingId(null)
+                }} />
+              ) : <div className="font-medium">{p.name}</div>}
               {p.isGitRepo && <span className="pill">git</span>}
               {activeProjectId === p.id && <span className="pill accent">active</span>}
               <div className="flex-1" />
@@ -76,10 +91,15 @@ export default function ProjectsPage() {
               <button className="btn" onClick={() => void api.revealPath(p.rootPath)}>
                 Reveal
               </button>
+              <button className="btn" onClick={() => { setLabel(p.name); setEditingId(p.id) }}>
+                <Pencil size={13} /> Rename label
+              </button>
               <div className="flex-1" />
               <button
                 className="btn danger"
-                onClick={() => void removeProject(p.id)}
+                onClick={() => {
+                  if (window.confirm(`Remove “${p.name}” from Alpha? Its files and folder will not be deleted.`)) void removeProject(p.id)
+                }}
                 title="Remove from list (files are not deleted)"
               >
                 <Trash2 size={14} /> Remove

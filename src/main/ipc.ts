@@ -9,6 +9,7 @@ import {
   zCheckpointRestore,
   zConversationAppend,
   zConversationCreate,
+  zConversationSearch,
   zConversationUpdate,
   zEditApply,
   zEditPropose,
@@ -23,6 +24,7 @@ import {
   zGitSetRemote,
   zId,
   zProjectOpen,
+  zProjectRename,
   zProjectRead,
   zProjectTree,
   zProjectWrite,
@@ -140,6 +142,8 @@ export function registerIpc(ctx: AppContext): void {
   })
 
   handle(CH.conversationsList, null, () => ctx.conversations.list())
+  handle(CH.conversationsSearch, zConversationSearch, (p) => ctx.conversations.search((p as { query: string }).query))
+  handle(CH.conversationsArchived, null, () => ctx.conversations.listArchived())
   handle(CH.conversationsGet, zId, (p) => {
     const id = (p as { id: string }).id
     const conversation = ctx.conversations.get(id)
@@ -155,6 +159,14 @@ export function registerIpc(ctx: AppContext): void {
   })
   handle(CH.conversationsDelete, zId, (p) => {
     ctx.conversations.delete((p as { id: string }).id)
+    return { ok: true }
+  })
+  handle(CH.conversationsArchive, zId, (p) => {
+    ctx.conversations.archive((p as { id: string }).id)
+    return { ok: true }
+  })
+  handle(CH.conversationsUnarchive, zId, (p) => {
+    ctx.conversations.unarchive((p as { id: string }).id)
     return { ok: true }
   })
   handle(CH.conversationsAppend, zConversationAppend, (p) => ctx.conversations.append(p as never))
@@ -181,11 +193,20 @@ export function registerIpc(ctx: AppContext): void {
 
   handle(CH.projectList, null, () => ctx.projectsRepo.list())
   handle(CH.projectRemove, zId, (p) => {
-    ctx.projectsRepo.remove((p as { id: string }).id)
+    const id = (p as { id: string }).id
+    ctx.conversations.detachProject(id)
+    ctx.projectsRepo.remove(id)
     return { ok: true }
+  })
+  handle(CH.projectRename, zProjectRename, (p) => {
+    const { id, name } = p as { id: string; name: string }
+    const project = ctx.projectsRepo.rename(id, name)
+    if (!project) throw new Error('Project not found or label is empty')
+    return project
   })
   handle(CH.projectInfo, zId, async (p) => {
     const id = (p as { id: string }).id
+    ctx.projectsRepo.touch(id)
     const project = ctx.projectService.resolveProject(id)
     const gitStatus = await ctx.git.status(id)
     const files = ctx.projectService.listTree(id, '', 1)

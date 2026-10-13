@@ -13,6 +13,7 @@ import ProjectsPage from './pages/ProjectsPage'
 import GitHubPage from './pages/GitHubPage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
+import HomePage from './pages/HomePage'
 
 /** How long the launch splash is held, and how long its fade-out takes. */
 const SPLASH_HOLD_MS = 1600
@@ -108,6 +109,8 @@ export default function App() {
 
   const content = () => {
     switch (view) {
+      case 'home':
+        return <HomePage />
       case 'models':
         return <ModelsPage />
       case 'providers':

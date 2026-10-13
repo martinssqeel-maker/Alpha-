@@ -322,6 +322,12 @@ try {
       if (conv) {
         await clickAt(cdp, conv, 'conversation')
         await waitFor(cdp, `!!document.querySelector('.chat-page textarea')`, 'chat view reopened', 6000)
+      } else {
+        const newChat = await cdp.evaluate(rectOf('button.btn.primary', 'New chat'))
+        if (newChat) {
+          await clickAt(cdp, newChat, 'New chat')
+          await waitFor(cdp, `!!document.querySelector('.chat-page textarea')`, 'new chat opened', 6000)
+        }
       }
     }
     const value = await typeIntoPrompt(cdp, TYPED)
@@ -366,6 +372,10 @@ try {
 
   // 6. The Account modal must open and close (it is rendered from the sidebar).
   try {
+    await cdp.evaluate(`(() => {
+      const button = [...document.querySelectorAll('button.nav-item')].find((node) => (node.textContent || '').trim().includes('Account'))
+      button?.scrollIntoView({ block: 'nearest' })
+    })()`)
     const account = await cdp.evaluate(rectOf('button.nav-item', 'Account'))
     if (!account) throw new Error('the Account nav item is not in the DOM')
     await clickAt(cdp, account, 'Account')

@@ -36,6 +36,11 @@ export class EditService {
     private checkpoints: CheckpointService
   ) {}
 
+  describeProposal(id: string): { path: string; kind: Proposal['kind'] } | null {
+    const proposal = this.proposals.get(id)
+    return proposal ? { path: proposal.path, kind: proposal.kind } : null
+  }
+
   propose(input: ProposeInput): EditProposalResult {
     const kind = input.kind ?? 'write'
     let original = ''

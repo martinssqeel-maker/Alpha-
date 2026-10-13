@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Bot, User as UserIcon } from 'lucide-react'
+import { User as UserIcon } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
 import { useApp } from '../store/useApp'
 import Markdown from './Markdown'
@@ -10,11 +10,13 @@ export default function MessageList() {
   const messages = useApp((s) => s.messages)
   const streaming = useApp((s) => s.streaming)
   const isSending = useApp((s) => s.isSending)
-  const bottom = useRef<HTMLDivElement>(null)
+  const scroll = useRef<HTMLDivElement>(null)
+  const followBottom = useRef(true)
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, streaming?.text, streaming?.activities.length])
+    const element = scroll.current
+    if (element && followBottom.current) element.scrollTop = element.scrollHeight
+  }, [messages.length, streaming?.text, streaming?.activities.length, isSending])
 
   if (messages.length === 0 && !streaming) {
     return <Empty />
@@ -23,16 +25,17 @@ export default function MessageList() {
   const visible = messages.filter((m) => m.role !== 'tool' && m.role !== 'system')
 
   return (
-    <div className="msg-scroll">
+    <div className="msg-scroll" ref={scroll} onScroll={(event) => {
+      const element = event.currentTarget
+      followBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96
+    }}>
       {visible.map((m) => (
         <MessageRow key={m.id} message={m} />
       ))}
 
       {streaming && (
         <div className="msg assistant">
-          <div className="avatar">
-            <Bot size={15} />
-          </div>
+          <div className="message-author assistant-author">Alpha</div>
           <div className="msg-body">
             {streaming.thinking && (
               <details className="mb-2">
@@ -51,7 +54,11 @@ export default function MessageList() {
               <Markdown content={streaming.text} />
             ) : (
               <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                <span className="spin">◌</span> Thinking…
+                <span className="spin">◌</span> {streaming.activities.some((activity) => activity.state === 'awaiting-approval')
+                  ? 'Waiting for approval…'
+                  : streaming.activities.some((activity) => activity.state === 'running')
+                    ? 'Running project action…'
+                    : 'Waiting for model response…'}
               </span>
             )}
             {streaming.text && <span className="caret" />}
@@ -62,18 +69,15 @@ export default function MessageList() {
 
       {isSending && !streaming && (
         <div className="msg assistant">
-          <div className="avatar">
-            <Bot size={15} />
-          </div>
+          <div className="message-author assistant-author">Alpha</div>
           <div className="msg-body">
             <span className="text-sm" style={{ color: 'var(--muted)' }}>
-              <span className="spin">◌</span> Starting…
+                <span className="spin">◌</span> Submitting request…
             </span>
           </div>
         </div>
       )}
 
-      <div ref={bottom} />
     </div>
   )
 }
@@ -82,9 +86,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
   return (
     <div className={`msg ${isUser ? 'user' : 'assistant'}`}>
-      <div className="avatar">
-        {isUser ? <UserIcon size={15} /> : <Bot size={15} />}
-      </div>
+      {isUser ? <div className="avatar" aria-label="You"><UserIcon size={15} /></div> : <div className="message-author assistant-author">Alpha</div>}
       <div className="msg-body">
         {message.attachments && message.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">

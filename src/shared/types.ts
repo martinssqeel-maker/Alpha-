@@ -124,12 +124,19 @@ export interface ChatMessage {
 export interface Conversation {
   id: string
   title: string
+  titleSource?: 'auto' | 'manual'
   projectId?: string | null
   providerId?: string | null
   modelId?: string | null
   createdAt: number
   updatedAt: number
   messageCount?: number
+  archivedAt?: number | null
+}
+
+export interface WorkspaceSelection {
+  activeProjectId: string | null
+  activeConversationId: string | null
 }
 
 export interface Project {
@@ -145,6 +152,7 @@ export interface Project {
 
 export interface AppSettings {
   theme: ThemePreference
+  workspace?: WorkspaceSelection
   defaultProviderId?: string | null
   defaultModelId?: string | null
   ollamaUrl: string
@@ -191,7 +199,7 @@ export interface ChatUsage {
   totalTokens?: number
 }
 
-export type ChatEvent =
+export type ChatEventPayload =
   | { type: 'start'; requestId: string }
   | { type: 'delta'; requestId: string; content: string }
   | { type: 'thinking'; requestId: string; content: string }
@@ -201,6 +209,8 @@ export type ChatEvent =
   | { type: 'done'; requestId: string; messageId: string; content: string; usage?: ChatUsage }
   | { type: 'error'; requestId: string; error: string; code?: string }
   | { type: 'cancelled'; requestId: string }
+
+export type ChatEvent = ChatEventPayload & { conversationId?: string }
 
 export type TerminalEvent =
   | { type: 'start'; runId: string; command: string; cwd: string }

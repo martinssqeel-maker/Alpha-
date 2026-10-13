@@ -27,10 +27,14 @@ export const CH = {
   chatApproval: 'chat:approval',
 
   conversationsList: 'conversations:list',
+  conversationsSearch: 'conversations:search',
+  conversationsArchived: 'conversations:archived',
   conversationsGet: 'conversations:get',
   conversationsCreate: 'conversations:create',
   conversationsUpdate: 'conversations:update',
   conversationsDelete: 'conversations:delete',
+  conversationsArchive: 'conversations:archive',
+  conversationsUnarchive: 'conversations:unarchive',
   conversationsAppend: 'conversations:append',
   conversationsClear: 'conversations:clear',
 
@@ -38,6 +42,7 @@ export const CH = {
   projectOpen: 'project:open',
   projectList: 'project:list',
   projectRemove: 'project:remove',
+  projectRename: 'project:rename',
   projectInfo: 'project:info',
   projectTree: 'project:tree',
   projectRead: 'project:read',

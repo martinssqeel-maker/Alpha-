@@ -6,6 +6,7 @@ import type {
   ChatUsage,
   PermissionMode
 } from '@shared/types'
+import { createConversationTitle } from '@shared/conversationTitle'
 import { getLogger } from './logger'
 import { PathError } from './pathGuard'
 import type { ApprovalBroker, PermissionService } from './permissionService'
@@ -73,7 +74,8 @@ export class ChatService {
     controller: AbortController,
     input: SendInput
   ): Promise<void> {
-    const { emit, conversations, providers, projects, permissions } = this.deps
+    const { conversations, providers, projects, permissions } = this.deps
+    const emitEvent = (event: ChatEvent): void => this.deps.emit({ ...event, conversationId: input.conversationId })
     const log = getLogger()
     let assistantText = ''
     const activities: ActivityItem[] = []
@@ -81,6 +83,8 @@ export class ChatService {
       permissions.setMode(input.mode)
 
       const userContent = buildUserContent(input.text, input.attachments)
+      const currentConversation = conversations.get(input.conversationId)
+      const hasPriorUserMessage = conversations.messages(input.conversationId).some((message) => message.role === 'user')
       conversations.append({
         conversationId: input.conversationId,
         role: 'user',
@@ -93,6 +97,16 @@ export class ChatService {
           kind: a.kind
         }))
       })
+      if (
+        currentConversation?.title === 'New chat' &&
+        currentConversation.titleSource !== 'manual' &&
+        !hasPriorUserMessage
+      ) {
+        conversations.setAutoTitle(
+          input.conversationId,
+          createConversationTitle(input.text, input.attachments?.map((attachment) => attachment.name))
+        )
+      }
 
       const provider = providers.get(input.providerId)
       if (!provider) throw new ProviderError('Provider not found', 'not_found')
@@ -107,7 +121,7 @@ export class ChatService {
       const toolsEnabled = Boolean(input.projectId) && input.mode !== 'chat'
       const tools = toolsEnabled ? TOOL_DEFINITIONS : undefined
 
-      emit({ type: 'start', requestId })
+      emitEvent({ type: 'start', requestId })
 
       let usage: ChatUsage | undefined
       let usedTools = false
@@ -124,9 +138,9 @@ export class ChatService {
             onDelta: (delta) => {
               if (delta.content) {
                 assistantText += delta.content
-                emit({ type: 'delta', requestId, content: delta.content })
+                emitEvent({ type: 'delta', requestId, content: delta.content })
               }
-              if (delta.thinking) emit({ type: 'thinking', requestId, content: delta.thinking })
+              if (delta.thinking) emitEvent({ type: 'thinking', requestId, content: delta.thinking })
             }
           })
         } catch (e) {
@@ -141,7 +155,7 @@ export class ChatService {
               onDelta: (delta) => {
                 if (delta.content) {
                   assistantText += delta.content
-                  emit({ type: 'delta', requestId, content: delta.content })
+                  emitEvent({ type: 'delta', requestId, content: delta.content })
                 }
               }
             })
@@ -171,7 +185,7 @@ export class ChatService {
 
         for (const call of result.toolCalls) {
           if (controller.signal.aborted) break
-          const toolResult = await this.runTool(requestId, call, toolContext, activities, emit, controller)
+          const toolResult = await this.runTool(requestId, call, toolContext, activities, emitEvent, controller)
           messages.push({
             role: 'tool',
             content: toolResult.content,
@@ -191,7 +205,7 @@ export class ChatService {
           providerId: input.providerId,
           activity: activities
         })
-        emit({ type: 'cancelled', requestId })
+        emitEvent({ type: 'cancelled', requestId })
         void msg
         return
       }
@@ -204,7 +218,7 @@ export class ChatService {
         providerId: input.providerId,
         activity: activities
       })
-      emit({ type: 'done', requestId, messageId: message.id, content: assistantText, usage })
+      emitEvent({ type: 'done', requestId, messageId: message.id, content: assistantText, usage })
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         conversations.append({
@@ -215,7 +229,7 @@ export class ChatService {
           providerId: input.providerId,
           activity: activities
         })
-        emit({ type: 'cancelled', requestId })
+        emitEvent({ type: 'cancelled', requestId })
         return
       }
       const err = e as ProviderError
@@ -230,7 +244,7 @@ export class ChatService {
           activity: activities
         })
       }
-      emit({ type: 'error', requestId, error: err.message, code: err.code })
+      emitEvent({ type: 'error', requestId, error: err.message, code: err.code })
     }
   }
 
@@ -243,11 +257,12 @@ export class ChatService {
     controller: AbortController
   ): Promise<{ content: string; activity: ActivityItem }> {
     const def = toolByName(call.name)
+    const approvalCopy = describeApproval(call, ctx)
     const activity: ActivityItem = {
       id: randomUUID(),
       kind: def?.category === 'execute' ? 'command' : def?.category === 'write' ? 'edit' : def?.category === 'git' ? 'git' : 'tool',
-      title: call.name,
-      detail: describeCall(call),
+      title: approvalCopy?.title ?? call.name,
+      detail: approvalCopy?.detail ?? describeCall(call),
       state: 'proposed',
       toolName: call.name,
       args: call.arguments,
@@ -261,6 +276,17 @@ export class ChatService {
     if (!def) {
       activity.state = 'failed'
       activity.error = `Unknown tool: ${call.name}`
+      activity.endedAt = Date.now()
+      emit({ type: 'activity', requestId, activity: { ...activity } })
+      return { content: JSON.stringify({ error: activity.error }), activity }
+    }
+
+    if (
+      call.name === 'apply_approved_patch' &&
+      !ctx.edits.describeProposal(String((call.arguments as Record<string, unknown> | null)?.proposalId ?? ''))
+    ) {
+      activity.state = 'failed'
+      activity.error = 'The proposed change is unavailable or expired. Review the file and propose it again.'
       activity.endedAt = Date.now()
       emit({ type: 'activity', requestId, activity: { ...activity } })
       return { content: JSON.stringify({ error: activity.error }), activity }
@@ -379,4 +405,29 @@ function describeCall(call: ChatToolCall): string {
   if (call.name === 'read_project_file' || call.name === 'propose_file_patch') return String(args.path ?? '')
   if (call.name === 'search_project') return String(args.query ?? '')
   return JSON.stringify(args).slice(0, 200)
+}
+
+function describeApproval(
+  call: ChatToolCall,
+  ctx: ToolContext
+): { title: string; detail: string } | null {
+  const args = (call.arguments ?? {}) as Record<string, unknown>
+  if (call.name === 'apply_approved_patch') {
+    const proposal = ctx.edits.describeProposal(String(args.proposalId ?? ''))
+    if (!proposal) return { title: 'Apply proposed file change', detail: 'The proposed change is unavailable or expired.' }
+    const action = proposal.kind === 'delete' ? 'delete' : 'write'
+    const consequence = proposal.kind === 'delete'
+      ? 'This removes the project file. A checkpoint is created first.'
+      : 'This writes the proposed content to the project file. A checkpoint is created first.'
+    return { title: `Apply ${action} to ${proposal.path}`, detail: `Target: ${proposal.path}\n${consequence}` }
+  }
+  if (call.name === 'run_approved_command') {
+    const command = String(args.command ?? '')
+    const cwd = ctx.projectId ? ctx.projects.resolveRoot(ctx.projectId) : 'No project selected'
+    return {
+      title: 'Run command in project',
+      detail: `Command: ${command}\nDirectory: ${cwd}\nThis executes a shell command and may change project files or use network access.`
+    }
+  }
+  return null
 }

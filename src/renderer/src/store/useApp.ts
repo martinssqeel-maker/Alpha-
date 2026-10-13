@@ -19,7 +19,7 @@ import type {
 import { THEME_TOKENS, resolveTheme } from '@shared/theme'
 import { api, onChat, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
-export type View = 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'settings' | 'help'
+export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'settings' | 'help'
 
 export interface Toast {
   id: string
@@ -83,6 +83,7 @@ interface State {
 
   streaming: Streaming | null
   isSending: boolean
+  cancelRequested: boolean
   pendingApprovals: PendingApproval[]
 
   terminals: TerminalSession[]
@@ -117,12 +118,15 @@ interface State {
   newConversation: (projectId?: string | null) => Promise<string>
   deleteConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
+  archiveConversation: (id: string) => Promise<void>
+  unarchiveConversation: (id: string) => Promise<void>
 
   loadProjects: () => Promise<void>
   openProject: () => Promise<void>
   openProjectByPath: (path: string) => Promise<void>
   selectProject: (id: string) => Promise<void>
   removeProject: (id: string) => Promise<void>
+  renameProject: (id: string, name: string) => Promise<void>
   refreshTree: () => Promise<void>
   refreshGit: () => Promise<void>
 
@@ -150,7 +154,7 @@ let platformUnsub: (() => void) | null = null
 export const useApp = create<State>((set, get) => ({
   ready: false,
   settings: null,
-  view: 'chat',
+  view: 'home',
   inspectorTab: 'explorer',
   inspectorOpen: true,
   inspectorWidth: 420,
@@ -174,6 +178,7 @@ export const useApp = create<State>((set, get) => ({
 
   streaming: null,
   isSending: false,
+  cancelRequested: false,
   pendingApprovals: [],
 
   terminals: [],
@@ -214,11 +219,27 @@ export const useApp = create<State>((set, get) => ({
     await get().loadConversations()
     await get().loadProjects()
 
-    const { selectedProviderId, selectedModelId } = get()
-    if (selectedProviderId && selectedModelId) {
-      const existing = get().conversations[0]
-      if (existing) await get().openConversation(existing.id)
-      else await get().newConversation(get().activeProjectId)
+    const savedWorkspace = settings.workspace
+    const preferredConversation = get().conversations.find(
+      (conversation) => conversation.id === savedWorkspace?.activeConversationId
+    )
+    const lastConversation = savedWorkspace?.activeConversationId === null
+      ? null
+      : preferredConversation ?? get().conversations[0]
+    if (lastConversation) {
+      await get().openConversation(lastConversation.id)
+    } else {
+      set({ view: 'home', activeConversationId: null, messages: [] })
+      const projectId = savedWorkspace?.activeProjectId
+      if (projectId && get().projects.some((project) => project.id === projectId)) {
+        try {
+          const info = await api.projects.info(projectId)
+          set({ activeProjectId: projectId, tree: info.files, gitStatus: info.git })
+        } catch {
+          set({ activeProjectId: null, tree: [], gitStatus: null })
+          await persistWorkspace(get, set, { activeProjectId: null, activeConversationId: null })
+        }
+      }
     }
     set({ ready: true })
   },
@@ -327,35 +348,69 @@ export const useApp = create<State>((set, get) => ({
   },
 
   openConversation: async (id) => {
+    await cancelActiveChatForSwitch(get, set, id)
     const { conversation, messages } = await api.conversations.get(id)
+    if (conversation.archivedAt) throw new Error('This conversation is archived.')
     set({
       activeConversationId: id,
       messages,
       draft: '',
       view: 'chat',
+      cancelRequested: false,
       selectedProviderId: conversation.providerId ?? get().selectedProviderId,
       selectedModelId: conversation.modelId ?? get().selectedModelId,
-      activeProjectId: conversation.projectId ?? get().activeProjectId
+      activeProjectId: conversation.projectId ?? null,
+      tree: [],
+      gitStatus: null
     })
     if (conversation.projectId) {
       try {
-        await get().selectProject(conversation.projectId)
-      } catch {
-        /* ignore */
+        const info = await api.projects.info(conversation.projectId)
+        set({ activeProjectId: conversation.projectId, tree: info.files, gitStatus: info.git })
+      } catch (e) {
+        get().toast(`Project unavailable: ${(e as Error).message}`, 'error')
       }
     }
+    await persistWorkspace(get, set, {
+      activeProjectId: conversation.projectId ?? null,
+      activeConversationId: id
+    })
   },
 
   newConversation: async (projectId) => {
-    const model = get().selectedModelId
-    const provider = get().selectedProviderId
+    await cancelActiveChatForSwitch(get, set, null)
+    const state = get()
+    const targetProjectId = projectId === undefined ? state.activeProjectId : projectId
+    const model = state.selectedModelId
+    const provider = state.selectedProviderId
     const conversation = await api.conversations.create({
-      projectId: projectId ?? get().activeProjectId ?? null,
+      projectId: targetProjectId,
       providerId: provider,
       modelId: model
     })
-    set({ activeConversationId: conversation.id, messages: [], draft: '', view: 'chat' })
+    set({
+      activeConversationId: conversation.id,
+      activeProjectId: targetProjectId ?? null,
+      messages: [],
+      tree: [],
+      gitStatus: null,
+      draft: '',
+      cancelRequested: false,
+      view: 'chat'
+    })
+    if (targetProjectId) {
+      try {
+        const info = await api.projects.info(targetProjectId)
+        set({ tree: info.files, gitStatus: info.git })
+      } catch (e) {
+        get().toast(`Project unavailable: ${(e as Error).message}`, 'error')
+      }
+    }
     await get().loadConversations()
+    await persistWorkspace(get, set, {
+      activeProjectId: targetProjectId ?? null,
+      activeConversationId: conversation.id
+    })
     return conversation.id
   },
 
@@ -366,12 +421,33 @@ export const useApp = create<State>((set, get) => ({
     if (activeConversationId === id) {
       const next = get().conversations[0]
       if (next) await get().openConversation(next.id)
-      else set({ activeConversationId: null, messages: [] })
+      else {
+        set({ activeConversationId: null, messages: [], streaming: null, isSending: false, view: 'home' })
+        await persistWorkspace(get, set, { activeConversationId: null })
+      }
     }
   },
 
   renameConversation: async (id, title) => {
     await api.conversations.update({ id, title })
+    await get().loadConversations()
+  },
+
+  archiveConversation: async (id) => {
+    await api.conversations.archive(id)
+    await get().loadConversations()
+    if (get().activeConversationId === id) {
+      const next = get().conversations[0]
+      if (next) await get().openConversation(next.id)
+      else {
+        set({ activeConversationId: null, messages: [], streaming: null, isSending: false, view: 'home' })
+        await persistWorkspace(get, set, { activeConversationId: null })
+      }
+    }
+  },
+
+  unarchiveConversation: async (id) => {
+    await api.conversations.unarchive(id)
     await get().loadConversations()
   },
 
@@ -390,16 +466,7 @@ export const useApp = create<State>((set, get) => ({
     try {
       const info = await api.projects.open(path)
       await get().loadProjects()
-      set({
-        activeProjectId: info.project.id,
-        tree: info.files,
-        gitStatus: info.git
-      })
-      const conv = get().conversations.find((c) => c.id === get().activeConversationId)
-      if (conv && !conv.projectId) {
-        await api.conversations.update({ id: conv.id, projectId: info.project.id })
-        await get().loadConversations()
-      }
+      await get().selectProject(info.project.id)
       get().toast(`Opened ${info.project.name}`, 'success')
     } catch (e) {
       get().toast(`Could not open project: ${(e as Error).message}`, 'error')
@@ -407,13 +474,47 @@ export const useApp = create<State>((set, get) => ({
   },
 
   selectProject: async (id) => {
-    const info = await api.projects.info(id)
-    set({ activeProjectId: id, tree: info.files, gitStatus: info.git })
+    try {
+      const info = await api.projects.info(id)
+      set({ activeProjectId: id, tree: info.files, gitStatus: info.git })
+      const state = get()
+      const current = state.conversations.find((c) => c.id === state.activeConversationId)
+      if (current?.projectId === id) {
+        await persistWorkspace(get, set, { activeProjectId: id, activeConversationId: current.id })
+        return
+      }
+      if (current && !current.projectId) {
+        const { messages } = await api.conversations.get(current.id)
+        if (messages.length === 0) {
+          await api.conversations.update({ id: current.id, projectId: id })
+          await get().loadConversations()
+          await persistWorkspace(get, set, { activeProjectId: id, activeConversationId: current.id })
+          return
+        }
+      }
+      const existing = state.conversations.find((c) => c.projectId === id)
+      if (existing) {
+        await get().openConversation(existing.id)
+        return
+      }
+      await get().newConversation(id)
+    } catch (error) {
+      get().toast(`Could not open project: ${(error as Error).message}`, 'error')
+    }
   },
 
   removeProject: async (id) => {
     await api.projects.remove(id)
-    if (get().activeProjectId === id) set({ activeProjectId: null, tree: [], gitStatus: null })
+    if (get().activeProjectId === id) {
+      set({ activeProjectId: null, tree: [], gitStatus: null })
+      await persistWorkspace(get, set, { activeProjectId: null })
+    }
+    await get().loadProjects()
+    await get().loadConversations()
+  },
+
+  renameProject: async (id, name) => {
+    await api.projects.rename(id, name)
     await get().loadProjects()
   },
 
@@ -467,6 +568,7 @@ export const useApp = create<State>((set, get) => ({
         }
       ],
       isSending: true,
+      cancelRequested: false,
       streaming: null,
       draft: ''
     }))
@@ -477,13 +579,21 @@ export const useApp = create<State>((set, get) => ({
         providerId,
         modelId,
         mode,
-        projectId: state.activeProjectId,
+        projectId: get().conversations.find((c) => c.id === conversationId)?.projectId ?? null,
         text,
         attachments
       })
-      set({ streaming: { requestId, text: '', thinking: '', activities: [] } })
+      await get().loadConversations()
+      if (get().activeConversationId !== conversationId || get().cancelRequested) {
+        await api.chat.cancel(requestId)
+        set({ streaming: null, isSending: false, cancelRequested: false })
+        return
+      }
+      set((current) => current.streaming?.requestId === requestId
+        ? {}
+        : { streaming: { requestId, text: '', thinking: '', activities: [] } })
     } catch (e) {
-      set({ isSending: false })
+      set({ isSending: false, cancelRequested: false })
       get().toast(`Failed to send: ${(e as Error).message}`, 'error')
       await refreshMessages(get, set, conversationId)
     }
@@ -493,6 +603,9 @@ export const useApp = create<State>((set, get) => ({
     const requestId = get().streaming?.requestId
     if (requestId) {
       await api.chat.cancel(requestId)
+    } else if (get().isSending) {
+      set({ cancelRequested: true })
+      return
     }
     set({ isSending: false })
   },
@@ -597,11 +710,24 @@ async function refreshMessages(
 ): Promise<void> {
   try {
     const { messages } = await api.conversations.get(conversationId)
-    set({ messages })
+    if (get().activeConversationId === conversationId) set({ messages })
     await get().loadConversations()
   } catch {
     /* ignore */
   }
+}
+
+async function cancelActiveChatForSwitch(
+  get: () => State,
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
+  nextConversationId: string | null
+): Promise<void> {
+  const state = get()
+  if (!state.isSending || state.activeConversationId === nextConversationId) return
+  const requestId = state.streaming?.requestId
+  if (requestId) await api.chat.cancel(requestId)
+  set({ streaming: null, isSending: false, cancelRequested: !requestId })
+  get().toast('Generation stopped because you switched conversations.', 'info')
 }
 
 function persistLayout(get: () => State): Promise<void> {
@@ -612,14 +738,40 @@ function persistLayout(get: () => State): Promise<void> {
     .catch(() => undefined)
 }
 
+async function persistWorkspace(
+  get: () => State,
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
+  patch: Partial<NonNullable<AppSettings['workspace']>>
+): Promise<void> {
+  const workspace = { ...get().settings?.workspace, ...patch }
+  try {
+    const settings = await api.settings.set({ workspace })
+    set({ settings })
+  } catch (error) {
+    get().toast(`Could not save workspace selection: ${(error as Error).message}`, 'error')
+  }
+}
+
 function handleChatEvent(
   event: import('@shared/types').ChatEvent,
   set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
   get: () => State
 ): void {
+  if (event.conversationId && event.conversationId !== get().activeConversationId) {
+    if (event.type === 'done' || event.type === 'cancelled' || event.type === 'error') {
+      void refreshMessages(get, set, event.conversationId)
+    }
+    return
+  }
   switch (event.type) {
     case 'start':
-      set({ streaming: { requestId: event.requestId, text: '', thinking: '', activities: [] } })
+      if (get().cancelRequested) {
+        void api.chat.cancel(event.requestId)
+        return
+      }
+      set((s) => s.streaming?.requestId === event.requestId
+        ? {}
+        : { streaming: { requestId: event.requestId, text: '', thinking: '', activities: [] } })
       break
     case 'delta':
       set((s) =>
@@ -638,7 +790,7 @@ function handleChatEvent(
     case 'activity': {
       const activity = event.activity
       set((s) => {
-        if (!s.streaming) return {}
+        if (!s.streaming || s.streaming.requestId !== event.requestId) return {}
         const activities = [...s.streaming.activities]
         const idx = activities.findIndex((a) => a.id === activity.id)
         if (idx >= 0) activities[idx] = activity
@@ -660,15 +812,19 @@ function handleChatEvent(
     }
     case 'done':
     case 'cancelled': {
-      const convId = get().activeConversationId
-      set({ streaming: null, isSending: false })
+      const state = get()
+      if (state.streaming && state.streaming.requestId !== event.requestId) return
+      const convId = event.conversationId ?? state.activeConversationId
+      set({ streaming: null, isSending: false, cancelRequested: false })
       if (convId) void refreshMessages(get, set, convId)
-      void get().refreshGit()
+      if (get().activeProjectId) void get().refreshGit()
       break
     }
     case 'error': {
-      const convId = get().activeConversationId
-      set({ streaming: null, isSending: false })
+      const state = get()
+      if (state.streaming && state.streaming.requestId !== event.requestId) return
+      const convId = event.conversationId ?? state.activeConversationId
+      set({ streaming: null, isSending: false, cancelRequested: false })
       get().toast(event.error, 'error')
       if (convId) void refreshMessages(get, set, convId)
       break

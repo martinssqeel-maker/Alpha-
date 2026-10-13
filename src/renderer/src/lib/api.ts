@@ -63,10 +63,14 @@ export const api = {
 
   conversations: {
     list: () => invoke(CH.conversationsList, undefined),
+    search: (query: string) => invoke(CH.conversationsSearch, { query }),
+    archived: () => invoke(CH.conversationsArchived, undefined),
     get: (id: string) => invoke(CH.conversationsGet, { id }),
     create: (input: unknown) => invoke(CH.conversationsCreate, input),
     update: (input: unknown) => invoke(CH.conversationsUpdate, input),
     remove: (id: string) => invoke(CH.conversationsDelete, { id }),
+    archive: (id: string) => invoke(CH.conversationsArchive, { id }),
+    unarchive: (id: string) => invoke(CH.conversationsUnarchive, { id }),
     append: (input: unknown) => invoke(CH.conversationsAppend, input),
     clear: (id: string) => invoke(CH.conversationsClear, { id })
   },
@@ -76,6 +80,7 @@ export const api = {
     open: (path: string) => invoke(CH.projectOpen, { path }),
     list: () => invoke(CH.projectList, undefined),
     remove: (id: string) => invoke(CH.projectRemove, { id }),
+    rename: (id: string, name: string) => invoke(CH.projectRename, { id, name }),
     info: (id: string) => invoke(CH.projectInfo, { id }),
     tree: (projectId: string, path?: string, depth?: number) =>
       invoke(CH.projectTree, { projectId, path, depth }),

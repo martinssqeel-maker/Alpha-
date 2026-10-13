@@ -23,11 +23,28 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('theme presets', () => {
-  it('ships seven choices and resolves System to the operating-system palette', () => {
-    expect(THEME_OPTIONS).toHaveLength(7)
+  it('ships the full preset gallery and resolves System to the operating-system palette', () => {
+    expect(THEME_OPTIONS).toHaveLength(15)
+    expect(RESOLVED_THEME_OPTIONS).toHaveLength(14)
+    expect(THEME_OPTIONS.map((option) => option.id)).toContain('mirage')
+    for (const option of THEME_OPTIONS) {
+      expect(option.group, `${option.id} needs a gallery group`).toBeTruthy()
+      expect(option.description, `${option.id} needs a description`).toBeTruthy()
+    }
     expect(resolveTheme('system', true)).toBe('dark')
     expect(resolveTheme('system', false)).toBe('light')
     expect(resolveTheme('alpine', false)).toBe('alpine')
+  })
+
+  it('keeps every gallery group non-empty and offers light and dark variety', () => {
+    const groups = new Set(THEME_OPTIONS.map((option) => option.group))
+    expect(groups.size).toBeGreaterThanOrEqual(4)
+    for (const group of groups) {
+      expect(THEME_OPTIONS.filter((option) => option.group === group).length).toBeGreaterThan(0)
+    }
+    // A light preset (other than the default) must be selectable, and several dark ones.
+    expect(THEME_TOKENS.mirage['--surface-0']).not.toBe(THEME_TOKENS.light['--surface-0'])
+    expect(RESOLVED_THEME_OPTIONS.length).toBeGreaterThanOrEqual(12)
   })
 
   it('provides complete semantic tokens for every palette and changes more than accent', () => {

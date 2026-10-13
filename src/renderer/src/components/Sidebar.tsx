@@ -14,6 +14,7 @@ import {
   Pencil,
   Plug,
   Search,
+  Sparkles,
   Settings as SettingsIcon,
   Trash2,
   UserRound
@@ -26,8 +27,10 @@ import AccountModal from './AccountModal'
 
 const NAV: { view: View; label: string; icon: typeof Boxes }[] = [
   { view: 'home', label: 'Home', icon: Home },
+  { view: 'projects', label: 'Projects', icon: FolderGit2 },
   { view: 'models', label: 'Models', icon: Boxes },
   { view: 'providers', label: 'AI Providers', icon: Plug },
+  { view: 'skills', label: 'Agent Skills', icon: Sparkles },
   { view: 'github', label: 'GitHub', icon: Github },
   { view: 'settings', label: 'Settings', icon: SettingsIcon },
   { view: 'help', label: 'Help & Diagnostics', icon: LifeBuoy }
@@ -165,13 +168,23 @@ export default function Sidebar() {
         {query.trim() && !searching && !searchError && filtered.length === 0 && <div className="text-xs px-2 py-1" style={{ color: 'var(--text-disabled)' }}>No matching conversations</div>}
       </div>
 
-      <div className="p-2 sidebar-footer" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-        {NAV.map((item) => <button key={item.view} className={`nav-item ${view === item.view ? 'active' : ''}`} onClick={() => setView(item.view)}><item.icon size={16} /><span className="label text-xs">{item.label}</span></button>)}
-        <button className={`nav-item ${showAccount ? 'active' : ''}`} onClick={() => setShowAccount(true)}>
+      <nav className="p-2 sidebar-footer sidebar-footer-nav" aria-label="Workspace sections">
+        {NAV.map((item) => (
+          <button
+            key={item.view}
+            className={`nav-item ${view === item.view ? 'active' : ''}`}
+            aria-current={view === item.view ? 'page' : undefined}
+            title={item.label}
+            onClick={() => setView(item.view)}
+          >
+            <item.icon size={16} /><span className="label text-xs">{item.label}</span>
+          </button>
+        ))}
+        <button className={`nav-item ${showAccount ? 'active' : ''}`} onClick={() => setShowAccount(true)} title="Account and version">
           <UserRound size={16} /><span className="label text-xs flex-1">Account</span>
           {platform.enabled && <span className="status-dot" title={platform.authenticated ? (platform.config?.account?.email ?? 'Signed in') : 'Not signed in'} style={{ background: platform.authenticated ? 'var(--accent)' : 'var(--text-disabled)', borderRadius: 'var(--radius-pill)', width: 8, height: 8 }} />}
         </button>
-      </div>
+      </nav>
       <AccountModal open={showAccount} onClose={() => setShowAccount(false)} />
     </div>
   )

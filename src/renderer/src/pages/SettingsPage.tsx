@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Archive, RotateCcw, Trash2 } from 'lucide-react'
 import type { PermissionLevel, PermissionMode, PermissionSettings, UpdateStatus } from '@shared/types'
 import { permissionsForMode } from '@shared/permissions'
@@ -7,6 +7,8 @@ import { THEME_OPTIONS } from '@shared/theme'
 import { api } from '../lib/api'
 import { relativeTime } from '../lib/relativeTime'
 import { useApp } from '../store/useApp'
+import ThemeGallery from '../components/ThemeGallery'
+import ShortcutList from '../components/ShortcutList'
 
 const PERMISSION_ROWS: { key: keyof Omit<PermissionSettings, 'mode'>; label: string; hint: string }[] = [
   { key: 'fileWrites', label: 'Edit files', hint: 'Create or modify files inside the project' },
@@ -26,8 +28,29 @@ const MODES: { id: PermissionMode; label: string }[] = [
   { id: 'agent', label: 'Agent — autonomous, safer defaults' }
 ]
 
+const SETTINGS_SECTIONS = [
+  { id: 'settings-appearance', label: 'Appearance' },
+  { id: 'settings-models', label: 'Models & providers' },
+  { id: 'settings-permissions', label: 'Permissions & safety' },
+  { id: 'settings-skills', label: 'Agent skills' },
+  { id: 'settings-project', label: 'Project settings' },
+  { id: 'settings-voice', label: 'Voice' },
+  { id: 'settings-git', label: 'Git & publishing' },
+  { id: 'settings-privacy', label: 'Privacy & logs' },
+  { id: 'settings-shortcuts', label: 'Keyboard shortcuts' },
+  { id: 'settings-browser', label: 'Browser preview' },
+  { id: 'settings-external-browser', label: 'External browsers' },
+  { id: 'settings-mcp', label: 'MCP' },
+  { id: 'settings-platform', label: 'Alpha Cloud' },
+  { id: 'settings-updates', label: 'Updates' },
+  { id: 'settings-archived', label: 'Archived conversations' }
+]
+
 export default function SettingsPage() {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS[0].id)
   const settings = useApp((s) => s.settings)
+  const activeProject = useApp((s) => s.projects.find((project) => project.id === s.activeProjectId) ?? null)
   const providers = useApp((s) => s.providers)
   const save = useApp((s) => s.saveSettings)
   const models = useApp((s) => s.models)
@@ -36,6 +59,20 @@ export default function SettingsPage() {
   const checkForUpdates = useApp((s) => s.checkForUpdates)
   const downloadUpdate = useApp((s) => s.downloadUpdate)
   const installUpdate = useApp((s) => s.installUpdate)
+
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const targets = SETTINGS_SECTIONS.map(({ id }) => document.getElementById(id)).filter((node): node is HTMLElement => Boolean(node))
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      if (visible) setActiveSection(visible.target.id)
+    }, { root, rootMargin: '-8px 0px -72% 0px', threshold: 0 })
+    for (const target of targets) observer.observe(target)
+    return () => observer.disconnect()
+  }, [])
 
   if (!settings) return null
   const perms = settings.permissions
@@ -54,18 +91,44 @@ export default function SettingsPage() {
         <h1 className="page-title">Settings</h1>
       </div>
 
-      <div className="page-scroll" style={{ maxWidth: 860 }}>
-        <Section title="Appearance">
-          <Row label="Theme" hint="Applies to the whole workspace.">
-            <select className="select" value={settings.theme} onChange={(e) => void save({ theme: e.target.value })}>
-              {THEME_OPTIONS.map((theme) => (
-                <option key={theme.id} value={theme.id}>{theme.label}</option>
-              ))}
-            </select>
+      <div className="page-scroll settings-scroll" ref={scrollRef}>
+        <div className="settings-layout">
+          <nav className="settings-nav" aria-label="Settings sections">
+            {SETTINGS_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                className={`nav-item ${activeSection === section.id ? 'active' : ''}`}
+                aria-current={activeSection === section.id ? 'page' : undefined}
+                onClick={() => {
+                  setActiveSection(section.id)
+                  document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+              >{section.label}</button>
+            ))}
+          </nav>
+          <div className="settings-sections">
+        <Section id="settings-appearance" title="Appearance" note="Pick a preset. Every card previews the real palette and applies immediately across the workspace.">
+          <ThemeGallery value={settings.theme} onChange={(theme) => void save({ theme })} />
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            {THEME_OPTIONS.length} presets · {THEME_OPTIONS.filter((theme) => theme.id !== 'system').length} concrete palettes · preferences are saved to this device.
+          </div>
+        </Section>
+
+        <Section id="settings-skills" title="Agent skills" note="Skills add focused guidance to the assistant's instructions.">
+          <Row label="Manage skills" hint="Enabled skills apply to new requests and can be changed any time.">
+            <button className="btn" onClick={() => useApp.getState().setView('skills')}>Browse agent skills</button>
           </Row>
         </Section>
 
-        <Section title="Local models">
+        <Section id="settings-project" title="Project settings" note="Project-scoped instructions and overrides are not available yet.">
+          <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            {activeProject
+              ? <>Current project: <span className="mono">{activeProject.rootPath}</span>. Alpha does not currently save separate project instructions or model overrides.</>
+              : 'Open or select a project to see its scope. Alpha does not currently save separate project instructions or model overrides.'}
+          </div>
+        </Section>
+
+        <Section id="settings-models" title="Local models">
           <Row label="Ollama URL" hint="The running Ollama endpoint on this machine.">
             <input
               className="input mono"
@@ -91,9 +154,12 @@ export default function SettingsPage() {
             </select>
             <button className="btn" onClick={() => void refreshModels()}>Refresh models</button>
           </Row>
+          <Row label="AI provider accounts" hint="Configure and test cloud providers in their dedicated page.">
+            <button className="btn" onClick={() => useApp.getState().setView('providers')}>Manage AI providers</button>
+          </Row>
         </Section>
 
-        <Section title="Permissions & safety" note="Approval prompts respect the current mode.">
+        <Section id="settings-permissions" title="Permissions & safety" note="Approval prompts respect the current mode.">
           <Row label="Mode" hint="Chat disables all project actions.">
             <select className="select" value={perms.mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>
               {MODES.map((m) => (
@@ -124,7 +190,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Voice">
+        <Section id="settings-voice" title="Voice">
           <Row label="Enable voice input" hint="Dictate prompts using your microphone.">
             <Toggle checked={settings.voice.enabled} onChange={(v) => void save({ voice: { enabled: v } })} />
           </Row>
@@ -159,7 +225,7 @@ export default function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Git & publishing">
+        <Section id="settings-git" title="Git & publishing">
           <Row label="After committing" hint="Whether to publish automatically.">
             <select className="select" value={settings.git.publishBehavior} onChange={(e) => void save({ git: { publishBehavior: e.target.value } })}>
               <option value="never">Never push automatically</option>
@@ -172,7 +238,7 @@ export default function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Privacy & logs">
+        <Section id="settings-privacy" title="Privacy & logs">
           <Row label="Log level" hint="Diagnostics verbosity. Secrets are always redacted.">
             <select className="select" value={settings.privacy.logLevel} onChange={(e) => void save({ privacy: { logLevel: e.target.value } })}>
               <option value="error">error</option>
@@ -188,7 +254,30 @@ export default function SettingsPage() {
             />
           </Row>
         </Section>
-        <Section title="Alpha Cloud (platform)" note="Connects the app to the Alpha backend — accounts, plans and cloud models via the AI gateway.">
+        <Section id="settings-shortcuts" title="Keyboard shortcuts" note="These are the shortcuts Alpha actually handles in the running app. Nothing is listed that is not wired up.">
+          <ShortcutList />
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Key labels follow your operating system. Alpha does not register system-wide global hotkeys, so shortcuts only apply while the window is focused.
+          </div>
+        </Section>
+        <Section id="settings-browser" title="Browser preview" note="The Browser panel is available in the workspace inspector.">
+          <Row label="Local preview" hint="Enter a local dev-server URL in the Browser panel. The preview has an isolated session.">
+            <button className="btn" onClick={() => {
+              const state = useApp.getState()
+              state.setInspectorOpen(true)
+              state.setInspectorTab('browser')
+              state.setView('chat')
+            }}>Open browser preview</button>
+          </Row>
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Alpha does not discover or start project dev servers automatically.</div>
+        </Section>
+        <Section id="settings-external-browser" title="External browsers" note="External browser profile integration is not available.">
+          <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Alpha does not inspect or import Chrome, Edge, or other browser profiles. Use the Browser panel’s Open externally action when you want to continue in your default browser.</div>
+        </Section>
+        <Section id="settings-mcp" title="MCP" note="Model Context Protocol servers are not supported yet.">
+          <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Alpha does not connect to MCP servers or store MCP configurations.</div>
+        </Section>
+        <Section id="settings-platform" title="Alpha Cloud (platform)" note="Connects the app to the Alpha backend — accounts, plans and cloud models via the AI gateway.">
           <Row label="Enabled" hint="Turn the platform connection on/off.">
             <Toggle
               checked={settings.platform.enabled}
@@ -210,7 +299,7 @@ export default function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Updates" note="Checks the release channel for a newer version.">
+        <Section id="settings-updates" title="Updates" note="Checks the release channel for a newer version.">
           <Row label="Current version">
             <span className="mono text-sm">{update?.currentVersion ?? '—'}</span>
           </Row>
@@ -238,6 +327,8 @@ export default function SettingsPage() {
           </Row>
         </Section>
         <ArchivedConversations />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -261,7 +352,7 @@ function ArchivedConversations() {
   useEffect(() => { void load() }, [])
 
   return (
-    <Section title="Archived conversations" note="Archived conversations stay in your local history until you delete them.">
+    <Section id="settings-archived" title="Archived conversations" note="Archived conversations stay in your local history until you delete them.">
       {loading ? <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading archive…</div> : error ? (
         <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--danger)' }}><span>{error}</span><button className="btn" onClick={() => void load()}>Retry</button></div>
       ) : conversations.length === 0 ? <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No archived conversations.</div> : (
@@ -315,9 +406,9 @@ function updateHint(update: UpdateStatus | null): string {
   }
 }
 
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+function Section({ id, title, note, children }: { id?: string; title: string; note?: string; children: React.ReactNode }) {
   return (
-    <div className="card mb-3">
+    <div id={id} className="card mb-3 settings-section">
       <div className="mb-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         {note && <div className="text-xs" style={{ color: 'var(--faint)' }}>{note}</div>}

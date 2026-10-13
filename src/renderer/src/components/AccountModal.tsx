@@ -18,6 +18,16 @@ export default function AccountModal({ open, onClose }: Props) {
     void api.diagnostics().then((d) => setAppVersion(d.appVersion ?? '')).catch(() => undefined)
   }, [open])
 
+  // Escape closes the dialog, matching the shortcut listed in Settings.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
   if (!open) return null
 
   return (

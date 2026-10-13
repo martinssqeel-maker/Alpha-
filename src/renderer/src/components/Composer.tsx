@@ -37,6 +37,19 @@ export default function Composer() {
     ta.style.height = Math.min(ta.scrollHeight, 220) + 'px'
   }, [text])
 
+  // Escape stops the running response — the same action as the Stop button,
+  // reachable without leaving the keyboard.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      if (!useApp.getState().isSending) return
+      event.preventDefault()
+      useApp.getState().stop()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const doSend = async (): Promise<void> => {
     const value = text.trim()
     if (!value && attachments.length === 0) return

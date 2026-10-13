@@ -6,6 +6,7 @@ import Splash from './components/Splash'
 import Inspector from './components/Inspector'
 import Toasts from './components/Toasts'
 import ApprovalDialog from './components/ApprovalDialog'
+import ErrorBoundary from './components/ErrorBoundary'
 import ChatPage from './pages/ChatPage'
 import ModelsPage from './pages/ModelsPage'
 import ProvidersPage from './pages/ProvidersPage'
@@ -14,6 +15,7 @@ import GitHubPage from './pages/GitHubPage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
 import HomePage from './pages/HomePage'
+import SkillsPage from './pages/SkillsPage'
 
 /** How long the launch splash is held, and how long its fade-out takes. */
 const SPLASH_HOLD_MS = 1600
@@ -119,6 +121,8 @@ export default function App() {
         return <ProjectsPage />
       case 'github':
         return <GitHubPage />
+      case 'skills':
+        return <SkillsPage />
       case 'settings':
         return <SettingsPage />
       case 'help':
@@ -133,7 +137,9 @@ export default function App() {
       <TitleBar />
       <div className="workspace">
         <Sidebar />
-        <div className="main-area">{ready ? content() : <Loading />}</div>
+        <div className="main-area">
+          <ErrorBoundary label="This screen">{ready ? content() : <Loading />}</ErrorBoundary>
+        </div>
         {view === 'chat' && inspectorOpen && (
           <>
             <div
@@ -144,7 +150,9 @@ export default function App() {
               }}
             />
             <div className="inspector" style={{ ['--inspector-width' as string]: `${inspectorWidth}px` }}>
-              <Inspector />
+              <ErrorBoundary label="The workspace panel">
+                <Inspector />
+              </ErrorBoundary>
             </div>
           </>
         )}

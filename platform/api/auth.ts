@@ -619,3 +619,5 @@ authRoutes.post('/signout', requireAuth, async (c) => {
   }
   return c.json({ ok: true })
 })
+
+authRoutes.get('/status', (c) => c.json({ ok: true, authenticated: false, authRequired: false }))

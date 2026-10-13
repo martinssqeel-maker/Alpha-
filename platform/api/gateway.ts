@@ -9,7 +9,7 @@ import { loadPlatformConfig } from './platform'
 
 export const gatewayRoutes = new Hono<AppEnv>()
 
-gatewayRoutes.use('*', requireAuth)
+
 
 interface PlatformConfigLite {
   features?: Record<string, unknown>

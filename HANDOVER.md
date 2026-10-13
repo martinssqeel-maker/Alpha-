@@ -821,22 +821,25 @@ computed `background-image: none`, empty text.
 - No second Alpha install: `%LOCALAPPDATA%\Programs` has no Alpha folder, and the
   only running processes are the four from `C:\Program Files`.
 
-### 5. What the operator is most likely seeing (needs their input)
+### 5. Resolution — it was a stale window (guess 2)
 
-Cannot be answered from the machine; the app is clean. Ranked guesses:
+**Confirmed by the operator on 2026-10-13: after closing and relaunching Alpha,
+the new logo shows.** The report came from a window that had been opened *before*
+the 1.0.5 install — Electron keeps the old renderer loaded for the life of the
+process, so the taskbar icon (read from the exe by the shell) updates while the
+running window's in-app branding does not. **No code change was needed.**
 
-1. **The Alpha mark itself reads as "a purple A".** It is literally an
+Ranked guesses at the time, kept for the next agent who hits the same report:
+
+1. **A window opened before the install is still on screen** ← **this one.**
+   Fix: close every Alpha window and relaunch.
+2. **The Alpha mark itself reads as "a purple A".** It is literally an
    "A"-shaped symbol in blue→violet on a dark rounded tile. That is the provided
-   asset, not leftover branding. If the expectation was the *standalone symbol
-   without the dark tile*, or a light-on-dark variant for the title bar, that is
-   an asset/usage decision, not a bug — and per the brief I did not redesign it.
-2. **A window opened before the 1.0.5 install** is still on screen (the old
-   renderer stays loaded until the app restarts). Fix: close every Alpha window
-   and relaunch.
+   asset, not leftover branding. If the expectation is ever the *standalone
+   symbol without the dark tile*, or a light-on-dark variant for the title bar,
+   that is an asset/usage decision, not a bug — do not "fix" it unasked.
 3. **Windows icon cache** for a *pinned* taskbar tile (a pin keeps the icon it
    captured when pinned). Fix: unpin and re-pin from Start Menu.
-4. The screenshot they referred to was **not attached** to the message, so I
-   could not look at the exact pixels they saw.
 
 ### 6. Cleanup
 
@@ -846,6 +849,11 @@ two throwaway profiles from §15 were already removed.
 
 ### NEXT STEP
 
-Wait for the operator to re-attach the screenshot or name the exact screen.
-Do not change branding code on speculation — the bundle, the running window and
-the icon wiring are all verified clean.
+Nothing open on desktop branding. Installed `1.0.5.0` equals the published
+`v1.0.5`, so the auto-updater has no newer release to offer — an "update
+available" prompt would be a genuine bug in `src/main` update handling and is
+worth investigating if one ever appears.
+
+General lesson for this project: **after any install, close every Alpha window
+before judging UI branding.** A running Electron process never reloads its
+renderer from the new `app.asar`.

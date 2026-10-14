@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { getLogger } from './logger'
 import type { SecretStore } from './secrets'
+import type { DeviceStartResult, GitHubOAuthService } from './githubOAuth'
 
 const GITHUB_TOKEN_REF = 'github:token'
 
@@ -42,13 +43,19 @@ export interface GithubRepo {
 }
 
 export class GithubService {
-  constructor(private secrets: SecretStore) {}
+  constructor(private secrets: SecretStore, private oauth?: GitHubOAuthService) {}
 
   hasToken(): boolean {
     return this.secrets.has(GITHUB_TOKEN_REF)
   }
 
-  private token(): string | null {
+  /**
+   * Resolve the access token for API calls. For a Device Flow session this
+   * transparently refreshes first (and returns null after a failed refresh, so
+   * status reports signed-out). For a stored PAT it returns the token as-is.
+   */
+  private async token(): Promise<string | null> {
+    if (this.oauth?.isSession()) return this.oauth.getValidAccessToken()
     return this.secrets.get(GITHUB_TOKEN_REF)
   }
 
@@ -58,24 +65,25 @@ export class GithubService {
   }
 
   async status(): Promise<{ connected: boolean; login?: string; method?: string; scopes?: string[]; message?: string }> {
-    const token = this.token()
+    const token = await this.token()
     if (token) {
+      const method = this.oauth?.isSession() ? 'device' : 'token'
       try {
         const res = await fetch('https://api.github.com/user', { headers: apiHeaders(token) })
         if (res.status === 401) {
-          return { connected: false, method: 'token', message: 'Stored token is invalid or expired.' }
+          return { connected: false, method, message: 'Stored token is invalid or expired.' }
         }
         if (!res.ok) {
-          return { connected: false, method: 'token', message: `GitHub API returned ${res.status}.` }
+          return { connected: false, method, message: `GitHub API returned ${res.status}.` }
         }
         const user = (await res.json()) as { login: string }
         const scopes = (res.headers.get('x-oauth-scopes') ?? '')
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
-        return { connected: true, login: user.login, method: 'token', scopes }
+        return { connected: true, login: user.login, method, scopes }
       } catch (e) {
-        return { connected: false, method: 'token', message: `Network error: ${(e as Error).message}` }
+        return { connected: false, method, message: `Network error: ${(e as Error).message}` }
       }
     }
     if (await this.ghAvailable()) {
@@ -101,11 +109,11 @@ export class GithubService {
     method?: 'token' | 'device'
   }): Promise<{ ok: boolean; login?: string; message?: string }> {
     if (input.method === 'device') {
-      return {
-        ok: false,
-        message:
-          'Device flow requires an OAuth client ID configured for this app, which is not bundled. Use a personal access token or the GitHub CLI instead.'
-      }
+      // Device Flow is a two-step exchange (start, then poll). `connect` kicks
+      // it off; the renderer drives `github:devicePoll` afterwards.
+      const started = await this.startDeviceFlow()
+      if (!started.ok) return { ok: false, message: started.message }
+      return { ok: true, message: 'Device flow started. Approve the code in your browser.' }
     }
     if (!input.token) return { ok: false, message: 'No token provided.' }
     try {
@@ -114,6 +122,9 @@ export class GithubService {
         return { ok: false, message: res.status === 401 ? 'Invalid token.' : `GitHub API returned ${res.status}.` }
       }
       const user = (await res.json()) as { login: string }
+      // A PAT is not an OAuth session; clear any OAuth marker so status reports
+      // the stored token path, then persist the token under the shared ref.
+      this.oauth?.logout()
       this.secrets.set(GITHUB_TOKEN_REF, input.token)
       getLogger().info('github', `connected as ${user.login}`)
       return { ok: true, login: user.login }
@@ -122,12 +133,49 @@ export class GithubService {
     }
   }
 
+  /**
+   * Start GitHub Device Flow. Returns the user code + verification URL for the
+   * renderer to display, plus the poll interval/expiry. Delegates to the OAuth
+   * service; the actual token arrives later via `pollDevice()`.
+   */
+  async startDeviceFlow(): Promise<DeviceStartResult> {
+    if (!this.oauth) {
+      return { ok: false, message: 'Browser sign-in is unavailable in this build.' }
+    }
+    return this.oauth.startDeviceFlow()
+  }
+
+  /** Whether an OAuth Client ID is configured (so the UI can offer browser sign-in). */
+  isOauthConfigured(): boolean {
+    return this.oauth?.isConfigured() ?? false
+  }
+
+  /** Perform one Device Flow token poll. See {@link GitHubOAuthService.pollOnce}. */
+  pollDevice(): Promise<import('./githubOAuth').DevicePollResult> {
+    if (!this.oauth) {
+      return Promise.resolve({ status: 'error', message: 'Browser sign-in is unavailable in this build.' })
+    }
+    return this.oauth.pollOnce()
+  }
+
+  /** Cancel any in-progress Device Flow without touching a completed session. */
+  cancelDevice(): void {
+    this.oauth?.cancel()
+  }
+
+  /** Verification URL of any in-progress Device Flow, for the re-open button. */
+  deviceVerificationUri(): string | null {
+    return this.oauth?.verificationUri() ?? null
+  }
+
   disconnect(): void {
+    // Removes both a stored PAT and any Device Flow session metadata.
+    this.oauth?.logout()
     this.secrets.delete(GITHUB_TOKEN_REF)
   }
 
   async repos(query?: string): Promise<GithubRepo[]> {
-    const token = this.token()
+    const token = await this.token()
     if (token) {
       try {
         const url = query
@@ -179,7 +227,7 @@ export class GithubService {
     description?: string
     private?: boolean
   }): Promise<{ ok: boolean; fullName?: string; cloneUrl?: string; message?: string }> {
-    const token = this.token()
+    const token = await this.token()
     if (token) {
       try {
         const res = await fetch('https://api.github.com/user/repos', {

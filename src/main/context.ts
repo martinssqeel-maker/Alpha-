@@ -8,6 +8,7 @@ import { Db } from './services/db'
 import { EditService } from './services/editService'
 import { GitService } from './services/git'
 import { GithubService } from './services/github'
+import { GitHubOAuthService } from './services/githubOAuth'
 import { getLogger, initLogger, type Logger } from './services/logger'
 import { ApprovalBroker, PermissionService } from './services/permissionService'
 import { PlatformService } from './services/platform'
@@ -104,11 +105,18 @@ export async function buildContext(
   const secrets = new SecretStore(paths.secretsPath, cipher)
   const registry = new ProviderRegistry(providersRepo, secrets)
 
+  // GitHub Device Flow auth. The Client ID comes from GITHUB_OAUTH_CLIENT_ID or a
+  // github-oauth.json file (repo root in dev; userData — %APPDATA%/<app> — for a
+  // packaged install). No client secret is ever bundled; the service shares the
+  // existing `github:token` secret ref with the PAT/CLI path.
+  const githubOAuthConfigPath = path.join(paths.userData, 'github-oauth.json')
+  const githubOAuth = new GitHubOAuthService({ secrets, configPaths: [githubOAuthConfigPath] })
+
   const projectService = new ProjectService(projectsRepo)
   const checkpoints = new CheckpointService(db, paths.checkpointsDir)
   const editService = new EditService(projectService, checkpoints)
   const git = new GitService(projectService)
-  const github = new GithubService(secrets)
+  const github = new GithubService(secrets, githubOAuth)
   const permissions = new PermissionService(settings)
   const terminal = new TerminalService(projectService, permissions)
   const skillsDirectory = app.isPackaged

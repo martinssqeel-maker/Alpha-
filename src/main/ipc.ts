@@ -371,10 +371,34 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
     return ctx.git.setRemote(projectId, name, url)
   })
 
-  handle(CH.githubStatus, null, () => ctx.github.status())
+  handle(CH.githubStatus, null, async () => ({
+    ...(await ctx.github.status()),
+    oauthConfigured: ctx.github.isOauthConfigured()
+  }))
   handle(CH.githubConnect, zGithubConnect, (p) => ctx.github.connect(p as never))
   handle(CH.githubDisconnect, null, () => {
     ctx.github.disconnect()
+    return { ok: true }
+  })
+  // GitHub Device Flow. Start opens GitHub's official device page in the user's
+  // default browser; the renderer then polls at GitHub's interval. No client
+  // secret is involved and no browser callback is faked.
+  handle(CH.githubDeviceStart, null, async () => {
+    const result = await ctx.github.startDeviceFlow()
+    if (result.ok && result.verificationUri) {
+      void shell.openExternal(result.verificationUri)
+    }
+    return result
+  })
+  handle(CH.githubDevicePoll, null, () => ctx.github.pollDevice())
+  handle(CH.githubDeviceCancel, null, () => {
+    ctx.github.cancelDevice()
+    return { ok: true }
+  })
+  handle(CH.githubDeviceOpen, null, () => {
+    const uri = ctx.github.deviceVerificationUri()
+    if (!uri) return { ok: false, message: 'No sign-in is in progress.' }
+    void shell.openExternal(uri)
     return { ok: true }
   })
   handle(CH.githubRepos, null, (p) => ctx.github.repos((p as { query?: string } | undefined)?.query))

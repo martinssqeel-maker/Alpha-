@@ -89,6 +89,10 @@ export const CH = {
   githubDisconnect: 'github:disconnect',
   githubRepos: 'github:repos',
   githubCreateRepo: 'github:createRepo',
+  githubDeviceStart: 'github:deviceStart',
+  githubDevicePoll: 'github:devicePoll',
+  githubDeviceCancel: 'github:deviceCancel',
+  githubDeviceOpen: 'github:deviceOpen',
 
   attachmentsAnalyze: 'attachments:analyze',
   attachmentsPick: 'attachments:pick',

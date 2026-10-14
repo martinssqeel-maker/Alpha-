@@ -150,7 +150,11 @@ export const api = {
     connect: (input: unknown) => invoke(CH.githubConnect, input),
     disconnect: () => invoke(CH.githubDisconnect, undefined),
     repos: (query?: string) => invoke(CH.githubRepos, query ? { query } : undefined),
-    createRepo: (input: unknown) => invoke(CH.githubCreateRepo, input)
+    createRepo: (input: unknown) => invoke(CH.githubCreateRepo, input),
+    deviceStart: () => invoke(CH.githubDeviceStart, undefined),
+    devicePoll: () => invoke(CH.githubDevicePoll, undefined),
+    deviceCancel: () => invoke(CH.githubDeviceCancel, undefined),
+    deviceOpen: () => invoke(CH.githubDeviceOpen, undefined)
   },
 
   attachments: {

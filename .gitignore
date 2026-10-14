@@ -23,3 +23,9 @@ supabase/.temp/
 .env.*
 !.env.example
 admin/.env
+
+# Local GitHub OAuth app config. The Client ID is a public identifier, but it is
+# machine-specific here, so it stays out of the repository. See HANDOVER.md for
+# where to place it (repo root for dev; userData for a packaged install).
+github-oauth.json
+github-oauth.local.json

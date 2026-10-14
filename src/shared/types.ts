@@ -393,3 +393,29 @@ export interface UpdateStatus {
 }
 
 export type UpdateEvent = UpdateStatus
+
+/** GitHub Device Flow: result of requesting a device code. */
+export interface GithubDeviceStartResult {
+  ok: boolean
+  message?: string
+  userCode?: string
+  verificationUri?: string
+  interval?: number
+  expiresIn?: number
+}
+
+export type GithubDevicePollStatus =
+  | 'pending'
+  | 'slow_down'
+  | 'success'
+  | 'denied'
+  | 'expired'
+  | 'error'
+
+/** GitHub Device Flow: result of a single token poll. */
+export interface GithubDevicePollResult {
+  status: GithubDevicePollStatus
+  login?: string
+  message?: string
+  interval?: number
+}

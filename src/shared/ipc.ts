@@ -9,6 +9,8 @@ import type {
   DiffFile,
   FileNode,
   GitStatus,
+  GithubDevicePollResult,
+  GithubDeviceStartResult,
   ModelInfo,
   PendingApproval,
   PlatformStatus,
@@ -165,9 +167,13 @@ export interface IpcContract {
   [CH.gitRemotes]: { req: { projectId: string }; res: { name: string; url: string }[] }
   [CH.gitSetRemote]: { req: unknown; res: { ok: boolean; message?: string } }
 
-  [CH.githubStatus]: { req: void; res: { connected: boolean; login?: string; method?: string; scopes?: string[]; message?: string } }
+  [CH.githubStatus]: { req: void; res: { connected: boolean; login?: string; method?: string; scopes?: string[]; message?: string; oauthConfigured?: boolean } }
   [CH.githubConnect]: { req: unknown; res: { ok: boolean; login?: string; message?: string; verificationUri?: string; userCode?: string; deviceCode?: string; interval?: number; expiresIn?: number } }
   [CH.githubDisconnect]: { req: void; res: { ok: true } }
+  [CH.githubDeviceStart]: { req: void; res: GithubDeviceStartResult }
+  [CH.githubDevicePoll]: { req: void; res: GithubDevicePollResult }
+  [CH.githubDeviceCancel]: { req: void; res: { ok: true } }
+  [CH.githubDeviceOpen]: { req: void; res: { ok: boolean; message?: string } }
   [CH.githubRepos]: { req: { query?: string } | undefined; res: { fullName: string; name: string; private: boolean; cloneUrl: string; defaultBranch: string; updatedAt: string }[] }
   [CH.githubCreateRepo]: { req: unknown; res: { ok: boolean; fullName?: string; cloneUrl?: string; message?: string } }
 

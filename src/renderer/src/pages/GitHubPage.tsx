@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Github, Link2, Plus, RefreshCw, Unplug } from 'lucide-react'
+import { Check, Copy, Github, Link2, Plus, RefreshCw, Unplug } from 'lucide-react'
 import { api } from '../lib/api'
 import { useApp } from '../store/useApp'
 
-type Status = { connected: boolean; login?: string; method?: string; scopes?: string[]; message?: string }
+type Status = {
+  connected: boolean
+  login?: string
+  method?: string
+  scopes?: string[]
+  message?: string
+  oauthConfigured?: boolean
+}
 type Repo = { fullName: string; name: string; private: boolean; cloneUrl: string; defaultBranch: string; updatedAt: string }
+
+/** A Device Flow sign-in that is waiting for the user to approve in the browser. */
+type Device = { userCode: string; verificationUri: string; interval: number; expiresAt: number }
 
 export default function GitHubPage() {
   const toast = useApp((s) => s.toast)
@@ -18,6 +28,10 @@ export default function GitHubPage() {
   const [creating, setCreating] = useState(false)
   const [repoName, setRepoName] = useState('')
   const [repoPrivate, setRepoPrivate] = useState(true)
+  const [device, setDevice] = useState<Device | null>(null)
+  const [deviceStatus, setDeviceStatus] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [now, setNow] = useState(Date.now())
 
   const loadStatus = async (): Promise<void> => {
     try {
@@ -31,6 +45,121 @@ export default function GitHubPage() {
     void loadStatus()
   }, [])
 
+  // Device Flow polling. Each tick performs a single poll in the main process;
+  // the delay comes from GitHub's returned interval and is bumped on `slow_down`.
+  // The effect tears down on cancel / completion / unmount, so polling always stops.
+  useEffect(() => {
+    if (!device) return
+    let cancelled = false
+    let timer: number | undefined
+
+    const schedule = (delayMs: number): void => {
+      timer = window.setTimeout(() => void tick(), delayMs)
+    }
+
+    const tick = async (): Promise<void> => {
+      if (cancelled) return
+      try {
+        const res = await api.github.devicePoll()
+        if (cancelled) return
+        if (res.status === 'pending') {
+          setDeviceStatus('Waiting for you to authorize in the browser…')
+          schedule((res.interval ?? device.interval) * 1000)
+          return
+        }
+        if (res.status === 'slow_down') {
+          setDeviceStatus('Waiting… GitHub asked us to poll a little more slowly.')
+          schedule((res.interval ?? device.interval) * 1000)
+          return
+        }
+        if (res.status === 'success') {
+          setDevice(null)
+          setDeviceStatus('')
+          toast(`Connected as ${res.login ?? 'GitHub user'}`, 'success')
+          await loadStatus()
+          void loadRepos(undefined, true)
+          return
+        }
+        // denied / expired / error / not-started
+        setDevice(null)
+        setDeviceStatus('')
+        toast(res.message ?? 'GitHub sign-in did not complete.', 'error')
+      } catch (e) {
+        if (!cancelled) {
+          setDevice(null)
+          setDeviceStatus('')
+          toast((e as Error).message, 'error')
+        }
+      }
+    }
+
+    setDeviceStatus('Waiting for you to authorize in the browser…')
+    schedule(device.interval * 1000)
+
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [device])
+
+  // Cheap 1s tick so the "expires in" countdown stays honest.
+  useEffect(() => {
+    if (!device) return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [device])
+
+  const startDevice = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const res = await api.github.deviceStart()
+      if (!res.ok || !res.userCode) throw new Error(res.message ?? 'Could not start GitHub sign-in.')
+      setCopied(false)
+      setNow(Date.now())
+      setDevice({
+        userCode: res.userCode,
+        verificationUri: res.verificationUri ?? 'https://github.com/login/device',
+        interval: res.interval ?? 5,
+        expiresAt: Date.now() + (res.expiresIn ?? 900) * 1000
+      })
+      // The main process has already opened the default browser at the code page.
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelDevice = async (): Promise<void> => {
+    try {
+      await api.github.deviceCancel()
+    } catch {
+      /* cancel is best-effort; clearing local state still stops polling */
+    }
+    setDevice(null)
+    setDeviceStatus('')
+    toast('GitHub sign-in cancelled.', 'info')
+  }
+
+  const reopenBrowser = async (): Promise<void> => {
+    try {
+      await api.github.deviceOpen()
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    }
+  }
+
+  const copyCode = async (): Promise<void> => {
+    if (!device) return
+    try {
+      await navigator.clipboard.writeText(device.userCode)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast('Could not copy the code — select it manually.', 'error')
+    }
+  }
+
   const connect = async (): Promise<void> => {
     if (!token.trim()) return
     setBusy(true)
@@ -40,7 +169,7 @@ export default function GitHubPage() {
       setToken('')
       toast(`Connected as ${res.login ?? 'user'}`, 'success')
       await loadStatus()
-      void loadRepos()
+      void loadRepos(undefined, true)
     } catch (e) {
       toast((e as Error).message, 'error')
     } finally {
@@ -55,8 +184,8 @@ export default function GitHubPage() {
     toast('Disconnected from GitHub', 'success')
   }
 
-  const loadRepos = async (q?: string): Promise<void> => {
-    if (!status?.connected) return
+  const loadRepos = async (q?: string, force = false): Promise<void> => {
+    if (!force && !status?.connected) return
     setBusy(true)
     try {
       setRepos(await api.github.repos(q))
@@ -106,6 +235,11 @@ export default function GitHubPage() {
     }
   }
 
+  const methodLabel = (method?: string): string =>
+    method === 'device' ? 'browser' : method === 'gh' ? 'GitHub CLI' : 'token'
+  const secondsLeft = device ? Math.max(0, Math.round((device.expiresAt - now) / 1000)) : 0
+  const minutesLeft = Math.max(1, Math.ceil(secondsLeft / 60))
+
   return (
     <div className="page">
       <div className="page-header">
@@ -126,7 +260,7 @@ export default function GitHubPage() {
             <span className="font-medium text-sm">
               {status?.connected ? `Connected as ${status.login ?? 'unknown'}` : 'Not connected'}
             </span>
-            {status?.method && <span className="pill">{status.method}</span>}
+            {status?.method && <span className="pill">{methodLabel(status.method)}</span>}
             <div className="flex-1" />
             {status?.connected && (
               <button className="btn danger" onClick={() => void disconnect()}>
@@ -134,28 +268,80 @@ export default function GitHubPage() {
               </button>
             )}
           </div>
-          {!status?.connected && (
-            <div className="mt-3">
+
+          {/* Browser sign-in (Device Flow) — waiting for approval in the browser. */}
+          {!status?.connected && device && (
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="text-sm">
+                In the browser that just opened, enter this code and approve Alpha:
+              </div>
+              <div
+                className="mono"
+                style={{ fontSize: 30, letterSpacing: '0.12em', fontWeight: 700, userSelect: 'all' }}
+              >
+                {device.userCode}
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="btn" onClick={() => void copyCode()}>
+                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy code'}
+                </button>
+                <button className="btn" onClick={() => void reopenBrowser()}>
+                  <Link2 size={14} /> Open GitHub again
+                </button>
+                <button className="btn danger" onClick={() => void cancelDevice()}>
+                  Cancel
+                </button>
+              </div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>{deviceStatus}</div>
+              <div className="text-xs" style={{ color: 'var(--faint)' }}>
+                This code expires in about {minutesLeft} minute{minutesLeft === 1 ? '' : 's'}. Nothing
+                is stored until you approve in the browser.
+              </div>
+            </div>
+          )}
+
+          {!status?.connected && !device && (
+            <div className="mt-3 flex flex-col gap-2">
+              <button
+                className="btn primary"
+                onClick={() => void startDevice()}
+                disabled={busy || !status?.oauthConfigured}
+              >
+                <Github size={14} /> Connect with browser
+              </button>
+              {!status?.oauthConfigured && (
+                <div className="text-xs" style={{ color: 'var(--faint)' }}>
+                  Browser sign-in needs a GitHub OAuth Client ID configured for this app (see
+                  HANDOVER.md). A personal access token still works below.
+                </div>
+              )}
+              <div className="text-xs" style={{ color: 'var(--faint)' }}>or connect with a token</div>
               <label className="field">
                 <span>Personal access token</span>
                 <input
                   className="input mono"
                   type="password"
-                  placeholder="ghp_…  (repo + workflow scopes)"
+                  placeholder="ghp_…  (repo scope)"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void connect()}
                 />
                 <span className="hint">
-                  Stored with OS-level encryption. If the GitHub CLI (<span className="mono">gh</span>) is installed and authenticated,
-                  it will be used automatically when no token is set.
+                  Stored with OS-level encryption. If the GitHub CLI (<span className="mono">gh</span>) is
+                  installed and authenticated, it is used automatically when no token is set.
                 </span>
               </label>
-              <button className="btn primary mt-2" onClick={() => void connect()} disabled={busy || !token.trim()}>
+              <button
+                className="btn"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={() => void connect()}
+                disabled={busy || !token.trim()}
+              >
                 <Link2 size={14} /> Connect
               </button>
             </div>
           )}
+
           {status?.message && (
             <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>{status.message}</div>
           )}

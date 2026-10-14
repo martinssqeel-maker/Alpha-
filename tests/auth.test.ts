@@ -18,6 +18,7 @@ import {
   verifyState
 } from '../platform/api/oauth'
 import { assetHostAllowed, gatingProblem, normalizeRelease } from '../platform/api/releases'
+import { signInLinkUrl } from '../platform/api/auth'
 
 beforeAll(() => {
   process.env.AUTH_JWT_SECRET = 'unit-test-secret-value-that-is-long-enough-32'
@@ -272,5 +273,43 @@ describe('github sign-in', () => {
     ])
     expect(identity?.subject).toBe('99')
     expect(identity?.subject).not.toBe('renamed-since')
+  })
+})
+
+describe('emailed sign-in links', () => {
+  it('points at the canonical account page, not the .html address', () => {
+    // `/account.html` is 308-redirected to `/account` by the host, so linking to
+    // it costs a hop and risks the token being dropped on the way.
+    const url = new URL(signInLinkUrl('Person@Example.com', 'tok en/+='))
+    expect(url.origin).toBe('https://alpha-website-lime.vercel.app')
+    expect(url.pathname).toBe('/account')
+    expect(url.searchParams.get('email')).toBe('Person@Example.com')
+    // The token is opaque and must survive a round trip untouched.
+    expect(url.searchParams.get('token')).toBe('tok en/+=')
+  })
+
+  it('falls back to the app callback, honouring the configured scheme', () => {
+    const previous = process.env.WEB_ACCOUNT_URL
+    delete process.env.WEB_ACCOUNT_URL
+    try {
+      expect(signInLinkUrl('a@example.com', 't')).toBe('alpha://auth/callback?email=a%40example.com&token=t')
+      process.env.AUTH_APP_SCHEME = 'alpha-dev'
+      expect(signInLinkUrl('a@example.com', 't')).toBe(
+        'alpha-dev://auth/callback?email=a%40example.com&token=t'
+      )
+    } finally {
+      delete process.env.AUTH_APP_SCHEME
+      process.env.WEB_ACCOUNT_URL = previous
+    }
+  })
+
+  it('tolerates a trailing slash on the configured site URL', () => {
+    const previous = process.env.WEB_ACCOUNT_URL
+    process.env.WEB_ACCOUNT_URL = 'https://alpha-website-lime.vercel.app/'
+    try {
+      expect(new URL(signInLinkUrl('a@example.com', 't')).pathname).toBe('/account')
+    } finally {
+      process.env.WEB_ACCOUNT_URL = previous
+    }
   })
 })

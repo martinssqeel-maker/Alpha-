@@ -132,6 +132,21 @@ function withParams(base: string, params: Record<string, string>): string {
   return url.toString()
 }
 
+/**
+ * Where an emailed sign-in link lands.
+ *
+ * The site is served with clean URLs, so `/account` is the canonical address of
+ * the account page — pointing at `/account.html` would cost an extra redirect hop
+ * and any doubt about the query surviving it. With no site configured the link
+ * opens the installed app instead, via the *configured* scheme rather than a
+ * hardcoded `alpha://`.
+ */
+export function signInLinkUrl(email: string, magic: string): string {
+  const query = `email=${encodeURIComponent(email)}&token=${encodeURIComponent(magic)}`
+  const webUrl = (getEnv('WEB_ACCOUNT_URL') ?? '').replace(/\/+$/, '')
+  return webUrl ? `${webUrl}/account?${query}` : `${appCallbackUrl()}?${query}`
+}
+
 authRoutes.post('/request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { email?: string }
   const email = (body.email ?? '').trim().toLowerCase()
@@ -163,12 +178,12 @@ authRoutes.post('/request', async (c) => {
     )
   })
 
-  const webUrl = (getEnv('WEB_ACCOUNT_URL') ?? '').replace(/\/+$/, '')
-  const magicUrl = webUrl
-    ? `${webUrl}/account.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(magic)}`
-    : `alpha://auth/callback?email=${encodeURIComponent(email)}&token=${encodeURIComponent(magic)}`
-
-  await sendOtpEmail({ to: email, code, magicUrl, expiresMinutes: ttlMinutes })
+  await sendOtpEmail({
+    to: email,
+    code,
+    magicUrl: signInLinkUrl(email, magic),
+    expiresMinutes: ttlMinutes
+  })
 
   const payload: Record<string, unknown> = {
     ok: true,

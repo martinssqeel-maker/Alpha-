@@ -350,6 +350,13 @@ export interface PlatformStatus {
   config: PlatformConfig | null
   error?: string
   lastUpdatedAt?: number
+  /**
+   * Which provider sign-in methods the deployment advertises. `undefined` means
+   * "not asked yet" (or the deployment was unreachable), which the UI treats as
+   * "offer everything" — the deployment itself then explains any refusal,
+   * instead of the app hiding a provider that does work.
+   */
+  providers?: { google: boolean; github: boolean }
 }
 
 export interface ProposedEdit {

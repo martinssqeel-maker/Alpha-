@@ -36,6 +36,11 @@ export default function AccountModal({ open, onClose }: Props) {
 
   if (!open) return null
 
+  // `platform.providers` is undefined until the deployment has been asked, and
+  // explicitly false only when it says that provider is not configured.
+  const showGoogle = platform.providers?.google !== false
+  const showGithub = platform.providers?.github !== false
+
   const start = async (provider: Provider): Promise<void> => {
     setPending(provider)
     setNotice(null)
@@ -71,26 +76,42 @@ export default function AccountModal({ open, onClose }: Props) {
           ) : (
             <>
               <p>One Alpha account works across the website and this desktop app.</p>
-              <div className='flex flex-col gap-2'>
-                <button
-                  className='btn primary'
-                  disabled={pending !== null}
-                  onClick={() => void start('google')}
-                >
-                  <Chrome size={14} /> Continue with Google
-                </button>
-                <button
-                  className='btn primary'
-                  disabled={pending !== null}
-                  onClick={() => void start('github')}
-                >
-                  <Github size={14} /> Continue with GitHub
-                </button>
-              </div>
-              <p className='text-xs' style={{ color: 'var(--faint)' }}>
-                Your browser opens to finish signing in, then returns here automatically. Signing in with
-                GitHub does not grant access to your repositories — use GitHub → Connect GitHub for that.
-              </p>
+              {/* Offer only the methods this deployment advertises. Before the
+                  first answer every button stays visible, so an unreachable API
+                  never hides a sign-in method that actually works. */}
+              {showGoogle || showGithub ? (
+                <div className='flex flex-col gap-2'>
+                  {showGoogle && (
+                    <button
+                      className='btn primary'
+                      disabled={pending !== null}
+                      onClick={() => void start('google')}
+                    >
+                      <Chrome size={14} /> Continue with Google
+                    </button>
+                  )}
+                  {showGithub && (
+                    <button
+                      className='btn primary'
+                      disabled={pending !== null}
+                      onClick={() => void start('github')}
+                    >
+                      <Github size={14} /> Continue with GitHub
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p>
+                  This Alpha deployment has no sign-in provider enabled yet. Turn one on with
+                  Settings → Platform → Refresh, then try again.
+                </p>
+              )}
+              {showGithub && (
+                <p className='text-xs' style={{ color: 'var(--faint)' }}>
+                  Your browser opens to finish signing in, then returns here automatically. Signing in with
+                  GitHub does not grant access to your repositories — use GitHub → Connect GitHub for that.
+                </p>
+              )}
             </>
           )}
           {notice && <p className='text-xs' style={{ color: 'var(--faint)' }}>{notice}</p>}

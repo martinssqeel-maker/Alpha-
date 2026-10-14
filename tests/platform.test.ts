@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -172,6 +172,74 @@ describe('platform/status reflects live settings', () => {
     const { service } = makeService({ enabled: false, apiBaseUrl: '', authRedirectScheme: 'alpha' })
     expect(service.providerSignInUrl('google')).toBe(null)
     expect(service.providerSignInUrl('github')).toBe(null)
+  })
+})
+
+describe('platform/advertised providers', () => {
+  /**
+   * The account dialog offers a provider only when the deployment says it is
+   * configured, matching the website. The three cases below are the ones that
+   * matter: a promise to offer, a promise to withhold, and no answer at all
+   * (where hiding a working button would be worse than showing one).
+   */
+  function makeService() {
+    return new PlatformService({
+      settings: {
+        get: () => ({
+          platform: { enabled: true, apiBaseUrl: 'https://api.example.test', authRedirectScheme: 'alpha' }
+        })
+      } as never,
+      secrets: { get: () => null, set: () => undefined, delete: () => undefined } as never,
+      logger: {
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+        debug: () => undefined
+      } as never,
+      onStatus: () => undefined,
+      onActiveChange: () => undefined
+    })
+  }
+
+  function stubProviders(body: unknown): void {
+    vi.stubGlobal('fetch', async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(body)
+    }))
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('reports what the deployment advertises, and keeps it in the status', async () => {
+    const service = makeService()
+    stubProviders({ ok: true, google: true, github: false, password: true, otp: true })
+
+    expect(await service.refreshProviders()).toEqual({ google: true, github: false })
+    expect(service.status().providers).toEqual({ google: true, github: false })
+  })
+
+  it('withholds a provider the deployment says is not configured', async () => {
+    const service = makeService()
+    stubProviders({ ok: true, google: true, github: false })
+
+    expect(await service.providerAvailable('google')).toBe(true)
+    expect(await service.providerAvailable('github')).toBe(false)
+  })
+
+  it('treats an unreachable deployment as unknown, never as "no providers"', async () => {
+    const service = makeService()
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('offline')
+    })
+
+    expect(service.status().providers).toBeUndefined()
+    // Unknown stays available: the browser then shows the deployment's own
+    // explanation instead of the app hiding a sign-in method that works.
+    expect(await service.providerAvailable('github')).toBe(true)
+    expect(service.status().providers).toBeUndefined()
   })
 })
 

@@ -106,6 +106,8 @@ export class PlatformService {
     config: null
   }
   private refreshInFlight: Promise<PlatformStatus> | null = null
+  /** Provider sign-in methods the deployment advertises; undefined = not asked. */
+  private providerFlags?: { google: boolean; github: boolean }
 
   constructor(private opts: PlatformServiceOptions) {
     this.storage = new EncryptedSessionStorage(opts.secrets)
@@ -144,7 +146,8 @@ export class PlatformService {
       ...this.cached,
       enabled,
       configured,
-      authenticated: configured ? this.cached.authenticated : false
+      authenticated: configured ? this.cached.authenticated : false,
+      providers: this.providerFlags
     }
   }
 
@@ -219,6 +222,28 @@ export class PlatformService {
   }
 
   /**
+   * Which provider sign-in methods the deployment offers.
+   *
+   * `/auth/providers` is public, so this answers before sign-in. The result is
+   * cached for `status()` so the account dialog can offer only providers that
+   * work. An unreachable deployment leaves the previous answer in place and, on
+   * a first attempt, leaves it unknown — see `providerAvailable` for why unknown
+   * is treated as "available" there.
+   */
+  async refreshProviders(): Promise<{ google: boolean; github: boolean } | undefined> {
+    if (!this.ensureConfigured()) return this.providerFlags
+    try {
+      const res = await this.request('/auth/providers', { method: 'GET' })
+      const body = (res.body ?? {}) as Record<string, unknown>
+      this.providerFlags = { google: body.google === true, github: body.github === true }
+    } catch {
+      /* keep whatever we already knew rather than inventing an answer */
+    }
+    this.bump()
+    return this.providerFlags
+  }
+
+  /**
    * Whether the deployment actually offers a provider. The endpoint is public and
    * a button for an unconfigured provider would only 503 in the browser, so ask
    * first. A check that cannot be completed is treated as available: the browser
@@ -226,13 +251,9 @@ export class PlatformService {
    */
   async providerAvailable(provider: 'google' | 'github'): Promise<boolean> {
     if (!this.ensureConfigured()) return false
-    try {
-      const res = await this.request('/auth/providers', { method: 'GET' })
-      const body = (res.body ?? {}) as Record<string, unknown>
-      return body[provider] === true
-    } catch {
-      return true
-    }
+    const flags = this.providerFlags ?? (await this.refreshProviders())
+    if (!flags) return true
+    return flags[provider] === true
   }
 
   /** Handle an alpha://auth/callback deep link launched from the system browser. */
@@ -287,6 +308,9 @@ export class PlatformService {
     if (this.refreshInFlight) return this.refreshInFlight
     const run = (async () => {
       const cfg = this.platformSettings()
+      // Refresh the advertised providers alongside the session state, without
+      // holding up the status the caller is waiting for.
+      void this.refreshProviders()
       if (!this.ensureConfigured()) {
         this.cached = { enabled: cfg.enabled, configured: false, authenticated: false, config: null }
         this.bump()

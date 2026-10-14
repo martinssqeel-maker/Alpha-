@@ -11,7 +11,9 @@ the account page that signs users in.
   version, size and release notes from the same GitHub API — no session required.
 - **Account page.** `account.html` + `assets/account.js` offer every sign-in method
   the deployment actually reports (`/auth/providers`), plus the emailed link/code
-  path, and render the signed-in account's plan and usage.
+  path, and render the signed-in account's plan and usage. Every page links to it:
+  a `Sign in` action in the header (hidden below 620px, like the GitHub link) and an
+  `Account` entry in the footer, so it stays reachable on phones.
 
 ## Files
 

@@ -7,9 +7,13 @@
  * asserts the things that broke it before, without any network access:
  *
  *   1. every local link and asset referenced by the pages actually exists,
- *   2. the download flow stays public (no sign-in / account / admin routes),
+ *   2. no page links to an authentication or admin route that has no page,
  *   3. the download CTA points at the GitHub releases API the app already uses,
- *   4. every page has a title and a favicon.
+ *   4. every page has a title and a favicon, and the expected pages are present.
+ *
+ * The account page IS a real page, so `/account` is a legitimate link; what this
+ * guards against is the original defect, where links pointed at pages that had
+ * been deleted.
  *
  * Usage: node scripts/verify-website.mjs [websiteDir]
  * Exit status: 0 when the site is clean, 1 otherwise.
@@ -31,7 +35,17 @@ const listHtml = (dir) =>
 const exists = (fromFile, target) => {
   const cleaned = target.split('#')[0].split('?')[0]
   if (!cleaned) return true
-  return existsSync(resolve(dirname(fromFile), cleaned))
+  // A leading slash means the *site* root, exactly as the host serves it.
+  // Resolving it against the OS root silently reported `/download` as broken.
+  const fromRoot = cleaned.startsWith('/')
+  const base = fromRoot ? root : dirname(fromFile)
+  const direct = resolve(base, fromRoot ? cleaned.replace(/^\/+/, '') || '.' : cleaned)
+  if (existsSync(direct)) return true
+  // Clean URLs: `/download` is served from website/download.html.
+  if (!/\.[a-z0-9]+$/i.test(cleaned)) {
+    return existsSync(`${direct}.html`) || existsSync(join(direct, 'index.html'))
+  }
+  return false
 }
 
 if (!existsSync(root)) {
@@ -45,9 +59,11 @@ if (pages.length === 0) {
   process.exit(1)
 }
 
-/** Local href/src references plus any dead auth/admin route. */
+/** Local href/src references plus any auth/admin route that has no page. */
 const LOCAL_REF = /(?:href|src|data-download)=["']([^"']+)["']/g
-const DEAD_ROUTE = /(?:href|action)=["'](\/?(?:account|login|signin|sign-in|admin)(?:[./?][^"']*)?)["']/gi
+// `/account` is deliberately absent: that page exists again. The rest still have
+// no page behind them, so linking to one would dead-end a visitor.
+const DEAD_ROUTE = /(?:href|action)=["'](\/?(?:login|signin|sign-in|admin)(?:[./?][^"']*)?)["']/gi
 
 for (const page of pages) {
   const html = readFileSync(page, 'utf8')
@@ -80,7 +96,7 @@ if (existsSync(index)) {
 }
 
 const dirEntries = readdirSync(root)
-for (const required of ['index.html', 'download.html', 'assets']) {
+for (const required of ['index.html', 'download.html', 'account.html', 'assets']) {
   if (!dirEntries.includes(required)) problems.push(`website/: missing required entry "${required}"`)
 }
 

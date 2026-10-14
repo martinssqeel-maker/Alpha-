@@ -63,7 +63,7 @@ The code paths below were traced from renderer through `lib/api.ts`, preload/IPC
 | Permission model | `chat/assist/agent` and per-capability allow/ask/deny are in shared resolver and service paths; six permission tests pass. Approval UI exists. Full real approval/deny regression is pending. | **PARTIAL** |
 | Inspector panels | Explorer, Changes, Diff, Activity, Terminal, Tests, Git and an isolated in-memory Browser preview exist. Browser tested against a local HTTP server; its URL/history/reload/error behavior and tab persistence were exercised. | **PARTIAL** — other inspector states still need broader project-switch QA |
 | Terminal | Custom subprocess streaming in `terminal.ts`, correct-project root, run-ID correlation, cwd/output reporting, process-tree cancellation, and cancellation status are implemented. A disposable long-running command was cancelled and its child process was confirmed gone. | **PARTIAL** — no PTY/emulator or stdin interface; shell fallback/platform coverage remains |
-| Git/GitHub | Git service/panel supports status, diff, stage/commit/push/pull/branches/remotes. GitHub uses a stored PAT or installed `gh`; “device” flow is an explicit placeholder because there is no app client ID. Prompt’s system-browser OAuth flow is not implemented. | **PARTIAL** |
+| Git/GitHub | Git service/panel supports status, diff, stage/commit/push/pull/branches/remotes. GitHub accepts a stored PAT, an installed `gh`, or browser **Device Flow** sign-in (implemented and package-verified; a live successful authorization needs the operator's Client ID — see §18). No client secret is bundled. Repo listing and creation are unchanged and route through the same token. | **PARTIAL** — implementation, tests and packaged UI verified; a real successful authorization awaits the operator's Client ID |
 | Settings | Existing controls are grouped behind a keyboard-accessible, responsive 15-section navigator. It covers appearance, local models/provider navigation, permissions, Skills, voice, Git, privacy, optional platform, updater, archive, and honest project/browser/external-browser/MCP/shortcut states. Developer API is absent from the app route/nav. | **PARTIAL** — per-project instructions, external browser detection, full appearance gallery, and several requested settings remain unavailable |
 | Appearance | Three-layer CSS token foundation and semantic theme remapping now provide **14 concrete palettes** plus System: Dark, Light, Alpine, Tide, After Rain, Kanagawa, Orbit, Violet Hour, Aurora, Phosphor, Dune, Ember, Blossom and Mirage. Settings → Appearance renders a grouped gallery whose cards preview the real tokens; selecting one repaints the running window and the native titlebar. Every palette is gated by `tests/theme.test.ts` on text/surface contrast. | **VERIFIED** — gallery exercised live on a dark preset (Orbit) and a light preset (Mirage) in both the dev build and the packaged build; contrast gates pass for all 14 |
 | Updates | `updater.ts` uses real `electron-updater` check/download/install events, surfaced in Settings. `APP_VERSION` is now aligned to package version 1.0.5. | **PARTIAL** |
@@ -77,9 +77,9 @@ The code paths below were traced from renderer through `lib/api.ts`, preload/IPC
 1. **Appearance foundation:** establish semantic CSS tokens and theme remapping before migrating components; preserve existing Alpha logo/icon unchanged.
 2. **Workspace continuity:** add a Home landing state and complete project/chat organization, local titles, content search where feasible, and correct active-project restoration/isolation.
 3. **Execution presentation:** evolve existing event-driven timeline/cards; preserve actual approval and cancellation semantics.
-4. **Developer tools:** terminal cancellation/cwd and isolated Browser preview are implemented and exercised. Automatic dev-server detection and GitHub OAuth still need work.
+4. **Developer tools:** terminal cancellation/cwd and isolated Browser preview are implemented and exercised. GitHub Device Flow sign-in is now implemented (see §18); automatic dev-server detection still needs work.
 5. **Skills and Settings:** four file-backed skills and real prompt injection are implemented; settings has a section navigator and honest unsupported states. Per-project settings, browser-profile detection, and app-wide theme verification remain.
-6. **GitHub auth:** retain current PAT/`gh` fallback while determining a supported public desktop flow. No OAuth secret or client registration is present; stop at a documented credential/configuration boundary if required.
+6. **GitHub auth:** implemented as Device Flow (secretless) alongside the existing PAT/`gh` fallback — see §18. The only external requirement is a public OAuth Client ID, configured by the operator; no client secret is requested, stored or shipped.
 7. **Website + hardening:** local website crawl and responsive checks are complete. Repeat typecheck/tests/build, package, and exercise the packaged app. Do not publish/deploy as part of local verification.
 
 Known drift to fix/document during implementation: README and older handover sections still describe removed Alpha Cloud/admin website flows; no renderer error boundary was found; many spacing, sizing, and typography values remain in styles outside the token declarations for later screen migrations. The renderer contains no raw hex colors outside CSS token definitions. Website release links must remain public and ungated per product direction.
@@ -92,7 +92,7 @@ Known drift to fix/document during implementation: README and older handover sec
 
 **Phase 3 — Core workspace:** added a Home route and workspace restoration, project-scoped chat grouping, project label rename/reveal/remove, deterministic offline auto-titles, manual-title protection, conversation content search and archive/unarchive, project-aware switching, stale-event filtering, and an honest execution timeline. Added migration v2 for title/archive metadata and five conversation tests. No dependency was added. A live local-model request applied a valid proposal created by the real EditService through the Assist approval gate in an isolated temp project. Local models did not reliably generate their own valid proposal, so the Phase 3 exit gate is **PARTIAL**. Screenshots in `docs/qa/phase3/` show the approval and completed write; the original file was read before approval and verified against the intended content after apply.
 
-**Phase 4 — Developer tools:** hardened terminal cancellation with Windows process-tree termination and Unix process groups, exposed cwd/cancelled status, and fixed the renderer/main run-ID mismatch that dropped output events. Added an isolated Browser preview using Electron `WebContentsView`, safe URL normalization, history/reload/open externally, friendly load errors, and narrow inspector tab labels. Verified a local HTTP page, history/reload, tab switching, blocked Node globals, connection-refused guidance, and process cancellation in disposable project/profile data. No dependency was added. **PARTIAL:** there is no automatic dev-server discovery/start/stop and no GitHub OAuth flow; the existing PAT/`gh` path remains.
+**Phase 4 — Developer tools:** hardened terminal cancellation with Windows process-tree termination and Unix process groups, exposed cwd/cancelled status, and fixed the renderer/main run-ID mismatch that dropped output events. Added an isolated Browser preview using Electron `WebContentsView`, safe URL normalization, history/reload/open externally, friendly load errors, and narrow inspector tab labels. Verified a local HTTP page, history/reload, tab switching, blocked Node globals, connection-refused guidance, and process cancellation in disposable project/profile data. No dependency was added. **PARTIAL:** there is no automatic dev-server discovery/start/stop. GitHub sign-in was added later as Device Flow — see §18.
 
 **Phase 5 — Skills & Settings:** added four Markdown skills under `product-skills/`, discovery/validation and preference persistence in `SkillsService`, per-request prompt injection, typed validated IPC, and the Settings + sidebar Skills entry. Added Settings section navigation and honest states for unsupported project settings, browser profile integration, MCP and global shortcuts; linked supported provider and Browser actions. Tests prove skill discovery/toggle/prompt-context changes. In the isolated Electron profile, disabling a skill survived renderer reload, re-enabling succeeded, all four cards rendered, the Settings Skills entry worked, and the Browser action opened the actual inspector. Screenshots are in `docs/qa/phase5/`. **PARTIAL:** per-project instructions, browser profile detection, a complete appearance gallery, and app-wide verification of every theme on every surface remain.
 
@@ -142,7 +142,7 @@ Known drift to fix/document during implementation: README and older handover sec
 | 1 — Audit & protect | Current docs, Git state, baseline checks, feature inventory | **VERIFIED**: audit and baseline above; only handover documentation changed |
 | 2 — Design system foundation | Three-layer tokens, theme engine, shell/component states | **VERIFIED**: all six concrete palettes meet text contrast gates; dark/light switch was exercised on the running shell and dialog; light choice survived restart; screenshots are stored in `docs/qa/phase2/`. Remaining screens are explicitly scheduled for migration in later phases. |
 | 3 — Core workspace | Projects, local auto-titles, Home/navigation, real execution timeline | **PARTIAL**: implementation, tests, isolated desktop smoke, and real Assist approval/write path are verified. Full autonomous multi-step proposal generation and post-restart state are not verified because installed local Qwen models returned malformed/placeholder proposals or stayed in reasoning. |
-| 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth boundary | **PARTIAL**: local Browser and terminal paths were exercised. GitHub OAuth is not implemented because a public OAuth client ID/registration boundary is not available; automatic dev-server discovery is also absent. |
+| 4 — Developer tools | Panels, terminal diagnosis, secure Browser preview, GitHub auth | **PARTIAL**: local Browser and terminal paths were exercised. GitHub Device Flow sign-in is implemented and package-verified (§18); automatic dev-server discovery is still absent. |
 | 5 — Skills & Settings | Skill injection, settings IA, themes, browser settings, Developer API removal check | **PARTIAL**: four skills, prompt-context changes, persistence, Settings navigation, real provider/Browser links, and honest unsupported states are implemented and runtime checked. Per-project settings, browser profile integration, full preset gallery, and theme checks across every surface remain. |
 | 6 — Website | Public static landing/download polish and responsive/link checks | **VERIFIED locally**: public routes/resources/external links and 375/1440 widths checked. Current v1.0.5 direct installer resolved; public releases-page fallback works. No deployment performed; deployment state not verified. |
 | 7 — Hardening and packaging | Regression check, full validation, Windows dist, packaged runtime | **VERIFIED for the local validation, packaging and packaged-runtime gates** (see §17). Not done: installing over the existing 1.0.5 machine-wide install (needs the operator's UAC), and publishing a new release. |
@@ -151,7 +151,7 @@ Do not advance past a phase gate without recording its shortfall here. Commit co
 
 ## 9. Manual steps and external boundaries
 
-- **GitHub authentication (Phase 4 shortfall):** no OAuth/device flow is implemented. A supported public-client flow requires an OAuth app/client registration and public client ID; no client ID is configured in the repo or test profile. Existing PAT/installed `gh` support remains. Do not request or embed a client secret. Before implementing, confirm the chosen GitHub flow and add a local-only client-ID configuration path; then verify through GitHub's official flow. References: [GitHub OAuth app authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps) and [OAuth app best practices](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/best-practices-for-creating-an-oauth-app).
+- **GitHub authentication:** implemented as Device Flow — see §18 for the architecture and the exact Client-ID configuration. The only external requirement is a public OAuth Client ID (a public identifier, not a secret), which the operator supplies. Existing PAT / installed `gh` support is preserved and unchanged. No client secret is requested or embedded anywhere; GitHub's web-flow code exchange still requires one, which is exactly why Device Flow was chosen. References: [GitHub OAuth app authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps), [best practices](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/best-practices-for-creating-an-oauth-app) and the [PKCE changelog](https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/).
 - Per-project settings, installed external-browser detection, and global shortcut bindings are not implemented; Settings states this clearly and exposes no fake controls. MCP is explicitly unavailable.
 - Local website work is complete but production deployment was intentionally not performed. The Vercel site remains unchanged by this task.
 - No platform credentials, website deployment, release publishing, or account setup is required for the local-first product work.
@@ -799,8 +799,9 @@ contract is `{id}` (`src/shared/ipc.ts:130`), so the *probe* was wrong, not the 
 
 ### Still not done / deferred (honest list)
 
-- **GitHub browser OAuth** is still the PAT / installed-`gh` path. Unchanged from §9: it needs
-  an OAuth app + public client ID, which only the operator can register. Nothing was faked.
+- **GitHub browser sign-in** is now implemented as Device Flow (§18). It is no longer the
+  PAT/`gh`-only path; those remain as fallbacks. A successful authorization still needs the
+  operator's public Client ID — nothing was faked or hardcoded.
 - **Automatic dev-server discovery/start** for the Browser panel is still absent; the panel
   takes a URL. Unchanged from Phase 4.
 - **Per-project settings, external browser profile import, MCP** remain honest "not available"
@@ -824,13 +825,237 @@ contract is `{id}` (`src/shared/ipc.ts:130`), so the *probe* was wrong, not the 
 3. **Publish a release only if you want the website's download button to serve this build.**
    `website/assets/app.js` resolves `releases/latest`, which currently points at the existing
    `v1.0.5`. Publishing is destructive/external and was deliberately not done here.
-4. **If you want GitHub browser sign-in**, register an OAuth app (callback + public client ID
-   only) and say so; the code path will be built against it. Do not paste a client secret into
-   the repository.
+4. **To enable GitHub browser sign-in, add the public Client ID** (the code path already exists;
+   see §18 for the three accepted locations). Do **not** add a client secret — none is used.
 
 ### Next highest-priority task
 
 Wire the Browser panel to discover and start the active project's dev server (inspect
 `package.json` scripts, reuse an already-listening port, expose a safe stop action). It is the
 last big user-visible gap in §10 of the master prompt that does not need an external account.
+
+---
+## 18. Session log — GitHub browser sign-in (Device Flow) — 2026-10-14
+
+### Why Device Flow, not the loopback/browser authorization-code callback
+
+GitHub's OAuth **App** web-flow token exchange marks `client_secret` **Required**, and a GitHub
+staff reply on the PKCE announcement confirms there is “no movement towards removing the client
+secret requirement”. PKCE does **not** remove it. A secret inside a distributed desktop binary is
+not confidential (RFC 8252), so shipping one would be fake security. The only GitHub-documented
+secretless flow is **Device Flow**, and it also supports **expiring tokens** with a **secretless
+refresh** grant (“client_secret … Required unless the token was generated using the device flow”).
+
+Consequence to state plainly: the originally requested **automatic browser → desktop callback is
+not supported by the implemented flow.** Device Flow shows a user code, opens GitHub's official
+device page in the default browser, and the app **polls** until the user approves. The registered
+redirect `http://127.0.0.1/callback` is therefore **unused**; no loopback server is started and no
+browser callback is faked. PKCE and `state` do not apply — GitHub documents that the device-code
+flow does not use PKCE and it has no redirect to correlate.
+
+Sources: [Authorizing OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps),
+[best practices](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/best-practices-for-creating-an-oauth-app),
+[PKCE changelog](https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/),
+[RFC 8252](https://www.rfc-editor.org/rfc/rfc8252.html).
+
+### What was implemented
+
+- **`src/main/services/githubOAuth.ts` (new).** Device Flow: `startDeviceFlow()` (request code),
+  `pollOnce()` (single token poll: `authorization_pending` / `slow_down` / `access_denied` /
+  `expired_token` / success), `cancel()`, `refresh()`, `getValidAccessToken()`, `logout()`.
+  `loadScope()` defaults to `repo`. The access token is stored under the **existing**
+  `github:token` secret ref, so `GithubService` (status / repos / createRepo) is untouched;
+  refresh/expiry metadata lives under `github:oauth:*`.
+- **`src/main/services/github.ts`.** `token()` is now async and, for an OAuth session, refreshes
+  first (a rejected refresh clears the session and reports signed-out). `status()` reports
+  `method: 'device'` for OAuth sessions. `connect({method:'device'})` delegates to the OAuth
+  service; the PAT path clears the OAuth marker so the two methods never coexist.
+- **`src/main/context.ts`** constructs the service (`configPaths: [<userData>/github-oauth.json]`).
+- **`src/main/ipc.ts`** adds `github:deviceStart` (also calls `shell.openExternal`), `github:devicePoll`,
+  `github:deviceCancel`, `github:deviceOpen`; `github:status` now returns `oauthConfigured`.
+- **`src/shared/{channels,ipc,types}.ts`** wire the new channels and shared result types.
+- **`src/renderer/src/lib/api.ts`** exposes `github.deviceStart/devicePoll/deviceCancel/deviceOpen`.
+- **`src/renderer/src/pages/GitHubPage.tsx`** adds “Connect with browser”: shows the user code with
+  copy, an *Open GitHub again* button, Cancel, a live expiry countdown, and poll status. PAT entry,
+  repo search/list, repository creation and *set as origin* are all preserved.
+- **`tests/githubOAuth.test.ts` (new, 22 tests)** — config lookup, start/errors, pending → success,
+  slow_down, denial, expiry (server + local), cancel, poll-without-flow, refresh, revoked refresh,
+  PAT non-refresh, and `GithubService` integration (method=device, connect, repos, createRepo).
+- **`.gitignore`** ignores `github-oauth.json` / `github-oauth.local.json`.
+
+### Client-ID configuration (the exact manual step)
+
+The Client ID is a **public** identifier (not a secret). It is deliberately not committed. The app
+resolves it, in order, from:
+
+1. `GITHUB_OAUTH_CLIENT_ID` environment variable (dev / CI / advanced), **then**
+2. `<repo-root>/github-oauth.json` — `{ "clientId": "Iv1.xxxxxxxxxxxxxxxx" }` (development), **then**
+3. `<userData>/github-oauth.json` — on Windows `%APPDATA%\alpha-ai-workspace\github-oauth.json`
+   (a packaged install), **then**
+4. `<resourcesPath>/github-oauth.json` (only if a build adds it as an extraResource; no entry was added).
+
+Optional: `GITHUB_OAUTH_SCOPE` overrides the requested scope (default `repo`). Restart the app after
+adding the file. Until a Client ID exists, the browser button is disabled with an explanatory hint and
+the PAT/`gh` paths still work.
+
+### Security decisions and limitations
+
+- **No client secret** in the renderer, repo, config, or binary. GitHub's web flow still requires one;
+  that is precisely why it was not used.
+- **No PKCE / no `state`** — not part of Device Flow (GitHub: device code flow does not use PKCE).
+- Tokens go through the existing OS-encrypted `SecretStore` (Windows DPAPI via `safeStorage`), never
+  settings, localStorage, source, or logs. The device code and tokens are never logged.
+- **Scopes:** `repo` only. It is the minimum that keeps the app's current behaviour — listing the
+  user's **private** repositories and creating **private** repositories (`/user` needs no scope;
+  `public_repo` would drop private support). Narrowing to public-only is possible via `GITHUB_OAUTH_SCOPE`.
+- **Expiry/refresh:** because expiring tokens are enabled on the app, the device response carries
+  `refresh_token` + `expires_in`; the token is refreshed ~60s before expiry with the secretless
+  `grant_type=refresh_token`. A rejected/revoked refresh clears the session and prompts re-auth.
+- **Known limitation:** a *successful* real authorization was not executed here — it needs the
+  operator's real Client ID and a human approving in the browser. Everything up to and including the
+  live request to GitHub's device endpoint was verified in the packaged app.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | **VERIFIED**, exit 0 (node + web) |
+| `npm test` | **VERIFIED**, **101 passed / 13 files** (+22 new) |
+| `npm run build` | **VERIFIED**, exit 0; renderer 1,641.17 kB, CSS 52.97 kB |
+| `npm run dist:dir` | **VERIFIED**, exit 0 — `release/win-unpacked/Alpha AI Workspace.exe` (246,322,688 bytes) |
+| `npm run dist` | **VERIFIED**, exit 0 — `release/Alpha AI Workspace-Setup-1.0.5.exe` (125,492,796 bytes) + `.blockmap` |
+| Packaged GitHub page (no Client ID) | **VERIFIED** over CDP: browser button present and **disabled**, PAT field present, "needs a GitHub OAuth Client ID" hint shown |
+| Packaged GitHub page (Client ID set) | **VERIFIED** over CDP: button **enabled**; clicking issued a real request to `https://github.com/login/device/code`, which returned 404 for the placeholder id and surfaced the toast `GitHub sign-in could not start (Not Found).` — no crash, no fake success, app stayed responsive |
+| Automated vs real E2E | The 22 tests are **automated with mocked GitHub**. The packaged run above is a **real** call to GitHub's endpoint; a **real successful authorization** was not performed (needs the operator's Client ID). |
+
+### Build artifact locations
+
+- Unpacked: `release/win-unpacked/Alpha AI Workspace.exe`
+- Installer: `release/Alpha AI Workspace-Setup-1.0.5.exe`
+
+### Remaining manual steps
+
+1. Add the public Client ID in one of the three locations above (never a client secret), then restart.
+2. Approve the code in the browser to complete a real authorization and confirm the connected username.
+3. Installing over the machine-wide 1.0.5 build and publishing a release remain the operator's steps
+   (UAC / destructive-external) and were not performed.
+
+---
+## 19. Session log — GitHub sign-in provider + desktop account sign-in — 2026-10-14
+
+### What the audit found (before any code was written)
+
+The backend was already further along than the task assumed:
+
+- **Google sign-in already existed end to end** (`platform/api/oauth.ts`, `platform/api/auth.ts`):
+  signed `state`, a target allow-list (`resolveTarget`), `link_identity`, single-use web exchange
+  codes, and an **`alpha://auth/callback` branch that returns the installed app automatically**.
+  That branch means the "browser opens → user approves → app returns" experience the task asked for
+  is already the *in-built* shape for the desktop app. It is provider-agnostic.
+- **GitHub had no sign-in provider at all.** Only Google was wired. That was the actual gap.
+- **The website has no accounts by design.** `website/README.md` says so explicitly, and HANDOVER §14
+  records the 2026-10-13 direction change that *removed* the sign-in gate, `session.js`, the account
+  page and the account-portal CSS. `AccountModal` said "Authentication has been removed".
+- **The backend auth surface is still fully present** — OTP email, magic links, admin password,
+  sessions + refresh, `public.user_identities`, and the `auth_oauth_codes` table. Nothing server-side
+  was deleted; only the frontends stopped using it.
+
+### Why the desktop app must NOT run GitHub's browser flow itself
+
+Confirmed against GitHub's current official documentation (not asserted from memory):
+
+- PKCE **is** documented for OAuth Apps, but the token exchange still lists `client_secret` as
+  **Required**, and GitHub's own guide states "You must include the client secret in your native
+  application". PKCE therefore does **not** make it a secretless public client.
+- Loopback redirects with a **dynamic port** *are* officially supported
+  (`http://127.0.0.1:1234/path` against a registered `http://127.0.0.1/path`). But the exchange still
+  needs the secret, so a purely client-side loopback flow would force a fake secret into the binary
+  (RFC 8252). Not acceptable.
+- GitHub's OAuth app flow returns **no `id_token`** (it is not OIDC); identity must be read from
+  `GET /user` + `GET /user/emails` (`read:user user:email`), and a `User-Agent` header is mandatory.
+
+**Conclusion:** the requested "click → browser → back in the app, no code to copy" experience is
+achievable and is achieved — but only by **brokering the exchange through the Alpha backend**, which
+holds the secret. The app itself never runs an OAuth exchange and never sees a provider token. This
+matches the reason §18 chose Device Flow for the *repository* connection; the two paths now differ
+in purpose (identity vs. repository access) but agree on the rule: no secret in the desktop binary.
+
+### What was implemented
+
+- **`platform/api/oauth.ts`** — GitHub provider alongside Google: `githubConfigured()`, `githubAuthUrl()`,
+  `exchangeGithubCode()`, `fetchGithubIdentity()`, and a **pure, unit-testable `toGithubIdentity()`**.
+  `GITHUB_SIGNIN_SCOPE = 'read:user user:email'` is exported and asserted **not** to contain `repo`.
+  `providersSummary()` now reports `github` next to `google`.
+- **`platform/api/auth.ts`** — the shared tail of every OAuth sign-in was **extracted into one
+  `finishOAuthSignIn()`** (link identity → app magic link *or* web single-use code). `/auth/google/callback`
+  now calls it, so Google and GitHub cannot drift apart. Added `/auth/github/start` (503 when
+  unconfigured, target allow-list, signed state) and `/auth/github/callback` (verify state → exchange →
+  `GET /user` → link). `googleRedirectUri()` became the provider-aware `oauthRedirectUri()`.
+- **`neon.ts` / `.env.example`** — `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI`
+  (values are never recorded; only names and purposes).
+- **Desktop wiring (the app previously had no way to *start* a provider sign-in):**
+  `src/shared/schemas.ts` (`zPlatformSignInWith`), `src/shared/channels.ts` (`platform:signinWith`),
+  `src/shared/ipc.ts`, `src/main/services/platform.ts` (`providerSignInUrl()` — builds
+  `{api}/auth/<provider>/start?redirect=alpha://auth/callback` — plus `providerAvailable()`),
+  `src/main/ipc.ts` (checks availability, then `shell.openExternal`), `src/renderer/src/lib/api.ts`,
+  `src/renderer/src/store/useApp.ts` (`signInToPlatformWith`).
+- **`src/renderer/src/components/AccountModal.tsx`** — the "Authentication has been removed"
+  placeholder replaced with real **Continue with Google / Continue with GitHub** buttons, a sign-out
+  action when authenticated, and an explicit note that *signing in with GitHub does not grant
+  repository access*.
+- **Tests** — `tests/auth.test.ts` (+5 github unit tests) and **`tests/authRoutes.test.ts` (new, 8 tests)**
+  exercising the **real Hono app** via `app.request()`. These are database-free because every case is
+  answered by the configuration gate, state verification or the redirect allow-list.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | **VERIFIED**, exit 0 (node + web) |
+| `npm test` | **VERIFIED**, exit 0 — **119 passed / 14 files** (was 101 / 13) |
+| `npm run build` | **VERIFIED**, exit 0 |
+| `/auth/providers` | **VERIFIED** via real request: `github:false` unconfigured, `github:true` with credentials, `password`/`otp` unchanged |
+| `/auth/github/start` (unconfigured) | **VERIFIED**: 503 `github_not_configured` |
+| `/auth/github/callback` no state | **VERIFIED**: 400 `invalid_state` — the query is never trusted |
+| `/auth/github/callback` forged state + `error=` | **VERIFIED**: 400 — proves the `error` flag cannot be used as an open redirect |
+| GitHub cancellation (`error=access_denied`, signed state) | **VERIFIED**: 302 → `alpha://auth/callback?error=access_denied` |
+| Missing code (signed web state) | **VERIFIED**: 302 → the account page with `?error=missing_code` |
+| `/auth/google/start` unchanged | **VERIFIED**: still 503 `google_not_configured` |
+| **Real Google/GitHub authorization** | **NOT PERFORMED** — needs the operator's provider credentials (§ below). Nothing was faked. |
+| **Packaged app launch of the new Account modal** | **NOT PERFORMED** this session — typecheck/build/tests pass, but the modal was not opened in a running window. |
+
+### Blocked on the operator
+
+1. **Deploy the Function** with the provider credentials (`npm run deploy`), otherwise the new
+   `/auth/github/*` routes exist only in source. GitHub sign-in and the new desktop button need it.
+2. Create the provider apps (see the manual checklist in this session's reply) and set the env values.
+3. **Account-linking policy — DECIDED by the operator (2026-10-14): keep auto-linking on a VERIFIED
+   email.** `public.link_identity()` links a new provider identity to an existing account with the
+   same email (via `provision_user`), so one person keeps one Alpha account across providers, which
+   is the intended "one account like other products" behaviour. This deliberately overrides the
+   literal wording of the original task's requirement 7; the operator was shown the trade-off and
+   chose it.
+
+   **Do not "fix" this later without asking.** The safety property that makes it acceptable is that
+   an *unverified* address is never allowed to reach `link_identity`. That property is enforced at
+   the call sites, not inside the database function:
+   - Google: `/auth/google/callback` returns `email_not_verified` before `finishOAuthSignIn` runs.
+   - GitHub: `toGithubIdentity()` returns `null` unless an address is `verified`, and the callback
+     re-checks `identity.emailVerified`.
+
+   **Known weakness to be aware of:** `link_identity()` itself would merge on any email it is handed,
+   so a future caller that skips that check would silently merge accounts. If a third provider is
+   added, it MUST filter to verified addresses before calling `finishOAuthSignIn`. A defence-in-depth
+   option (not implemented) is to add a `p_email_verified boolean` argument that makes the function
+   refuse an unverified link.
+4. **The website still has no account page** — Objective 2 is not implemented. The backend routes it
+   needs (`/auth/<provider>/start?redirect=<site>/account.html`, `POST /auth/oauth/exchange`) all exist
+   and were verified above; the page itself is the remaining work.
+
+### Known limitations
+
+- Chat/desktop "sign in" and "connect GitHub repositories" are now visibly separate actions; the
+  desktop repository connection still uses Device Flow (§18) and is unchanged.
+- `providerAvailable()` fails **open** (a check that errors is treated as available) so a transient
+  network problem cannot wrongly hide a working provider; the browser then shows the deployment's own message.
 

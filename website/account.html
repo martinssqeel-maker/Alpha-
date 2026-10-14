@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Account · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="Sign in to Alpha AI Workspace with Google, GitHub or an emailed link. One account works on the website and in the Windows app."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <!-- Signed-in state is per-visitor; keep it out of search results. -->
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <!-- Applies the stored appearance before first paint, so the palette never flashes. -->
+    <script src="assets/theme.js"></script>
+    <!-- The committed config.js supplies the Alpha Cloud API host. -->
+    <script src="config.js"></script>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#features">Features</a>
+        <a href="/download">Download</a>
+        <a href="/#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
+        <a class="btn" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </header>
+
+    <main class="section" data-account-root>
+      <div class="section-head">
+        <p class="eyebrow">Account</p>
+        <h1>One account, website and app</h1>
+        <p class="sub">
+          Sign in here or in the Windows app — either way you land on the same Alpha account.
+        </p>
+      </div>
+
+      <div class="account-card card">
+        <!-- Shown until the first answer arrives, so the page is never blank. -->
+        <div data-view="loading">
+          <div class="plan-name">Loading sign-in options…</div>
+          <p class="muted">Checking which sign-in methods this deployment offers.</p>
+        </div>
+
+        <div data-view="unconfigured" hidden>
+          <div class="plan-name">Sign-in is unavailable here</div>
+          <p class="muted">
+            This copy of the site was built without an Alpha Cloud API address, so it cannot reach
+            the sign-in service. If you are the operator, set <code>apiBaseUrl</code> in
+            <code>config.js</code> (see the website README).
+          </p>
+        </div>
+
+        <div data-view="signed-out" hidden>
+          <div class="plan-name">Sign in</div>
+
+          <div class="provider-list" data-providers hidden></div>
+
+          <form class="email-form" data-email-form novalidate>
+            <label for="account-email">Email address</label>
+            <div class="field-row">
+              <input
+                id="account-email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                inputmode="email"
+                placeholder="you@example.com"
+                required
+              />
+              <button class="btn primary" type="submit" data-email-submit>
+                Email me a sign-in link
+              </button>
+            </div>
+            <p class="muted">
+              We send a six-digit code and a one-tap link. No password to remember.
+            </p>
+          </form>
+
+          <!-- Revealed once a code has been requested, so signing in never depends
+               on the mailbox handing the link to a browser. -->
+          <form class="email-form" data-code-form hidden novalidate>
+            <label for="account-code">Six-digit code</label>
+            <div class="field-row">
+              <input
+                id="account-code"
+                name="code"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="6"
+                placeholder="000000"
+              />
+              <button class="btn" type="submit" data-code-submit>Verify code</button>
+            </div>
+          </form>
+
+          <p class="micro">
+            Signing in with GitHub only shares your identity — it never grants access to your
+            repositories. Connect repositories separately inside the app.
+          </p>
+        </div>
+
+        <div data-view="signed-in" hidden>
+          <div class="dl-block">
+            <div>
+              <div class="plan-name" data-account-email>Signed in</div>
+              <div class="muted" data-account-plan></div>
+            </div>
+            <button class="btn" type="button" data-signout>Sign out</button>
+          </div>
+
+          <div data-account-usage hidden>
+            <table>
+              <thead>
+                <tr><th>Usage</th><th>Used</th><th>Limit</th></tr>
+              </thead>
+              <tbody data-usage-rows></tbody>
+            </table>
+          </div>
+
+          <p class="muted" data-account-models></p>
+
+          <p class="micro">
+            Open the Windows app and sign in there too — it recognises this same account, so your
+            plan and usage follow you.
+          </p>
+        </div>
+
+        <p class="status" data-status role="status" aria-live="polite"></p>
+      </div>
+
+      <p class="micro">
+        Need the app? <a href="/download">Download Alpha AI Workspace for Windows</a>.
+      </p>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="assets/account.js"></script>
+  </body>
+</html>

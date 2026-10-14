@@ -478,3 +478,36 @@ table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
 th { color: var(--steel); font-size: 12px; font-weight: 600; }
 td { font-variant-numeric: tabular-nums; }
+
+/* --- account surface --- */
+.provider-list { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+/* Must beat the flex display above, or an empty list still reserves space. */
+.provider-list[hidden] { display: none; }
+.provider-btn { width: 100%; }
+
+.email-form { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.email-form[hidden] { display: none; }
+.email-form label {
+  display: block;
+  margin: 0 0 8px;
+  color: var(--steel);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.field-row input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 11px 13px;
+  color: var(--chalk);
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 14px;
+}
+.field-row input:focus-visible { outline: 2px solid var(--brand-edge); outline-offset: 1px; }
+.email-form .muted { margin: 10px 0 0; }
+#account-code { font-family: var(--data); letter-spacing: 0.28em; }

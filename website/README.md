@@ -1,7 +1,7 @@
 # Alpha AI Workspace — website
 
-A dependency-free static site: marketing/landing page plus a public download page.
-No accounts, no sign-in — the site is purely public.
+A dependency-free static site: marketing/landing page, a public download page, and
+the account page that signs users in.
 
 - **No framework or build step.** Plain HTML/CSS/JS.
 - **Never-stale download.** `assets/app.js` reads the latest GitHub Release from
@@ -9,6 +9,9 @@ No accounts, no sign-in — the site is purely public.
   (falling back to the releases page if the API is unavailable).
 - **Public download page.** `download.html` + `assets/download.js` show the current
   version, size and release notes from the same GitHub API — no session required.
+- **Account page.** `account.html` + `assets/account.js` offer every sign-in method
+  the deployment actually reports (`/auth/providers`), plus the emailed link/code
+  path, and render the signed-in account's plan and usage.
 
 ## Files
 
@@ -16,21 +19,40 @@ No accounts, no sign-in — the site is purely public.
 website/
   index.html            landing page
   download.html         public download page (no sign-in)
+  account.html          sign-in and account page
   assets/styles.css     design system
   assets/app.js         direct-download resolution + version/size hints + reveal animations
   assets/theme.js       applies the stored palette before first paint
   assets/download.js    fills the download page from the public GitHub Releases API
+  assets/account.js     sign-in flows, session handling and the account view
   assets/app-skills.png real screenshot of the current Agent Skills screen
   assets/icon.png       app icon (favicon + branding)
+  config.js             committed API base URL (generated; read by the account page)
   vercel.json           clean URLs + security headers (deliberately no build command)
 ```
 
 ## Configuration
 
-No environment configuration is needed. The pages read public GitHub Releases data
-to resolve the current installer and fall back to the public releases page if that
-request fails. Legacy `config.js`, `config.example.js`, and `gen-config.mjs` files are
-not loaded by either page and do not configure the current website.
+Only the account page needs configuration: it reads the Alpha Cloud API host from the
+committed `config.js` (`window.ALPHA_PLATFORM.apiBaseUrl`). Regenerate it when the API
+host changes:
+
+```powershell
+API_BASE_URL=https://<host> node website/gen-config.mjs
+```
+
+If `config.js` has no `apiBaseUrl`, the account page says so plainly instead of
+half-working. The landing and download pages need no configuration at all — they read
+public GitHub Releases data and fall back to the public releases page if that request
+fails.
+
+### Sign-in needs three things on the API side
+
+1. `ALLOWED_ORIGINS` must include this site's origin (and `http://localhost:3000` for
+   local preview), or the browser blocks every call.
+2. `WEB_ACCOUNT_URL` must be this site's origin, so emailed sign-in links come back here.
+3. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (or the GitHub pair) are needed before that
+   provider's button appears at all; without them the page shows only the email path.
 
 ## Deploy to Vercel
 

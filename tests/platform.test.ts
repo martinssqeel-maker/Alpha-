@@ -143,6 +143,36 @@ describe('platform/status reflects live settings', () => {
     expect(status.authenticated).toBe(false)
     expect(service.status().enabled).toBe(true)
   })
+
+  it('builds a provider sign-in URL that returns to the app deep link', () => {
+    const { service } = makeService({
+      enabled: true,
+      apiBaseUrl: 'https://api.example.test/',
+      authRedirectScheme: 'alpha'
+    })
+    const github = new URL(service.providerSignInUrl('github') as string)
+    expect(`${github.origin}${github.pathname}`).toBe('https://api.example.test/auth/github/start')
+    expect(github.searchParams.get('redirect')).toBe('alpha://auth/callback')
+
+    const google = new URL(service.providerSignInUrl('google') as string)
+    expect(`${google.origin}${google.pathname}`).toBe('https://api.example.test/auth/google/start')
+  })
+
+  it('honours a custom auth scheme in the return target', () => {
+    const { service } = makeService({
+      enabled: true,
+      apiBaseUrl: 'https://api.example.test',
+      authRedirectScheme: 'alpha-dev'
+    })
+    const url = new URL(service.providerSignInUrl('google') as string)
+    expect(url.searchParams.get('redirect')).toBe('alpha-dev://auth/callback')
+  })
+
+  it('offers no provider sign-in URL until the platform is configured', () => {
+    const { service } = makeService({ enabled: false, apiBaseUrl: '', authRedirectScheme: 'alpha' })
+    expect(service.providerSignInUrl('google')).toBe(null)
+    expect(service.providerSignInUrl('github')).toBe(null)
+  })
 })
 
 describe('platform/auth error mapping', () => {

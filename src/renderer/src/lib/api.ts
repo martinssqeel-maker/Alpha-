@@ -165,6 +165,7 @@ export const api = {
   platform: {
     status: () => invoke(CH.platformStatus, undefined),
     signIn: (email: string) => invoke(CH.platformSignIn, { email }),
+    signInWith: (provider: 'google' | 'github') => invoke(CH.platformSignInWith, { provider }),
     signOut: () => invoke(CH.platformSignOut, undefined),
     refresh: () => invoke(CH.platformRefresh, undefined)
   }

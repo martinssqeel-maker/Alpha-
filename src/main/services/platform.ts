@@ -196,6 +196,45 @@ export class PlatformService {
     }
   }
 
+  /**
+   * The Function's provider sign-in URL, or null when the platform is unconfigured.
+   *
+   * The desktop app deliberately does not run the OAuth exchange itself. GitHub's
+   * documentation states the OAuth App token exchange requires the client secret,
+   * and a secret shipped inside a distributed desktop binary is not confidential
+   * (RFC 8252), so doing it here would be fake security. The Function holds the
+   * secret; `redirect` tells it to come back to this app's `alpha://auth/callback`
+   * deep link, and the app only ever receives an Alpha magic link — never a
+   * provider token. See `handleRedirectUrl`.
+   */
+  providerSignInUrl(provider: 'google' | 'github'): string | null {
+    if (!this.ensureConfigured()) return null
+    try {
+      const url = new URL(`${this.apiBaseUrl()}/auth/${provider}/start`)
+      url.searchParams.set('redirect', `${this.authScheme()}://auth/callback`)
+      return url.toString()
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Whether the deployment actually offers a provider. The endpoint is public and
+   * a button for an unconfigured provider would only 503 in the browser, so ask
+   * first. A check that cannot be completed is treated as available: the browser
+   * then shows the deployment's own explanation instead of a wrong local refusal.
+   */
+  async providerAvailable(provider: 'google' | 'github'): Promise<boolean> {
+    if (!this.ensureConfigured()) return false
+    try {
+      const res = await this.request('/auth/providers', { method: 'GET' })
+      const body = (res.body ?? {}) as Record<string, unknown>
+      return body[provider] === true
+    } catch {
+      return true
+    }
+  }
+
   /** Handle an alpha://auth/callback deep link launched from the system browser. */
   async handleRedirectUrl(rawUrl: string): Promise<void> {
     const params = parseDeepLink(rawUrl)

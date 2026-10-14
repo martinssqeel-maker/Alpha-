@@ -26,6 +26,11 @@ export const zPlatformSignIn = z.object({
   email: z.string().email()
 })
 
+/** Provider account sign-in. 'google'/'github' here are *identity*, not repo access. */
+export const zPlatformSignInWith = z.object({
+  provider: z.enum(['google', 'github'])
+})
+
 export const zChatSend = z.object({
   conversationId: z.string().min(1),
   providerId: z.string().min(1),

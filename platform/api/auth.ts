@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { AppEnv } from './types'
 import { withContext } from './db'
 import { boolEnv, getEnv, intEnv } from './env'
@@ -9,7 +10,11 @@ import { requireAuth } from './middleware'
 import { hashPassword, verifyPassword } from './password'
 import {
   appCallbackUrl,
+  exchangeGithubCode,
   exchangeGoogleCode,
+  fetchGithubIdentity,
+  githubAuthUrl,
+  githubConfigured,
   googleAuthUrl,
   googleConfigured,
   providersSummary,
@@ -18,7 +23,7 @@ import {
   verifyGoogleIdToken,
   verifyState
 } from './oauth'
-import type { GoogleIdentity } from './oauth'
+import type { GithubIdentity, GoogleIdentity, OAuthState } from './oauth'
 import { maintenanceProblem, maintenanceState } from './maintenance'
 
 export const authRoutes = new Hono<AppEnv>()
@@ -109,14 +114,15 @@ function dummyHash(): string {
   return dummyDigest
 }
 
-function googleRedirectUri(c: { req: { url: string } }): string {
-  const configured = getEnv('GOOGLE_REDIRECT_URI')
+/** The Function's own callback for a provider, honouring an explicit override. */
+function oauthRedirectUri(c: { req: { url: string } }, provider: 'google' | 'github'): string {
+  const configured = getEnv(provider === 'google' ? 'GOOGLE_REDIRECT_URI' : 'GITHUB_REDIRECT_URI')
   if (configured) return configured
   try {
-    return `${new URL(c.req.url).origin}/auth/google/callback`
+    return `${new URL(c.req.url).origin}/auth/${provider}/callback`
   } catch {
     const base = (getEnv('NEON_FUNCTION_API_BASE_URL') ?? '').replace(/\/+$/, '')
-    return `${base}/auth/google/callback`
+    return `${base}/auth/${provider}/callback`
   }
 }
 
@@ -381,6 +387,80 @@ authRoutes.post('/password', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
+// Shared sign-in completion
+//
+// Every OAuth provider ends the same way: link the verified identity to an Alpha
+// AI Workspace account, then return the browser to the originating surface. For
+// the desktop app that is the `alpha://auth/callback` magic-link shape it already
+// verifies, so the installed app needs no provider-specific code and never sees a
+// provider token. For the web it is a single-use code the page exchanges over
+// POST, so no session token ever lands in a URL.
+// ---------------------------------------------------------------------------
+async function finishOAuthSignIn(
+  c: Context<AppEnv>,
+  state: OAuthState,
+  provider: 'google' | 'github',
+  identity: { subject: string; email: string; name?: string },
+  failure: (code: string) => Response
+): Promise<Response> {
+  const linked = await withContext(null, 'anon', async (q) => {
+    const uid = (
+      await q.query<{ uid: string }>('select public.link_identity($1, $2, $3, $4) as uid', [
+        provider,
+        identity.subject,
+        identity.email,
+        identity.name ?? null
+      ])
+    ).rows[0]?.uid
+    if (!uid) return null
+    return (
+      (
+        await q.query<{ id: string; email: string; status: string }>(
+          'select id, email, status from public.users where id = $1',
+          [uid]
+        )
+      ).rows[0] ?? null
+    )
+  })
+
+  if (!linked) return failure('account_unavailable')
+  if (linked.status !== 'active') return failure('account_inactive')
+
+  if (state.kind === 'app') {
+    // Hand the installed desktop app the magic-link shape it already verifies.
+    const magic = generateToken(32)
+    const ttlMinutes = intEnv('AUTH_OTP_TTL_MIN', 10)
+    await withContext(null, 'anon', async (q) => {
+      await q.query('update public.auth_otps set consumed_at = now() where email = $1 and consumed_at is null', [
+        linked.email
+      ])
+      await q.query(
+        `insert into public.auth_otps (email, code_hash, magic_hash, expires_at)
+         values ($1, $2, $3, now() + make_interval(mins => $4::int))`,
+        [linked.email, hashSecret(generateToken(32)), hashSecret(magic), ttlMinutes]
+      )
+    })
+    return c.redirect(
+      withParams(appCallbackUrl(), { email: linked.email, token: magic, type: provider }),
+      302
+    )
+  }
+
+  // Web: never put a session token in the URL — hand back a single-use code the
+  // page exchanges over POST for the real tokens.
+  const oneTime = generateToken(32)
+  await withContext(linked.id, 'authenticated', async (q) => {
+    await q.query(
+      `insert into public.auth_oauth_codes (code_hash, user_id, expires_at)
+       values ($1, $2, now() + make_interval(mins => $3::int))`,
+      [hashSecret(oneTime), linked.id, intEnv('AUTH_OAUTH_CODE_TTL_MIN', 5)]
+    )
+    await q.query('update public.users set last_sign_in_at = now() where id = $1', [linked.id])
+  })
+  return c.redirect(withParams(state.url, { code: oneTime }), 302)
+}
+
+// ---------------------------------------------------------------------------
 // Google sign-in (server-side authorization code flow)
 // ---------------------------------------------------------------------------
 authRoutes.get('/google/start', async (c) => {
@@ -415,7 +495,7 @@ authRoutes.get('/google/start', async (c) => {
 
   const nonce = generateToken(16)
   const state = await signState({ kind: target.kind, url: target.url, nonce })
-  return c.redirect(googleAuthUrl({ state, redirectUri: googleRedirectUri(c), nonce }), 302)
+  return c.redirect(googleAuthUrl({ state, redirectUri: oauthRedirectUri(c, 'google'), nonce }), 302)
 })
 
 authRoutes.get('/google/callback', async (c) => {
@@ -435,7 +515,7 @@ authRoutes.get('/google/callback', async (c) => {
 
   let identity: GoogleIdentity | null = null
   try {
-    const idToken = await exchangeGoogleCode(code, googleRedirectUri(c))
+    const idToken = await exchangeGoogleCode(code, oauthRedirectUri(c, 'google'))
     identity = await verifyGoogleIdToken(idToken, state.nonce)
   } catch (error) {
     console.error('[api:google] exchange failed', error)
@@ -444,62 +524,86 @@ authRoutes.get('/google/callback', async (c) => {
   if (!identity) return failure('google_verification_failed')
   if (!identity.emailVerified) return failure('email_not_verified')
 
-  const linked = await withContext(null, 'anon', async (q) => {
-    const uid = (
-      await q.query<{ uid: string }>('select public.link_identity($1, $2, $3, $4) as uid', [
-        'google',
-        identity.subject,
-        identity.email,
-        identity.name ?? null
-      ])
-    ).rows[0]?.uid
-    if (!uid) return null
-    return (
-      (
-        await q.query<{ id: string; email: string; status: string }>(
-          'select id, email, status from public.users where id = $1',
-          [uid]
-        )
-      ).rows[0] ?? null
-    )
-  })
+  return finishOAuthSignIn(c, state, 'google', identity, failure)
+})
 
-  if (!linked) return failure('account_unavailable')
-  if (linked.status !== 'active') return failure('account_inactive')
-
-  if (state.kind === 'app') {
-    // Hand the installed desktop app the magic-link shape it already verifies,
-    // so signing in with Google needs no desktop change at all.
-    const magic = generateToken(32)
-    const ttlMinutes = intEnv('AUTH_OTP_TTL_MIN', 10)
-    await withContext(null, 'anon', async (q) => {
-      await q.query('update public.auth_otps set consumed_at = now() where email = $1 and consumed_at is null', [
-        linked.email
-      ])
-      await q.query(
-        `insert into public.auth_otps (email, code_hash, magic_hash, expires_at)
-         values ($1, $2, $3, now() + make_interval(mins => $4::int))`,
-        [linked.email, hashSecret(generateToken(32)), hashSecret(magic), ttlMinutes]
-      )
-    })
-    return c.redirect(
-      withParams(appCallbackUrl(), { email: linked.email, token: magic, type: 'google' }),
-      302
+// ---------------------------------------------------------------------------
+// GitHub sign-in (server-side authorization code flow)
+//
+// The same shape as Google, and for the same reason: GitHub's own documentation
+// states the OAuth App token exchange requires the client secret, so it must
+// happen here on the Function and never inside the distributed desktop app. The
+// app receives no GitHub token — only the alpha:// magic link it already knows
+// how to verify.
+//
+// Scope is identity only (`read:user user:email`). Signing in with GitHub does
+// NOT grant repository access; connecting repositories stays the separate,
+// explicit "Connect GitHub" action in the desktop app.
+// ---------------------------------------------------------------------------
+authRoutes.get('/github/start', async (c) => {
+  if (!githubConfigured()) {
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'github_not_configured',
+          message: 'GitHub sign-in is not configured on this deployment yet.'
+        }
+      },
+      503
     )
   }
 
-  // Web: never put a session token in the URL — hand back a single-use code the
-  // page exchanges over POST for the real tokens.
-  const oneTime = generateToken(32)
-  await withContext(linked.id, 'authenticated', async (q) => {
-    await q.query(
-      `insert into public.auth_oauth_codes (code_hash, user_id, expires_at)
-       values ($1, $2, now() + make_interval(mins => $3::int))`,
-      [hashSecret(oneTime), linked.id, intEnv('AUTH_OAUTH_CODE_TTL_MIN', 5)]
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
+  }
+
+  const target = resolveTarget(c.req.query('redirect'))
+  if (!target) {
+    return c.json(
+      {
+        ok: false,
+        error: { code: 'invalid_redirect', message: 'Unsupported sign-in return target.' }
+      },
+      400
     )
-    await q.query('update public.users set last_sign_in_at = now() where id = $1', [linked.id])
-  })
-  return c.redirect(withParams(state.url, { code: oneTime }), 302)
+  }
+
+  const nonce = generateToken(16)
+  const state = await signState({ kind: target.kind, url: target.url, nonce })
+  return c.redirect(githubAuthUrl({ state, redirectUri: oauthRedirectUri(c, 'github') }), 302)
+})
+
+authRoutes.get('/github/callback', async (c) => {
+  const state = await verifyState(c.req.query('state') ?? '')
+  if (!state) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_state', message: 'This sign-in attempt expired. Try again.' } },
+      400
+    )
+  }
+
+  const failure = (code: string) => c.redirect(withParams(state.url, { error: code }), 302)
+
+  if (c.req.query('error')) return failure(c.req.query('error') as string)
+  const code = c.req.query('code') ?? ''
+  if (!code) return failure('missing_code')
+
+  let identity: GithubIdentity | null = null
+  try {
+    const accessToken = await exchangeGithubCode(code, oauthRedirectUri(c, 'github'))
+    identity = await fetchGithubIdentity(accessToken)
+  } catch (error) {
+    console.error('[api:github] exchange failed', error)
+    identity = null
+  }
+  if (!identity) return failure('github_verification_failed')
+  // fetchGithubIdentity only ever returns a verified address, so an email here is
+  // already proven; the check keeps that invariant explicit.
+  if (!identity.emailVerified) return failure('email_not_verified')
+
+  return finishOAuthSignIn(c, state, 'github', identity, failure)
 })
 
 /** Swap a single-use OAuth code for a session. */

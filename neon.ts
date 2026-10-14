@@ -30,6 +30,10 @@ const apiEnv = pickEnv([
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'GOOGLE_REDIRECT_URI',
+  // GitHub sign-in: the same two, from a GitHub OAuth App (see docs).
+  'GITHUB_CLIENT_ID',
+  'GITHUB_CLIENT_SECRET',
+  'GITHUB_REDIRECT_URI',
   'AUTH_APP_SCHEME',
   'AUTH_PASSWORD_MAX_ATTEMPTS',
   'AUTH_PASSWORD_WINDOW_MIN',

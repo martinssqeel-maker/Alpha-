@@ -97,6 +97,7 @@ export const CH = {
 
   platformStatus: 'platform:status',
   platformSignIn: 'platform:signin',
+  platformSignInWith: 'platform:signinWith',
   platformSignOut: 'platform:signout',
   platformRefresh: 'platform:refresh'
 } as const

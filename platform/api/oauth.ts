@@ -13,6 +13,13 @@ import { allowedOrigins, getEnv, requireEnv } from './env'
 //
 // A desktop target instead redirects to the app's existing `alpha://auth/callback`
 // magic-link shape, so the installed app needs no change to sign in with Google.
+//
+// GitHub sign-in works the same way, with one provider-specific difference: a
+// GitHub OAuth App returns no `id_token`, so identity is read from
+// `GET /user` + `GET /user/emails`. GitHub's own docs are explicit that the OAuth
+// App token exchange requires the client secret ("You must include the client
+// secret in your native application"), so the desktop app must never run this
+// flow itself — the Function owns it and returns the app to `alpha://auth/callback`.
 const ISSUER = 'alpha-platform'
 const STATE_AUDIENCE = 'alpha-oauth-state'
 const STATE_TTL = '10m'
@@ -24,6 +31,19 @@ const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth
   cooldownDuration: 30_000,
   timeoutDuration: 10_000
 })
+
+// GitHub REST API. A valid User-Agent is mandatory: GitHub rejects requests
+// that omit it.
+const GITHUB_API = 'https://api.github.com'
+const GITHUB_USER_AGENT = 'alpha-platform-api'
+const GITHUB_API_VERSION = '2022-11-28'
+
+/**
+ * Sign-in scope, deliberately kept to identity only. `repo` is NOT requested, so
+ * signing in to Alpha AI Workspace can never grant repository access — that stays
+ * a separate, explicit "Connect GitHub" action in the desktop app.
+ */
+export const GITHUB_SIGNIN_SCOPE = 'read:user user:email'
 
 export const OAUTH_STATE_COOKIE = 'alpha_oauth_state'
 
@@ -45,8 +65,13 @@ export function googleConfigured(): boolean {
 }
 
 /** What the website/admin UI may show. `otp` stays true: it is the existing path. */
-export function providersSummary(): { google: boolean; password: boolean; otp: boolean } {
-  return { google: googleConfigured(), password: true, otp: true }
+export function providersSummary(): {
+  google: boolean
+  github: boolean
+  password: boolean
+  otp: boolean
+} {
+  return { google: googleConfigured(), github: githubConfigured(), password: true, otp: true }
 }
 
 export function appScheme(): string {
@@ -226,4 +251,150 @@ export async function verifyGoogleIdToken(
   } catch {
     return null
   }
+}
+
+// ---------------------------------------------------------------------------
+// GitHub sign-in (server-side authorization code flow)
+// ---------------------------------------------------------------------------
+
+export function githubClientId(): string | undefined {
+  return getEnv('GITHUB_CLIENT_ID')
+}
+
+export function githubClientSecret(): string | undefined {
+  return getEnv('GITHUB_CLIENT_SECRET')
+}
+
+/** GitHub is only offered once both credentials exist on the Function. */
+export function githubConfigured(): boolean {
+  return Boolean(githubClientId() && githubClientSecret())
+}
+
+export function githubAuthUrl(options: { state: string; redirectUri: string }): string {
+  const url = new URL('https://github.com/login/oauth/authorize')
+  url.searchParams.set('client_id', githubClientId() ?? '')
+  url.searchParams.set('redirect_uri', options.redirectUri)
+  url.searchParams.set('scope', GITHUB_SIGNIN_SCOPE)
+  // GitHub echoes this back unchanged; it is the same signed state Google uses.
+  url.searchParams.set('state', options.state)
+  // "Sign in or sign up" — sign-in must also serve first-time users.
+  url.searchParams.set('allow_signup', 'true')
+  return url.toString()
+}
+
+/**
+ * Exchange the authorization code for an access token.
+ *
+ * GitHub answers 200 with an `error` field for several failures, so the body is
+ * inspected rather than the status code alone.
+ */
+export async function exchangeGithubCode(code: string, redirectUri: string): Promise<string> {
+  const res = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/x-www-form-urlencoded',
+      'user-agent': GITHUB_USER_AGENT
+    },
+    body: new URLSearchParams({
+      client_id: githubClientId() ?? '',
+      client_secret: githubClientSecret() ?? '',
+      code,
+      redirect_uri: redirectUri
+    })
+  })
+  const text = await res.text().catch(() => '')
+  let parsed: { access_token?: string; error?: string; error_description?: string }
+  try {
+    parsed = JSON.parse(text) as typeof parsed
+  } catch {
+    throw new Error(`github_exchange_failed:unparseable_response:${text.slice(0, 120)}`)
+  }
+  if (parsed.error) {
+    throw new Error(`github_exchange_failed:${parsed.error}:${parsed.error_description ?? ''}`)
+  }
+  if (!res.ok || !parsed.access_token) {
+    throw new Error(`github_exchange_failed:${res.status}:no_access_token`)
+  }
+  return parsed.access_token
+}
+
+/** The subset of GitHub's payloads this flow depends on. */
+export interface GithubProfile {
+  id?: number | string
+  login?: string
+  name?: string | null
+}
+
+export interface GithubEmail {
+  email?: string
+  primary?: boolean
+  verified?: boolean
+}
+
+export interface GithubIdentity {
+  subject: string
+  login: string
+  email: string
+  emailVerified: boolean
+  name?: string
+}
+
+/**
+ * Derive an identity from GitHub's payloads.
+ *
+ * Only a VERIFIED address is accepted, so an unverified email can never be used
+ * to reach an existing Alpha AI Workspace account. The subject is GitHub's
+ * numeric user id, which is stable and never reused — unlike the login handle,
+ * which a user may rename or give up.
+ */
+export function toGithubIdentity(
+  profile: GithubProfile | null,
+  emails: GithubEmail[] | null
+): GithubIdentity | null {
+  if (!profile || profile.id === undefined || profile.id === null) return null
+  const subject = String(profile.id).trim()
+  if (!subject) return null
+
+  const list = Array.isArray(emails) ? emails : []
+  const verified = list.filter(
+    (entry): entry is GithubEmail & { email: string } =>
+      Boolean(entry) && entry.verified === true && typeof entry.email === 'string' && entry.email.includes('@')
+  )
+  const chosen = verified.find((entry) => entry.primary === true) ?? verified[0]
+  if (!chosen) return null
+
+  const name = typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : undefined
+  return {
+    subject,
+    login: typeof profile.login === 'string' ? profile.login : '',
+    email: chosen.email.trim().toLowerCase(),
+    emailVerified: true,
+    name
+  }
+}
+
+async function githubGetJson<T>(path: string, accessToken: string): Promise<T | null> {
+  const res = await fetch(`${GITHUB_API}${path}`, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${accessToken}`,
+      'user-agent': GITHUB_USER_AGENT,
+      'x-github-api-version': GITHUB_API_VERSION
+    }
+  })
+  if (!res.ok) return null
+  try {
+    return (await res.json()) as T
+  } catch {
+    return null
+  }
+}
+
+/** Read the authenticated user's profile and verified addresses. */
+export async function fetchGithubIdentity(accessToken: string): Promise<GithubIdentity | null> {
+  const profile = await githubGetJson<GithubProfile>('/user', accessToken)
+  if (!profile) return null
+  const emails = await githubGetJson<GithubEmail[]>('/user/emails', accessToken)
+  return toGithubIdentity(profile, emails)
 }

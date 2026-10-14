@@ -6,7 +6,17 @@ import {
   passwordProblem,
   verifyPassword
 } from '../platform/api/password'
-import { appCallbackUrl, resolveTarget, signState, verifyState } from '../platform/api/oauth'
+import {
+  GITHUB_SIGNIN_SCOPE,
+  appCallbackUrl,
+  githubAuthUrl,
+  githubConfigured,
+  providersSummary,
+  resolveTarget,
+  signState,
+  toGithubIdentity,
+  verifyState
+} from '../platform/api/oauth'
 import { assetHostAllowed, gatingProblem, normalizeRelease } from '../platform/api/releases'
 
 beforeAll(() => {
@@ -168,5 +178,99 @@ describe('download gating', () => {
     expect(
       normalizeRelease({ version: '1.0.4', installer_url: 'https://evil.example/a.exe' })
     ).toBe(null)
+  })
+})
+
+describe('github sign-in', () => {
+  const saved = {
+    id: process.env.GITHUB_CLIENT_ID,
+    secret: process.env.GITHUB_CLIENT_SECRET
+  }
+
+  function setCredentials(clientId?: string, clientSecret?: string): void {
+    if (clientId === undefined) delete process.env.GITHUB_CLIENT_ID
+    else process.env.GITHUB_CLIENT_ID = clientId
+    if (clientSecret === undefined) delete process.env.GITHUB_CLIENT_SECRET
+    else process.env.GITHUB_CLIENT_SECRET = clientSecret
+  }
+
+  afterAll(() => {
+    if (saved.id === undefined) delete process.env.GITHUB_CLIENT_ID
+    else process.env.GITHUB_CLIENT_ID = saved.id
+    if (saved.secret === undefined) delete process.env.GITHUB_CLIENT_SECRET
+    else process.env.GITHUB_CLIENT_SECRET = saved.secret
+  })
+
+  it('stays hidden until BOTH credentials exist', () => {
+    setCredentials()
+    expect(githubConfigured()).toBe(false)
+    setCredentials('client-id-only')
+    expect(githubConfigured()).toBe(false)
+    setCredentials('client-id', 'client-secret')
+    expect(githubConfigured()).toBe(true)
+  })
+
+  it('is advertised by the provider summary alongside google', () => {
+    setCredentials('client-id', 'client-secret')
+    expect(providersSummary().github).toBe(true)
+    setCredentials()
+    expect(providersSummary().github).toBe(false)
+    expect(providersSummary().password).toBe(true)
+  })
+
+  it('requests identity only — it can never grant repository access', () => {
+    setCredentials('client-id', 'client-secret')
+    const url = new URL(
+      githubAuthUrl({ state: 'signed-state', redirectUri: 'https://api.example.test/auth/github/callback' })
+    )
+    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/login/oauth/authorize')
+    expect(url.searchParams.get('client_id')).toBe('client-id')
+    expect(url.searchParams.get('redirect_uri')).toBe('https://api.example.test/auth/github/callback')
+    expect(url.searchParams.get('state')).toBe('signed-state')
+    expect(url.searchParams.get('scope')).toBe(GITHUB_SIGNIN_SCOPE)
+    expect(GITHUB_SIGNIN_SCOPE).not.toContain('repo')
+    expect(GITHUB_SIGNIN_SCOPE).not.toContain('write')
+    // Signing in must also serve first-time users, not just returning ones.
+    expect(url.searchParams.get('allow_signup')).toBe('true')
+  })
+
+  it('needs a verified address and a stable numeric subject', () => {
+    const profile = { id: 583231, login: 'octocat', name: '  The Octocat  ' }
+    expect(toGithubIdentity(profile, [{ email: 'a@example.com', primary: true, verified: false }])).toBe(null)
+    expect(toGithubIdentity(profile, [])).toBe(null)
+    expect(toGithubIdentity(profile, null)).toBe(null)
+    expect(toGithubIdentity(null, [{ email: 'a@example.com', verified: true }])).toBe(null)
+    expect(toGithubIdentity({ login: 'no-id' }, [{ email: 'a@example.com', verified: true }])).toBe(null)
+    expect(toGithubIdentity({ id: '' }, [{ email: 'a@example.com', verified: true }])).toBe(null)
+  })
+
+  it('prefers the verified primary address and normalizes it', () => {
+    const identity = toGithubIdentity({ id: 583231, login: 'octocat', name: 'The Octocat' }, [
+      { email: 'other@example.com', primary: false, verified: true },
+      { email: 'Primary@Example.com', primary: true, verified: true }
+    ])
+    expect(identity).toEqual({
+      subject: '583231',
+      login: 'octocat',
+      email: 'primary@example.com',
+      emailVerified: true,
+      name: 'The Octocat'
+    })
+  })
+
+  it('ignores an unverified primary and uses the verified one instead', () => {
+    const identity = toGithubIdentity({ id: 7, login: 'dev' }, [
+      { email: 'claim@example.com', primary: true, verified: false },
+      { email: 'real@example.com', primary: false, verified: true }
+    ])
+    expect(identity?.email).toBe('real@example.com')
+  })
+
+  it('reads the login id as the subject, never the renameable handle', () => {
+    const identity = toGithubIdentity({ id: 99, login: 'renamed-since' }, [
+      { email: 'a@example.com', primary: true, verified: true }
+    ])
+    expect(identity?.subject).toBe('99')
+    expect(identity?.subject).not.toBe('renamed-since')
   })
 })

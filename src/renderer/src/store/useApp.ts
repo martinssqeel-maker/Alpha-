@@ -143,6 +143,9 @@ interface State {
 
   refreshPlatform: () => Promise<void>
   signInToPlatform: (email: string) => Promise<{ ok: boolean; message?: string }>
+  signInToPlatformWith: (
+    provider: 'google' | 'github'
+  ) => Promise<{ ok: boolean; message?: string }>
   signOutOfPlatform: () => Promise<void>
 }
 
@@ -706,6 +709,12 @@ export const useApp = create<State>((set, get) => ({
 
   signInToPlatform: async (email) => {
     const result = await api.platform.signIn(email)
+    return result
+  },
+
+  signInToPlatformWith: async (provider) => {
+    const result = await api.platform.signInWith(provider)
+    if (!result.ok) get().toast(result.message ?? 'Could not start that sign-in.', 'error')
     return result
   },
 

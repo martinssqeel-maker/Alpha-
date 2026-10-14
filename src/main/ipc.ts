@@ -31,6 +31,7 @@ import {
   zProjectTree,
   zProjectWrite,
   zPlatformSignIn,
+  zPlatformSignInWith,
   zProjectId,
   zProviderSave,
   zProviderTest,
@@ -77,6 +78,30 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
 
   handle(CH.platformStatus, null, () => ctx.platform.status())
   handle(CH.platformSignIn, zPlatformSignIn, (p) => ctx.platform.signIn((p as { email: string }).email))
+
+  // Provider sign-in opens the system browser on the Function and comes back via
+  // the alpha:// deep link. The app never receives a provider token or secret —
+  // GitHub's docs require the client secret at the token step, so the Function
+  // owns the exchange. This is account sign-in only: it is NOT the GitHub
+  // repository connection, which stays a separate action on the GitHub page.
+  handle(CH.platformSignInWith, zPlatformSignInWith, async (p) => {
+    const provider = (p as { provider: 'google' | 'github' }).provider
+    const url = ctx.platform.providerSignInUrl(provider)
+    if (!url) {
+      return {
+        ok: false,
+        message: 'Alpha Cloud is not configured. Set the API base URL in Settings → Platform.'
+      }
+    }
+    const available = await ctx.platform.providerAvailable(provider)
+    if (!available) {
+      const label = provider === 'google' ? 'Google' : 'GitHub'
+      return { ok: false, message: `Signing in with ${label} is not enabled on this deployment yet.` }
+    }
+    await shell.openExternal(url)
+    return { ok: true, message: 'Finish signing in in your browser — Alpha completes it automatically.' }
+  })
+
   handle(CH.platformSignOut, null, () => ctx.platform.signOut())
   handle(CH.platformRefresh, null, () => ctx.platform.refresh())
 

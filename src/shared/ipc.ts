@@ -178,6 +178,10 @@ export interface IpcContract {
 
   [CH.platformStatus]: { req: void; res: PlatformStatus }
   [CH.platformSignIn]: { req: { email: string }; res: { ok: boolean; message?: string } }
+  [CH.platformSignInWith]: {
+    req: { provider: 'google' | 'github' }
+    res: { ok: boolean; message?: string }
+  }
   [CH.platformSignOut]: { req: void; res: { ok: true } }
   [CH.platformRefresh]: { req: void; res: PlatformStatus }
 }

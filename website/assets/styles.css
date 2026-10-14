@@ -429,7 +429,9 @@ main { position: relative; z-index: 1; }
 }
 .foot-brand { display: flex; align-items: center; gap: 10px; font-family: var(--plate); font-size: 17px; font-weight: 600; }
 .foot-brand img { border-radius: var(--r-xs); }
-.foot-links { display: flex; gap: 20px; margin-left: auto; }
+/* Wraps rather than overflowing: the footer now carries both account links, and
+   it is the only route to them on a phone. */
+.foot-links { display: flex; gap: 20px; margin-left: auto; flex-wrap: wrap; }
 .foot-links a { color: var(--steel); font-size: 14px; }
 .foot-links a:hover { color: var(--chalk); }
 .foot-note { width: 100%; color: var(--faint); font-size: 13px; margin: 0; font-variant-numeric: tabular-nums; }
@@ -438,6 +440,12 @@ main { position: relative; z-index: 1; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
   .steps, .req-grid { grid-template-columns: 1fr; }
+}
+
+/* The account actions sit in the header next to the in-page links, so the links
+   have to yield a little earlier than the rest of the layout: with both present
+   the row needs ~945px. Phones and narrow windows keep the footer links instead. */
+@media (max-width: 950px) {
   .nav-links { display: none; }
 }
 @media (max-width: 620px) {
@@ -456,6 +464,9 @@ main { position: relative; z-index: 1; }
 .account-card { max-width: 620px; margin: 0 auto; padding: 28px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--lift-1); }
 .account-card h2 { font-family: var(--plate); }
 .muted { color: var(--steel); font-size: 13px; }
+/* Inline links inside body copy, like the sign-in/sign-up toggle on the account
+   page: the base reset strips every anchor's colour and underline. */
+.muted a { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .status { margin-top: 16px; font-size: 13px; min-height: 18px; color: var(--steel); }
 .status[data-kind='ok'] { color: var(--ok); }

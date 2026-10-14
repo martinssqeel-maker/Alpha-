@@ -11,9 +11,13 @@ the account page that signs users in.
   version, size and release notes from the same GitHub API — no session required.
 - **Account page.** `account.html` + `assets/account.js` offer every sign-in method
   the deployment actually reports (`/auth/providers`), plus the emailed link/code
-  path, and render the signed-in account's plan and usage. Every page links to it:
-  a `Sign in` action in the header (hidden below 620px, like the GitHub link) and an
-  `Account` entry in the footer, so it stays reachable on phones.
+  path, and render the signed-in account's plan and usage. Signing in *is* signing
+  up: the API provisions the account on the first verified sign-in, so
+  `/account?mode=signup` only reframes the same card (title, lede and email button)
+  instead of pretending there is a second endpoint. Every page links to it —
+  `Sign in` and `Sign up` actions in the header (both hidden below 620px, like the
+  GitHub link) and `Sign in` / `Sign up` entries in the footer, so both stay
+  reachable on phones.
 
 ## Files
 
@@ -21,7 +25,7 @@ the account page that signs users in.
 website/
   index.html            landing page
   download.html         public download page (no sign-in)
-  account.html          sign-in and account page
+  account.html          sign-in / sign-up and account page
   assets/styles.css     design system
   assets/app.js         direct-download resolution + version/size hints + reveal animations
   assets/theme.js       applies the stored palette before first paint

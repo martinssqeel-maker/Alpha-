@@ -75,7 +75,10 @@ export default function AccountModal({ open, onClose }: Props) {
             </>
           ) : (
             <>
-              <p>One Alpha account works across the website and this desktop app.</p>
+              <p>
+                One Alpha account works across the website and this desktop app. New here? Your
+                first sign-in creates the account — there is no separate sign-up form.
+              </p>
               {/* Offer only the methods this deployment advertises. Before the
                   first answer every button stays visible, so an unreachable API
                   never hides a sign-in method that actually works. */}

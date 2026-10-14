@@ -15,6 +15,8 @@ const REFRESH_MARGIN_MS = 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 
 const els = {
+  cardTitle: document.querySelector('[data-card-title]'),
+  cardLede: document.querySelector('[data-card-lede]'),
   loading: document.querySelector('[data-view="loading"]'),
   unconfigured: document.querySelector('[data-view="unconfigured"]'),
   signedOut: document.querySelector('[data-view="signed-out"]'),
@@ -33,6 +35,21 @@ const els = {
   usageRows: document.querySelector('[data-usage-rows]'),
   accountModels: document.querySelector('[data-account-models]'),
   signOut: document.querySelector('[data-signout]')
+}
+
+// `?mode=signup` frames the same passwordless flow as account creation. There is
+// no separate endpoint to call: the API provisions the account on the first
+// verified sign-in, so arriving from a "Sign up" link only changes what the card
+// says and which way the toggle under it points.
+if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
+  document.title = 'Create an account · Alpha AI Workspace'
+  if (els.cardTitle) els.cardTitle.textContent = 'Create your account'
+  if (els.cardLede) {
+    els.cardLede.innerHTML =
+      'Create your Alpha account with Google, GitHub or your email — no password needed. ' +
+      'Already have one? <a data-mode-link href="/account">Sign in</a>.'
+  }
+  if (els.emailSubmit) els.emailSubmit.textContent = 'Email me a sign-up link'
 }
 
 /** The committed config.js supplies the API host; empty means "not configured". */

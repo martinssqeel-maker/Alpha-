@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Account · Alpha AI Workspace</title>
+    <title>Sign in or create an account · Alpha AI Workspace</title>
     <meta
       name="description"
-      content="Sign in to Alpha AI Workspace with Google, GitHub or an emailed link. One account works on the website and in the Windows app."
+      content="Sign in or create an Alpha account with Google, GitHub or an emailed link. One account works on the website and in the Windows app."
     />
     <meta name="theme-color" content="#0c0f14" />
     <!-- Signed-in state is per-visitor; keep it out of search results. -->
@@ -52,7 +52,8 @@
         <p class="eyebrow">Account</p>
         <h1>One account, website and app</h1>
         <p class="sub">
-          Sign in here or in the Windows app — either way you land on the same Alpha account.
+          Sign in or create an account here, then use the same login in the Windows app —
+          either way you land on the same Alpha account.
         </p>
       </div>
 
@@ -73,7 +74,15 @@
         </div>
 
         <div data-view="signed-out" hidden>
-          <div class="plan-name">Sign in</div>
+          <div class="plan-name" data-card-title>Sign in</div>
+
+          <!-- One flow serves both directions: the API provisions the account on the
+               first verified sign-in, so the toggle only reframes the same form. -->
+          <p class="muted" data-card-lede>
+            Sign in with Google, GitHub or your email. New to Alpha?
+            <a data-mode-link href="/account?mode=signup">Create an account</a> — it uses the
+            same methods.
+          </p>
 
           <div class="provider-list" data-providers hidden></div>
 

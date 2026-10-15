@@ -1,20 +1,16 @@
 // Alpha AI Workspace — landing page behaviour.
-// Resolves the latest release so the version/size hints are never stale.
 //
-// The download CTA is a free direct download: it points straight at the newest
-// `.exe` release asset on GitHub (the same source the desktop updater uses).
-// Until the API answers, the buttons keep their static fallback href — the
-// public GitHub releases page, which never 404s.
+// The landing page explains the product and routes visitors to Get Started /
+// Sign in. It deliberately does NOT offer an installer: the download lives in
+// the account area, behind a session the API checks server-side.
+//
+// The only thing fetched here is the current release *version label*, from the
+// same public GitHub Releases API the desktop updater uses. It is decoration —
+// if the lookup fails (offline, rate-limited) the page keeps the generic
+// "current release" wording and nothing else changes.
 
 const REPO = "martinssqeel-maker/Alpha-";
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
-
-function formatSize(bytes) {
-  if (!bytes || bytes < 0) return null;
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
-}
 
 function setText(selector, value) {
   if (!value) return;
@@ -23,35 +19,17 @@ function setText(selector, value) {
   });
 }
 
-function setDownload(url) {
-  document.querySelectorAll("[data-download]").forEach((el) => {
-    el.setAttribute("href", url);
-    el.setAttribute("rel", "noopener");
-  });
-}
-
-async function resolveLatestRelease() {
+async function resolveReleaseVersion() {
   try {
     const res = await fetch(RELEASE_API, {
       headers: { Accept: "application/vnd.github+json" }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const release = await res.json();
-
     const version = String(release.tag_name || "").replace(/^v/i, "");
-    const asset = (release.assets || []).find((a) => /\.exe$/i.test(a.name));
-
     if (version) setText("[data-version]", version);
-    setDownload(asset ? asset.browser_download_url : RELEASES_PAGE);
-    if (asset) {
-      const size = formatSize(asset.size);
-      if (size) setText("[data-size-hint]", `~${size}`);
-    }
   } catch (err) {
-    // Offline or rate-limited: the hints stay generic and the public releases
-    // page is still the destination.
-    console.warn("Could not resolve latest release:", err && err.message);
-    setDownload(RELEASES_PAGE);
+    console.warn("Could not resolve the current release version:", err && err.message);
   }
 }
 
@@ -84,5 +62,5 @@ function setupReveal() {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupReveal();
-  resolveLatestRelease();
+  resolveReleaseVersion();
 });

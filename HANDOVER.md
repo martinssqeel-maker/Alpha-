@@ -1059,3 +1059,133 @@ in purpose (identity vs. repository access) but agree on the rule: no secret in 
 - `providerAvailable()` fails **open** (a check that errors is treated as available) so a transient
   network problem cannot wrongly hide a working provider; the browser then shows the deployment's own message.
 
+## 20. Session log — 2026-10-15: local model management, chat speed, BYOK hardening, account-gated downloads
+
+Operator request: full product upgrade (website, desktop, BYOK, Ollama, agent speed). Earlier phases
+(website redesign, shared auth, account page, GitHub sign-in) are logged in §12–§19. This pass covered
+Phases 5–7 of the phase plan plus the remaining website download gating. Everything below was verified
+by running the commands, not by reading code.
+
+### What changed
+
+**Local model management (Ollama)** — new `src/main/services/ollamaManager.ts` + rebuilt
+`src/renderer/src/pages/ModelsPage.tsx` (+ new types in `src/shared/types.ts`, new IPC in
+`channels.ts`/`ipc.ts`/`schemas.ts`, `evt:ollama` progress event, wired in `context.ts`):
+
+- Detection: `status()` probes the configured base URL (saved ollama provider, else settings
+  `ollamaUrl`), reports installed/reachable/version, and links https://ollama.com/download when the
+  service is missing. It never installs anything itself.
+- Curated catalog (`OLLAMA_CATALOG`, ~15 well-known models): params, approximate Q4 download size,
+  minimum RAM. Sizes are labelled approximate; the pull reports the real ones.
+- Hardware probe: total/free RAM and CPU via node `os`, GPU name+VRAM via `nvidia-smi` on Windows
+  (falls back to CPU-only guidance when absent).
+- Fit guidance: `assessFit()` grades each entry `comfortable | tight | too-large` against free RAM
+  (`needed = max(minRamGb, ceil(modelGb*1.5 + 1))`). Guidance, not a benchmark.
+- Install: `pull()` streams Ollama's NDJSON progress over `evt:ollama`; the Models page shows real
+  percent/bytes; `cancel()` aborts an in-flight pull; `remove()` deletes a local model.
+- Preload: `preload()` warms a model into memory before the first message (called on provider/model
+  select in the store).
+- Renderer: `useApp` holds `ollama` status + catalog, subscribes to progress, exposes
+  pull/cancel/remove/preload actions; `api.ollama.*` in `src/renderer/src/lib/api.ts`.
+
+**Chat speed and instrumentation** — `src/main/services/chat.ts` + `src/main/services/providers/ollama.ts`:
+
+- `ChatMetrics` `metrics` event with real clock readings: `promptMs` (context assembly), `ttftMs`,
+  `totalMs`, prompt/output tokens, tok/s, `toolCalls`, `toolMs`. Rendered under the last reply in
+  `ChatPage.tsx` ("first token … · … tok/s · total … · N tools in …").
+- History budget: transcripts no longer ship in full. `MAX_HISTORY_MESSAGES = 20` **and**
+  `MAX_HISTORY_CHARS = 24_000` — 20 × 12k used to reach 240k characters, i.e. most of a small local
+  model's context spent before the user's question.
+- Model residency: every Ollama request sends `keep_alive: '15m'` (`OLLAMA_KEEP_ALIVE`) instead of
+  Ollama's 5-minute default. Verified live: `/api/ps` reports `expiresInSeconds: 900` right after a
+  request (bench asserts this, see below).
+- Tool scheduling: spawn-based git reads (`get_git_status`, `get_git_diff`) run concurrently with
+  the model's next call; file-read tools are synchronous (`readFileSync`) and deliberately not
+  parallelised. Documented honestly in `tests/chatPipeline.test.ts`.
+
+**BYOK endpoint hardening** — new `src/shared/providerUrl.ts`:
+
+- `providerEndpointProblem()` is shared by the Providers page (inline validation) and the registry
+  (save-time enforcement): http/https only, no credentials in the URL (they would end up in
+  plaintext settings/logs instead of the OS credential store), no query/fragment, Ollama endpoints
+  must be the server root. Private/loopback hosts are deliberately allowed — a desktop app whose
+  core feature is talking to `127.0.0.1:11434`.
+
+**Website — download gating** (completes the Part 1 "no public installer" requirement):
+
+- Landing page: installer CTA replaced by "Get started" (sign-up) + "Sign in"; no download link on
+  the public page.
+- `/download` is now a sign-in gate; signed-in visitors are routed to the account area where the
+  real installer link, checksum and release notes render from `/downloads/latest`. Nothing fake is
+  shown when no release exists.
+- `account.html`/`account.js`: downloads section (version, size, checksum, notes, install steps,
+  system requirements).
+- QA tooling: `scripts/serve-website.mjs` (static server with clean URLs, `--api` rewrites only the
+  *served* copy of `config.js`) and `scripts/stub-platform-api.mjs` (documented response shapes;
+  `--no-release` and `--unauthorized` modes) so the authenticated surfaces can be rendered locally
+  despite production CORS being narrowed to the live origin.
+
+**Tests** — 5 new files; suite is now 18 files / 171 tests, all passing:
+
+- `tests/ollama.test.ts` — OllamaManager against a mocked NDJSON service (progress, cancel, errors,
+  fit assessment).
+- `tests/ollama.live.test.ts` — real service: detection, real model list, re-pull from the local
+  manifest, refusal for an unknown name. Skips when no Ollama answers.
+- `tests/chatPipeline.test.ts` — history-budget bounds, metrics emission, concurrent git reads.
+- `tests/providerUrl.test.ts` — URL validation matrix.
+- `tests/bench/chat.live.bench.ts` — live end-to-end timing through the real ChatService. Kept out
+  of the default glob (it takes minutes against a real model); run with `npm run bench:chat`, which
+  uses the dedicated `vitest.bench.config.ts`. Skips when no Ollama answers, so CI never depends on
+  a local model. **Fixed this session:** after the file moved to `tests/bench/`, its `../src/...`
+  imports no longer resolved and the default include glob never matched `.bench.ts`, so the script
+  exited "No test files found"; imports are now `../../src/...` and the bench has its own config.
+
+### Verification (all re-run 2026-10-15)
+
+- `npm run typecheck` → exit 0 (node + web).
+- `npm test` → 18 files / 171 tests passed, exit 0 (bench excluded, as intended).
+- `npm run build` → exit 0; out/main 244.5 kB, out/preload 14.5 kB, out/renderer 1.67 MB.
+- `node scripts/verify-website.mjs` → exit 0, 3 pages checked.
+- `npm run bench:chat` (live, real Ollama 0.40.3 + local model on this machine) → see §20.1 below.
+
+### §20.1 Live benchmark numbers (2026-10-15, real Ollama 0.40.3, model qwen3:1.7b)
+
+Full run: 1 file / 4 tests passed, 367 s wall. Re-run any time with `npm run bench:chat`; each run
+prints one `BENCH <label> {json}` line per scenario, so a before/after comparison is a diff of two
+lines rather than a claim.
+
+| scenario | TTFT | total | notes |
+|---|---|---|---|
+| cold (model not in memory) | 35 286 ms | 128 806 ms | ~33 s of that TTFT is the model load; 1 922 prompt tokens; 2 tool calls (21 ms tool wall time) |
+| warm (model resident) | **2 349 ms** | 55 641 ms | 5 tok/s; 1 633 prompt tokens |
+| after unload (`keep_alive: 0`) | 35 429 ms | 61 351 ms | the reload penalty, measured |
+| after preload | 30 759 ms | 57 591 ms | see caveat below |
+| long history (6 seeded turns) | 29 123 ms | 53 731 ms | **promptTokens 2 913** — the history budget capped ~12 k tokens of seeded transcript down to ~3 k |
+| residency (`/api/ps` after a request) | — | — | `expiresInSeconds: 900` — the 15-minute `keep_alive` is live (Ollama default would evict at 300 s) |
+
+What these numbers mean:
+
+- **The single biggest speed factor is model residency.** Warm TTFT is 2.3 s vs 35.3 s cold — a
+  ~15× difference that has nothing to do with code and everything to do with whether the weights
+  are already in RAM. The 15-minute `keep_alive` (verified: 900 s expiry) is what keeps a
+  conversation feeling warm.
+- Tool execution is not a bottleneck for typical turns: 2 tool calls cost 21 ms of wall time.
+- The history budget keeps prompt size flat as conversations grow (2 913 prompt tokens on the
+  long-history run instead of the full seeded transcript).
+- The preload comparison (`ttftSavedMs: 4 670`) is **noisy**: the bench's second `keep_alive: 0`
+  unload can land *after* the preload completes, so "after-preload" sometimes still pays a reload.
+  Treat the warm-vs-cold and residency numbers as the trustworthy ones; a preload measurement worth
+  quoting needs a settle delay between unload and preload (not implemented).
+- Absolute tok/s (1.5–5) reflects a 1.7 B model on this machine's CPU; larger models on stronger
+  hardware will differ. The numbers here are for comparing the pipeline, not for marketing.
+
+### Known gaps / next steps
+
+- The gated website flow passes the static verifier and can be rendered locally against the stub
+  API (`npm run serve:website` + `npm run stub:api`), but the signed-in round trip against the
+  production deployment (CORS narrows to the live origin) still needs the manual steps in §9.
+- `npm run smoke:desktop` was not re-run in this pass (needs a display session); typecheck + build
+  cover compile-level breakage.
+- GPU detection is Windows-specific (`nvidia-smi`); machines without it get CPU-only fit guidance.
+- Nothing has been pushed, deployed or published. All of this work sits in one local commit.
+

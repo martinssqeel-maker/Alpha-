@@ -3,6 +3,7 @@ export const CH = {
   diagnostics: 'app:diagnostics',
   appTheme: 'app:theme',
   revealPath: 'shell:showItem',
+  openExternal: 'shell:openExternal',
   updateCheck: 'update:check',
   updateDownload: 'update:download',
   updateInstall: 'update:install',
@@ -24,6 +25,14 @@ export const CH = {
   providersTest: 'providers:test',
   providersModels: 'providers:models',
   providersStatus: 'providers:status',
+
+  ollamaStatus: 'ollama:status',
+  ollamaCatalog: 'ollama:catalog',
+  ollamaHardware: 'ollama:hardware',
+  ollamaPull: 'ollama:pull',
+  ollamaPreload: 'ollama:preload',
+  ollamaCancel: 'ollama:cancel',
+  ollamaRemove: 'ollama:remove',
 
   chatSend: 'chat:send',
   chatCancel: 'chat:cancel',
@@ -113,7 +122,8 @@ export const EVENTS = {
   providerStatus: 'evt:provider-status',
   project: 'evt:project',
   update: 'evt:update',
-  platform: 'evt:platform'
+  platform: 'evt:platform',
+  ollama: 'evt:ollama'
 } as const
 
 export type Channel = (typeof CH)[keyof typeof CH]

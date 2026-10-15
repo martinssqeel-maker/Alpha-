@@ -12,6 +12,13 @@ import type {
   GithubDevicePollResult,
   GithubDeviceStartResult,
   ModelInfo,
+  HardwareInfo,
+  OllamaCatalogEntry,
+  OllamaPreloadResult,
+  OllamaPullProgress,
+  OllamaPullResult,
+  OllamaRecommendation,
+  OllamaStatus,
   PendingApproval,
   PlatformStatus,
   Project,
@@ -86,6 +93,7 @@ export interface IpcContract {
   [CH.diagnostics]: { req: void; res: DiagnosticsInfo }
   [CH.appTheme]: { req: { theme: ResolvedTheme }; res: { ok: true } }
   [CH.revealPath]: { req: { path: string }; res: { ok: true } }
+  [CH.openExternal]: { req: { url: string }; res: { ok: boolean; message?: string } }
   [CH.updateCheck]: { req: void; res: UpdateStatus }
   [CH.updateDownload]: { req: void; res: UpdateStatus }
   [CH.updateInstall]: { req: void; res: { ok: boolean; message?: string } }
@@ -107,6 +115,14 @@ export interface IpcContract {
   [CH.providersTest]: { req: unknown; res: ProviderStatus }
   [CH.providersModels]: { req: { id: string }; res: ModelInfo[] }
   [CH.providersStatus]: { req: { id?: string } | undefined; res: ProviderStatus[] }
+
+  [CH.ollamaStatus]: { req: void; res: OllamaStatus }
+  [CH.ollamaCatalog]: { req: void; res: OllamaCatalogEntry[] }
+  [CH.ollamaHardware]: { req: void; res: { hardware: HardwareInfo; recommendations: OllamaRecommendation[] } }
+  [CH.ollamaPull]: { req: { model: string }; res: OllamaPullResult }
+  [CH.ollamaPreload]: { req: { model: string }; res: OllamaPreloadResult }
+  [CH.ollamaCancel]: { req: { model: string }; res: { ok: boolean } }
+  [CH.ollamaRemove]: { req: { model: string }; res: OllamaPullResult }
 
   [CH.chatSend]: { req: unknown; res: { requestId: string } }
   [CH.chatCancel]: { req: { requestId: string }; res: { ok: true } }

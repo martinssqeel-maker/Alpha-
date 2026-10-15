@@ -1,29 +1,68 @@
 import { z } from 'zod'
+import { providerEndpointProblem } from './providerUrl'
 import { RESOLVED_THEME_OPTIONS } from './theme'
 
 export const zPermissionLevel = z.enum(['allow', 'ask', 'deny'])
 export const zPermissionMode = z.enum(['chat', 'assist', 'agent'])
 
-export const zProviderSave = z.object({
-  id: z.string().min(1).optional(),
-  kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
-  name: z.string().min(1).max(120),
-  baseUrl: z.string().min(1).max(2000),
-  enabled: z.boolean().default(true),
-  isLocal: z.boolean().default(false),
-  preset: z.string().max(80).optional(),
-  apiKey: z.string().max(4000).optional()
-})
+// The endpoint is validated as a *pair* with the provider kind, so a user gets a
+// specific message ("that is not a valid URL", "remove the credentials") instead
+// of a generic schema complaint.
+const providerEndpoint = <T extends { baseUrl: string; kind: 'ollama' | 'openai-compatible' | 'gateway' }>(
+  schema: z.ZodType<T>
+): z.ZodType<T> =>
+  schema.superRefine((value, ctx) => {
+    const problem = providerEndpointProblem(value.baseUrl, value.kind)
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ['baseUrl'] })
+  })
 
-export const zProviderTest = z.object({
-  id: z.string().optional(),
-  kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
-  baseUrl: z.string().min(1),
-  apiKey: z.string().max(4000).optional()
-})
+export const zProviderSave = providerEndpoint(
+  z.object({
+    id: z.string().min(1).optional(),
+    kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
+    name: z.string().min(1).max(120),
+    baseUrl: z.string().min(1).max(2000),
+    enabled: z.boolean().default(true),
+    isLocal: z.boolean().default(false),
+    preset: z.string().max(80).optional(),
+    apiKey: z.string().max(4000).optional()
+  })
+)
+
+export const zProviderTest = providerEndpoint(
+  z.object({
+    id: z.string().optional(),
+    kind: z.enum(['ollama', 'openai-compatible', 'gateway']),
+    baseUrl: z.string().min(1),
+    apiKey: z.string().max(4000).optional()
+  })
+)
 
 export const zPlatformSignIn = z.object({
   email: z.string().email()
+})
+
+/**
+ * A model name as Ollama accepts it: `qwen3:1.7b`, `llama3.2:latest`,
+ * `hf.co/user/repo:quant`. Kept tight because it is passed to the local service
+ * verbatim and shown back to the user.
+ */
+export const zOllamaModel = z.object({
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/, 'Not a valid Ollama model name')
+})
+
+/** Only http(s) may be opened in the system browser — never file:, javascript: or a custom scheme. */
+export const zOpenExternal = z.object({
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine((value) => /^https?:\/\//i.test(value), 'Only http(s) links can be opened')
 })
 
 /** Provider account sign-in. 'google'/'github' here are *identity*, not repo access. */

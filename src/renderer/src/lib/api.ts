@@ -1,6 +1,13 @@
 import { CH, EVENTS } from '@shared/channels'
 import type { ChannelName, IpcContract } from '@shared/ipc'
-import type { BrowserPreviewState, ChatEvent, PlatformStatus, TerminalEvent, UpdateEvent } from '@shared/types'
+import type {
+  BrowserPreviewState,
+  ChatEvent,
+  OllamaPullProgress,
+  PlatformStatus,
+  TerminalEvent,
+  UpdateEvent
+} from '@shared/types'
 import type { ResolvedTheme } from '@shared/theme'
 
 async function invoke<K extends ChannelName>(
@@ -26,10 +33,16 @@ export function onUpdate(cb: (event: UpdateEvent) => void): () => void {
   return window.alpha.subscribe(EVENTS.update, cb as (d: unknown) => void)
 }
 
+/** Live progress while a local model downloads, straight from Ollama. */
+export function onOllama(cb: (progress: OllamaPullProgress) => void): () => void {
+  return window.alpha.subscribe(EVENTS.ollama, cb as (d: unknown) => void)
+}
+
 export const api = {
   diagnostics: () => invoke(CH.diagnostics, undefined),
   setTheme: (theme: ResolvedTheme) => invoke(CH.appTheme, { theme }),
   revealPath: (path: string) => invoke(CH.revealPath, { path }),
+  openExternal: (url: string) => invoke(CH.openExternal, { url }),
 
   updates: {
     check: () => invoke(CH.updateCheck, undefined),
@@ -61,6 +74,16 @@ export const api = {
     test: (input: unknown) => invoke(CH.providersTest, input),
     models: (id: string) => invoke(CH.providersModels, { id }),
     status: (id?: string) => invoke(CH.providersStatus, id ? { id } : undefined)
+  },
+
+  ollama: {
+    status: () => invoke(CH.ollamaStatus, undefined),
+    catalog: () => invoke(CH.ollamaCatalog, undefined),
+    hardware: () => invoke(CH.ollamaHardware, undefined),
+    pull: (model: string) => invoke(CH.ollamaPull, { model }),
+    preload: (model: string) => invoke(CH.ollamaPreload, { model }),
+    cancel: (model: string) => invoke(CH.ollamaCancel, { model }),
+    remove: (model: string) => invoke(CH.ollamaRemove, { model })
   },
 
   chat: {

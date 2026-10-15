@@ -222,8 +222,28 @@ export interface ChatUsage {
   totalTokens?: number
 }
 
+/**
+ * Timing for one assistant turn, measured in the main process.
+ *
+ * These are real clock readings, not estimates: `promptMs` is context assembly,
+ * `ttftMs` is what the user waits for before seeing anything (including a model
+ * load), and the tool figures come from the activities themselves.
+ */
+export interface ChatMetrics {
+  promptMs: number
+  ttftMs: number
+  totalMs: number
+  promptTokens?: number
+  outputTokens?: number
+  tokensPerSecond?: number
+  toolCalls: number
+  toolMs: number
+  historyMessages: number
+}
+
 export type ChatEventPayload =
   | { type: 'start'; requestId: string }
+  | { type: 'metrics'; requestId: string; metrics: ChatMetrics }
   | { type: 'delta'; requestId: string; content: string }
   | { type: 'thinking'; requestId: string; content: string }
   | { type: 'activity'; requestId: string; activity: ActivityItem }
@@ -425,4 +445,78 @@ export interface GithubDevicePollResult {
   login?: string
   message?: string
   interval?: number
+}
+
+// ---------------------------------------------------------------------------
+// Local models (Ollama)
+// ---------------------------------------------------------------------------
+
+/** A curated Ollama library entry. Sizes are approximate; the pull reports real ones. */
+export interface OllamaCatalogEntry {
+  name: string
+  title: string
+  description: string
+  categories: string[]
+  params: string
+  approxBytes: number
+  minRamGb: number
+}
+
+export interface HardwareInfo {
+  totalRamGb: number
+  freeRamGb: number
+  cpuCount: number
+  cpuModel: string
+  gpu: { name: string; vramGb: number } | null
+  platform: string
+  probedAt: number
+}
+
+export type OllamaFit = 'comfortable' | 'tight' | 'too-large'
+
+/** A catalog entry judged against this machine's memory. Guidance, not a benchmark. */
+export interface OllamaRecommendation {
+  model: OllamaCatalogEntry
+  fit: OllamaFit
+  needed: number
+  reason: string
+}
+
+export interface OllamaStatus {
+  reachable: boolean
+  installed: boolean
+  baseUrl: string
+  installUrl: string
+  version?: string
+  models: ModelInfo[]
+  message?: string
+}
+
+export type OllamaPullState = 'pulling' | 'done' | 'error' | 'cancelled'
+
+/** Result of warming a local model into memory ahead of the first message. */
+export interface OllamaPreloadResult {
+  ok: boolean
+  message?: string
+  cached?: boolean
+}
+
+/** Progress for one model, streamed from Ollama while it downloads. */
+export interface OllamaPullProgress {
+  model: string
+  state: OllamaPullState
+  status: string
+  completed?: number
+  total?: number
+  percent?: number
+  elapsedMs?: number
+  message?: string
+}
+
+export interface OllamaPullResult {
+  ok: boolean
+  model: string
+  message?: string
+  cancelled?: boolean
+  elapsedMs?: number
 }

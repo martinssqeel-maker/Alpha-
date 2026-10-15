@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { providerEndpointProblem } from '@shared/providerUrl'
 import type { ModelInfo, ProviderConfig, ProviderKind, ProviderStatus, ToolDefinition } from '@shared/types'
 import { getLogger } from '../logger'
 import type { SecretStore } from '../secrets'
@@ -185,6 +186,11 @@ export class ProviderRegistry {
     preset?: string
     apiKey?: string
   }): ProviderConfig {
+    // Defence in depth: the IPC schema already rejects a bad endpoint, but every
+    // request for this provider is sent to `baseUrl`, so the registry refuses one
+    // too rather than trusting its caller.
+    const problem = providerEndpointProblem(input.baseUrl, input.kind)
+    if (problem) throw new ProviderError(problem, 'invalid_endpoint')
     const saved = this.repo.save({
       id: input.id,
       kind: input.kind,

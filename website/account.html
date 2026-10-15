@@ -6,7 +6,7 @@
     <title>Sign in or create an account · Alpha AI Workspace</title>
     <meta
       name="description"
-      content="Sign in or create an Alpha account with Google, GitHub or an emailed link. One account works on the website and in the Windows app."
+      content="Sign in or create an Alpha account with Google, GitHub or an emailed link. One account downloads the Windows app and signs the app in."
     />
     <meta name="theme-color" content="#0c0f14" />
     <!-- Signed-in state is per-visitor; keep it out of search results. -->
@@ -28,7 +28,7 @@
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="/#features">Features</a>
-        <a href="/download">Download</a>
+        <a href="/#get-started">Get started</a>
         <a href="/#faq">FAQ</a>
       </nav>
       <div class="nav-actions">
@@ -50,8 +50,8 @@
     <main class="section" data-account-root>
       <div class="section-head">
         <p class="eyebrow">Account</p>
-        <h1>One account, website and app</h1>
-        <p class="sub">
+        <h1 data-page-title>One account, website and app</h1>
+        <p class="sub" data-page-sub>
           Sign in or create an account here, then use the same login in the Windows app —
           either way you land on the same Alpha account.
         </p>
@@ -151,9 +151,61 @@
 
           <p class="muted" data-account-models></p>
 
+          <!-- Downloads are fetched from the authenticated API with the session
+               token, so the release link is only ever handed to a signed-in account. -->
+          <section class="account-section" id="download" aria-labelledby="downloads-title">
+            <h2 class="plan-name section-title" id="downloads-title">Downloads</h2>
+            <p class="muted">Windows installer for your Alpha account.</p>
+
+            <div data-download-view="loading" class="muted">Checking the current release…</div>
+
+            <div data-download-view="unavailable" hidden>
+              <p class="muted" data-download-message></p>
+            </div>
+
+            <div data-download-view="ready" hidden>
+              <div class="dl-block">
+                <div>
+                  <div class="plan-name">
+                    Alpha AI Workspace <span data-download-version></span>
+                  </div>
+                  <div class="muted" data-download-meta>Windows installer</div>
+                </div>
+                <a
+                  class="btn primary"
+                  data-download-link
+                  href="#"
+                  target="_blank"
+                  rel="noopener"
+                >Download installer</a>
+              </div>
+              <p class="muted" data-download-notes hidden></p>
+              <p class="micro mono" data-download-checksum hidden></p>
+            </div>
+          </section>
+
+          <section class="account-section" aria-labelledby="install-title">
+            <h2 class="plan-name section-title" id="install-title">Install it</h2>
+            <ol class="install-steps">
+              <li>Download the installer above (it is free and unsigned — if SmartScreen warns, choose <em>More info → Run anyway</em>).</li>
+              <li>Install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> if you want to run models locally.</li>
+              <li>Open Alpha, sign in with this same account, and install a model from the <strong>Models</strong> page.</li>
+            </ol>
+          </section>
+
+          <section class="account-section" aria-labelledby="requirements-title">
+            <h2 class="plan-name section-title" id="requirements-title">System requirements</h2>
+            <ul class="req-list">
+              <li>Windows 10 or 11 (x64)</li>
+              <li>Per-user install — no administrator rights required</li>
+              <li>Roughly 400 MB of disk after install</li>
+              <li>Ollama for local models, or an API key for a cloud provider</li>
+            </ul>
+          </section>
+
           <p class="micro">
-            Open the Windows app and sign in there too — it recognises this same account, so your
-            plan and usage follow you.
+            Your account details and installer link stay behind the server's own session check —
+            this page never receives a provider token.
           </p>
         </div>
 
@@ -161,7 +213,7 @@
       </div>
 
       <p class="micro">
-        Need the app? <a href="/download">Download Alpha AI Workspace for Windows</a>.
+        Need the app? It is in the Downloads section of this account area once you are signed in.
       </p>
     </main>
 
@@ -172,7 +224,7 @@
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href="/">Home</a>
-        <a href="/download">Download</a>
+        <a href="/#get-started">Get started</a>
         <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
       </nav>
       <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>

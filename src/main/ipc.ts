@@ -25,6 +25,8 @@ import {
   zGitPush,
   zGitSetRemote,
   zId,
+  zOllamaModel,
+  zOpenExternal,
   zProjectOpen,
   zProjectRename,
   zProjectRead,
@@ -166,6 +168,33 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
         .then((s) => [s])
     }
     return ctx.registry.statuses()
+  })
+
+  // Local models. Detection, catalog metadata and every download/removal go to
+  // the running Ollama service; progress events are streamed back on `evt:ollama`.
+  handle(CH.ollamaStatus, null, () => ctx.ollama.status())
+  handle(CH.ollamaCatalog, null, () => ctx.ollama.catalog())
+  handle(CH.ollamaHardware, null, async () => ({
+    hardware: await ctx.ollama.hardware(),
+    recommendations: await ctx.ollama.recommendations()
+  }))
+  handle(CH.ollamaPull, zOllamaModel, async (p) => {
+    const model = (p as { model: string }).model
+    const result = await ctx.ollama.pull(model)
+    // A finished pull changes the installed list, so refresh what the UI shows.
+    ctx.emit('evt:provider-status', { changed: true })
+    return result
+  })
+  // Warming a model is best-effort: the request that follows still works if this
+  // fails, it just pays the load itself.
+  handle(CH.ollamaPreload, zOllamaModel, (p) => ctx.ollama.preload((p as { model: string }).model))
+  handle(CH.ollamaCancel, zOllamaModel, (p) => ({
+    ok: ctx.ollama.cancelPull((p as { model: string }).model)
+  }))
+  handle(CH.ollamaRemove, zOllamaModel, async (p) => {
+    const result = await ctx.ollama.remove((p as { model: string }).model)
+    if (result.ok) ctx.emit('evt:provider-status', { changed: true })
+    return result
   })
 
   handle(CH.chatSend, zChatSend, (p) => ctx.chat.send(p as never))
@@ -450,6 +479,18 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
   ipcMain.handle('shell:showItem', (_e, p: { path: string }) => {
     if (p?.path) shell.showItemInFolder(p.path)
     return { ok: true }
+  })
+
+  // http(s) only — `zOpenExternal` rejects file:, javascript: and custom schemes,
+  // so a link from the UI can never hand the shell something executable.
+  handle(CH.openExternal, zOpenExternal, async (p) => {
+    const url = (p as { url: string }).url
+    try {
+      await shell.openExternal(url)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, message: (e as Error).message }
+    }
   })
 }
 

@@ -55,9 +55,8 @@
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.94c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.36-3.88-1.36-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.75.4-1.27.73-1.56-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
           GitHub
         </a>
-        <a class="btn hide-sm" href="/account">Sign in</a>
-        <a class="btn hide-sm" href="/account?mode=signup">Sign up</a>
-        <a class="btn primary" href="#download">Download</a>
+        <a class="btn ghost hide-sm" href="/account">Sign in</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
       </div>
     </header>
 
@@ -77,17 +76,15 @@
         </p>
 
         <div class="cta-row">
-          <a class="btn primary xl" data-download href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4 3.3 3.3V3h2Z"/><path d="M5 19h14v2H5z"/></svg>
-            Download for Windows
+          <a class="btn primary xl" href="/account?mode=signup">
+            Get started free
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.3 5.3 11.9 6.7l4.3 4.3H4v2h12.2l-4.3 4.3 1.4 1.4L20 12l-6.7-6.7Z"/></svg>
           </a>
-          <a class="btn xl" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">
-            View source
-          </a>
+          <a class="btn xl" href="/account">Sign in</a>
         </div>
         <p class="micro">
-          Free · Windows 10/11 (x64) · <span data-size-hint>installer size on release page</span> ·
-          <a href="#requirements">runs offline with Ollama</a>
+          Free · Windows 10/11 (x64) · Create an account to download the installer from your
+          <a href="#get-started">account area</a> · <a href="#requirements">runs offline with Ollama</a>
         </p>
 
         <div class="trust">
@@ -125,7 +122,7 @@
           <article class="card">
             <div class="ic">◆</div>
             <h3>Bring your own models</h3>
-            <p>Auto-discovers local Ollama models (streaming, thinking, native tool calls) and supports any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, DeepSeek, Together, LM Studio, custom.</p>
+            <p>Manages your local Ollama models from inside the app — browse, install with live progress, and remove — and supports any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, DeepSeek, Together, LM Studio, custom.</p>
           </article>
           <article class="card">
             <div class="ic">⛨</div>
@@ -155,7 +152,7 @@
           <article class="card">
             <div class="ic">▸</div>
             <h3>Streaming terminal</h3>
-            <p>Run dev commands with live output and risk assessment. Destructive commands demand explicit approval.</p>
+            <p>Run dev commands with live output, real cancellation and risk assessment. Destructive commands demand explicit approval.</p>
           </article>
           <article class="card">
             <div class="ic">✎</div>
@@ -189,11 +186,32 @@
         </ol>
       </section>
 
-      <section id="requirements" class="section">
+      <section id="get-started" class="section">
         <div class="section-head">
-          <p class="eyebrow">Requirements</p>
-          <h2>What you need</h2>
+          <p class="eyebrow">Get started</p>
+          <h2>Create an account, then download the app</h2>
+          <p class="sub">
+            Your Alpha account is what unlocks the installer download and signs the desktop app in —
+            the same account works in both places.
+          </p>
         </div>
+        <ol class="steps">
+          <li>
+            <span class="num">1</span>
+            <h3>Create your account</h3>
+            <p>Sign up with Google, GitHub, or just an email address — there is no password to remember.</p>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <h3>Download from your account</h3>
+            <p>The Windows installer, its version, size and checksum live in your account area, served to signed-in accounts only.</p>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <h3>Install and pick a model</h3>
+            <p>Install Ollama, then use Alpha's Models page to install a model that fits your machine and start coding.</p>
+          </li>
+        </ol>
         <div class="req-grid">
           <div class="req">
             <h3>System</h3>
@@ -218,21 +236,45 @@
             </ul>
           </div>
         </div>
+        <div class="cta-row get-started-actions">
+          <a class="btn primary xl" href="/account?mode=signup">
+            Create your account
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.3 5.3 11.9 6.7l4.3 4.3H4v2h12.2l-4.3 4.3 1.4 1.4L20 12l-6.7-6.7Z"/></svg>
+          </a>
+          <a class="btn xl" href="/account">I already have an account</a>
+        </div>
       </section>
 
-      <section id="download" class="section cta">
-        <div class="cta-card">
-          <img src="assets/icon.png" alt="" width="56" height="56" />
-          <h2>Download Alpha AI Workspace</h2>
-          <p>Version <strong data-version>current release</strong> · Windows 10/11 (x64) · Free</p>
-          <a class="btn primary xl" data-download href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4 3.3 3.3V3h2Z"/><path d="M5 19h14v2H5z"/></svg>
-            Download for Windows
-          </a>
-          <p class="micro">
-            Free direct download — no account required. Unsigned build — if SmartScreen appears,
-            choose <em>More info → Run anyway</em>.
-          </p>
+      <section id="requirements" class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">Requirements</p>
+          <h2>What you need</h2>
+        </div>
+        <div class="req-grid">
+          <div class="req">
+            <h3>Operating system</h3>
+            <ul>
+              <li>Windows 10 or 11, 64-bit</li>
+              <li>Per-user install — no administrator rights</li>
+              <li>Roughly 400 MB of disk after install</li>
+            </ul>
+          </div>
+          <div class="req">
+            <h3>Local models</h3>
+            <ul>
+              <li><a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> installed and running</li>
+              <li>Default endpoint <code>127.0.0.1:11434</code></li>
+              <li>Alpha installs and removes models for you</li>
+            </ul>
+          </div>
+          <div class="req">
+            <h3>Cloud models</h3>
+            <ul>
+              <li>Optional — nothing leaves your machine without one</li>
+              <li>Your own API key for an OpenAI-compatible provider</li>
+              <li>Keys are stored with OS-level encryption</li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -248,11 +290,11 @@
           </details>
           <details>
             <summary>Do I need an account?</summary>
-            <p>No — Alpha works fully offline with Ollama, and the download needs no account or sign-in. Everything runs on your machine: bring your own models, bring your own API keys.</p>
+            <p>Yes — the Windows installer is downloaded from your account area, so you create an Alpha account first. Once installed, the app itself works offline with local Ollama models; the account is what gets you the installer and keeps your app sign-in in sync.</p>
           </details>
           <details>
             <summary>Which models are supported?</summary>
-            <p>Anything Ollama can serve, plus any OpenAI-compatible endpoint. Tool-calling and vision are detected per model and surfaced as capability badges.</p>
+            <p>Anything Ollama can serve, plus any OpenAI-compatible endpoint. Tool-calling and vision are detected per model and surfaced as capability badges, and the Models page recommends sizes that fit your machine's memory.</p>
           </details>
           <details>
             <summary>Why does Windows warn on install?</summary>
@@ -268,6 +310,22 @@
           </details>
         </div>
       </section>
+
+      <section class="section cta">
+        <div class="cta-card">
+          <img src="assets/icon.png" alt="" width="56" height="56" />
+          <h2>Ready to build with Alpha?</h2>
+          <p>Create an account, download the app, and connect the models you already trust.</p>
+          <a class="btn primary xl" href="/account?mode=signup">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/></svg>
+            Get started free
+          </a>
+          <p class="micro">
+            Already have an account? <a href="/account">Sign in</a> — the installer is waiting in
+            your account area.
+          </p>
+        </div>
+      </section>
     </main>
 
     <footer class="footer">
@@ -277,7 +335,8 @@
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href="#features">Features</a>
-        <a href="#download">Download</a>
+        <a href="#requirements">Requirements</a>
+        <a href="#faq">FAQ</a>
         <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
         <a href="/account">Sign in</a>
         <a href="/account?mode=signup">Sign up</a>

@@ -21,6 +21,7 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "admin:password": "node scripts/admin-password.mjs",
     "deploy": "node scripts/deploy.mjs",
+    "check:oauth": "node scripts/check-oauth-credentials.mjs",
     "smoke": "node scripts/smoke.mjs",
     "verify:auth": "node scripts/verify-auth.mjs",
     "verify:admin": "node scripts/verify-admin.mjs",

@@ -261,7 +261,9 @@ export class PlatformService {
     const params = parseDeepLink(rawUrl)
     this.opts.logger.info('platform', 'auth callback received')
     if (params.error) {
-      this.bump({ pendingSignIn: false, error: params.error_description ?? params.error })
+      // Run the code through the same friendly mapping the rest of the app uses,
+      // so a `*_misconfigured` code does not surface to the user as a raw token.
+      this.bump({ pendingSignIn: false, error: friendlyAuthError(params.error_description ?? params.error) })
       return
     }
     if (!this.ensureConfigured()) return
@@ -528,6 +530,11 @@ function pkgVersion(): string {
 
 export function friendlyAuthError(message: string): string {
   const m = message.toLowerCase()
+  // A provider rejecting this deployment's own credentials is permanent, not a
+  // retryable glitch — say so instead of echoing the raw code.
+  if (m.includes('_misconfigured')) {
+    return 'This deployment\u2019s sign-in provider credentials were rejected, so that provider is unavailable. Use another method and tell your administrator.'
+  }
   if (m.includes('not confirmed')) return 'This email is not confirmed yet. Check your inbox.'
   if (m.includes('invalid login') || m.includes('invalid or has expired') || m.includes('expired')) {
     return 'The sign-in link is invalid or has expired. Request a new one.'

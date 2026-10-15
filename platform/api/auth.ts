@@ -17,6 +17,7 @@ import {
   githubConfigured,
   googleAuthUrl,
   googleConfigured,
+  isProviderMisconfigured,
   providersSummary,
   resolveTarget,
   signState,
@@ -130,6 +131,20 @@ function withParams(base: string, params: Record<string, string>): string {
   const url = new URL(base)
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
   return url.toString()
+}
+
+/**
+ * Which failure to hand back after a provider callback.
+ *
+ * A rejected client secret or a callback the provider's console no longer knows
+ * about is a permanent, server-side misconfiguration; reporting it as a generic
+ * `..._verification_failed` invites the user to retry something only an operator
+ * can fix. Genuine identity/token verification problems keep that generic code.
+ */
+function providerFailureCode(provider: 'google' | 'github', error: unknown): string {
+  return isProviderMisconfigured(error)
+    ? `${provider}_misconfigured`
+    : `${provider}_verification_failed`
 }
 
 /**
@@ -529,14 +544,16 @@ authRoutes.get('/google/callback', async (c) => {
   if (!code) return failure('missing_code')
 
   let identity: GoogleIdentity | null = null
+  let exchangeError: unknown = null
   try {
     const idToken = await exchangeGoogleCode(code, oauthRedirectUri(c, 'google'))
     identity = await verifyGoogleIdToken(idToken, state.nonce)
   } catch (error) {
+    exchangeError = error
     console.error('[api:google] exchange failed', error)
     identity = null
   }
-  if (!identity) return failure('google_verification_failed')
+  if (!identity) return failure(providerFailureCode('google', exchangeError))
   if (!identity.emailVerified) return failure('email_not_verified')
 
   return finishOAuthSignIn(c, state, 'google', identity, failure)
@@ -606,14 +623,16 @@ authRoutes.get('/github/callback', async (c) => {
   if (!code) return failure('missing_code')
 
   let identity: GithubIdentity | null = null
+  let exchangeError: unknown = null
   try {
     const accessToken = await exchangeGithubCode(code, oauthRedirectUri(c, 'github'))
     identity = await fetchGithubIdentity(accessToken)
   } catch (error) {
+    exchangeError = error
     console.error('[api:github] exchange failed', error)
     identity = null
   }
-  if (!identity) return failure('github_verification_failed')
+  if (!identity) return failure(providerFailureCode('github', exchangeError))
   // fetchGithubIdentity only ever returns a verified address, so an email here is
   // already proven; the check keeps that invariant explicit.
   if (!identity.emailVerified) return failure('email_not_verified')

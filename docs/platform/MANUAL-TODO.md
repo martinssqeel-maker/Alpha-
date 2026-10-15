@@ -197,13 +197,30 @@ the button rather than showing one that cannot work).
    Authorized redirect URI (exactly this, no trailing slash):
    `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/google/callback`
 4. Add the client ID and secret to `.env.local` as `GOOGLE_CLIENT_ID` and
-   `GOOGLE_CLIENT_SECRET` (never paste them into chat), then
-   `npm run deploy`.
+   `GOOGLE_CLIENT_SECRET` (never paste them into chat).
+   Then prove the pair is right **before** deploying — `npm run check:oauth` asks
+   Google and GitHub directly and prints `ACCEPTED` / `REJECTED` without ever
+   printing a secret. Only once Google reads `ACCEPTED`, run `npm run deploy`.
+   - The secret must be the one shown **for that same client id** (it looks like
+     `GOCSPX-…`). A secret belonging to another client, or one that has since been
+     reset in the Console, is accepted at the consent screen and then rejected by
+     Google's token endpoint with `401 invalid_client` — sign-in dies after the
+     Google page with nothing obvious to point at. Diagnose from the Function logs:
+     `neon logs query --project-id billowing-brook-66269785 --branch production --source function --body-contains "api:google"`.
 5. Verify: `curl https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/providers`
    must show `"google":true`, and `/account` must now show **Continue with Google**.
+6. Verify with a real sign-in (the check that actually matters): press
+   **Continue with Google**, pick an account, and confirm you land back on `/account`
+   signed in. If instead you see “Google rejected this deployment's sign-in
+   credentials” (error code `google_misconfigured`), the client id and secret do not
+   match — re-copy the secret for that client and redeploy. The old generic
+   “could not be verified, try again” is now reserved for genuine identity failures,
+   so it never means a credential problem.
 
-Desktop sign-in with Google uses the same button on the website; the API returns the
-browser to the app's existing `alpha://auth/callback` link, so no desktop change is needed.
+Desktop sign-in with Google uses the same completion path; the API returns the
+browser to the app's existing `alpha://auth/callback` link, so no desktop change is
+needed. A rejected secret shows up in the app as a plain-language message instead of
+the raw `google_misconfigured` code.
 
 ## [ ] 8. Desktop app: connect to Alpha Cloud
 

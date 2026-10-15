@@ -188,6 +188,47 @@ export function googleAuthUrl(options: {
   return url.toString()
 }
 
+/**
+ * A provider refused the token exchange (or the request that led to it).
+ *
+ * Only the provider's own machine-readable error code and the HTTP status are
+ * kept — never the raw response body and never a credential — so this can be
+ * logged and echoed to a client safely. The previous shape embedded the whole
+ * response body in the message, which is both noisier and harder to classify.
+ */
+export class OAuthExchangeError extends Error {
+  constructor(
+    readonly provider: 'google' | 'github',
+    readonly providerCode: string,
+    readonly status: number
+  ) {
+    super(`${provider}_exchange_failed:${status}:${providerCode}`)
+    this.name = 'OAuthExchangeError'
+  }
+}
+
+/**
+ * Provider error codes that mean *this deployment's* credentials or callback are
+ * wrong, rather than the person signing in having done anything wrong.
+ *
+ * Google answers `invalid_client` ("The provided client secret is invalid") when
+ * the configured client secret does not belong to the configured client id. That
+ * is a permanent server-side fact, so it must not be reported as a transient
+ * "could not be verified, try again" — which is exactly what invited endless
+ * retries for a configuration the user cannot influence.
+ */
+const MISCONFIGURED_PROVIDER_CODES = new Set([
+  'invalid_client',
+  'unauthorized_client',
+  'incorrect_client_credentials',
+  'redirect_uri_mismatch'
+])
+
+/** True when a failed exchange was the deployment's own fault. */
+export function isProviderMisconfigured(error: unknown): boolean {
+  return error instanceof OAuthExchangeError && MISCONFIGURED_PROVIDER_CODES.has(error.providerCode)
+}
+
 /** Exchange the authorization code for Google's tokens and return the id_token. */
 export async function exchangeGoogleCode(code: string, redirectUri: string): Promise<string> {
   const body = new URLSearchParams({
@@ -203,16 +244,17 @@ export async function exchangeGoogleCode(code: string, redirectUri: string): Pro
     body
   })
   const text = await res.text().catch(() => '')
-  if (!res.ok) {
-    throw new Error(`google_exchange_failed:${res.status}:${text.slice(0, 200)}`)
-  }
-  let parsed: { id_token?: string }
+  // Google answers a JSON error object (and, for token failures, a non-2xx
+  // status), so the code is read rather than the status alone.
+  let parsed: { id_token?: string; error?: string } = {}
   try {
-    parsed = JSON.parse(text) as { id_token?: string }
+    parsed = JSON.parse(text) as typeof parsed
   } catch {
-    throw new Error('google_exchange_failed:unparseable_response')
+    parsed = {}
   }
-  if (!parsed.id_token) throw new Error('google_exchange_failed:no_id_token')
+  if (parsed.error) throw new OAuthExchangeError('google', parsed.error, res.status)
+  if (!res.ok) throw new OAuthExchangeError('google', `http_${res.status}`, res.status)
+  if (!parsed.id_token) throw new OAuthExchangeError('google', 'no_id_token', res.status)
   return parsed.id_token
 }
 
@@ -310,11 +352,9 @@ export async function exchangeGithubCode(code: string, redirectUri: string): Pro
   } catch {
     throw new Error(`github_exchange_failed:unparseable_response:${text.slice(0, 120)}`)
   }
-  if (parsed.error) {
-    throw new Error(`github_exchange_failed:${parsed.error}:${parsed.error_description ?? ''}`)
-  }
+  if (parsed.error) throw new OAuthExchangeError('github', parsed.error, res.status)
   if (!res.ok || !parsed.access_token) {
-    throw new Error(`github_exchange_failed:${res.status}:no_access_token`)
+    throw new OAuthExchangeError('github', `http_${res.status}`, res.status)
   }
   return parsed.access_token
 }

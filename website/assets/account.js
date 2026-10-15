@@ -111,6 +111,10 @@ const ERROR_TEXT = {
   account_unavailable: 'We could not set up an account for that sign-in. Try a different method.',
   google_verification_failed: 'Google sign-in could not be verified. Please try again.',
   github_verification_failed: 'GitHub sign-in could not be verified. Please try again.',
+  // Distinguished from the verification failures above on purpose: these mean the
+  // server's provider credentials were rejected, so retrying cannot help.
+  google_misconfigured: 'Google rejected this deployment\'s sign-in credentials, so Google sign-in is unavailable here. Please use email or GitHub, and let the site administrator know.',
+  github_misconfigured: 'GitHub rejected this deployment\'s sign-in credentials, so GitHub sign-in is unavailable here. Please use email or Google, and let the site administrator know.',
   missing_code: 'That sign-in came back incomplete. Please start it again.',
   invalid_state: 'That sign-in attempt expired. Please start it again.',
   invalid_code: 'That sign-in link has expired or was already used. Request a new one.',

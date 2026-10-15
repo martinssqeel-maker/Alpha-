@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import app from '../platform/api/index'
 import { signState } from '../platform/api/oauth'
 
@@ -223,5 +223,63 @@ describe('auth routes: provider start, both surfaces', () => {
 
     delete process.env.GOOGLE_REDIRECT_URI
     clearGoogleCredentials()
+  })
+})
+
+// How a failed token exchange is reported. Google rejecting the deployment's own
+// client secret is a permanent server-side misconfiguration, so it must not be
+// dressed up as a transient "could not be verified" the user is invited to retry.
+// These drive the real routes with a stubbed provider, so the classification is
+// exercised end to end without any network or database access.
+describe('auth routes: provider exchange failures are classified', () => {
+  const realFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = realFetch
+    clearGoogleCredentials()
+  })
+
+  function stubProvider(status: number, body: unknown): void {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' }
+      })) as unknown as typeof fetch
+  }
+
+  it('reports a rejected Google client secret as a misconfiguration, not a retry', async () => {
+    useGoogleCredentials()
+    stubProvider(401, {
+      error: 'invalid_client',
+      error_description: 'The provided client secret is invalid.'
+    })
+    const state = await signState({ kind: 'web', url: SITE_ACCOUNT, nonce: 'n-misconfigured' })
+
+    const res = await app.request(`/auth/google/callback?state=${encodeURIComponent(state)}&code=abc123`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`${SITE_ACCOUNT}?error=google_misconfigured`)
+  })
+
+  it('still reports a genuine identity failure as a verification failure', async () => {
+    useGoogleCredentials()
+    // A 200 carrying an unusable id_token: the exchange succeeded, so this is not
+    // a credential problem and must keep the original code.
+    stubProvider(200, { access_token: 'x', id_token: 'not-a-real-jwt' })
+    const state = await signState({ kind: 'web', url: SITE_ACCOUNT, nonce: 'n-unverifiable' })
+
+    const res = await app.request(`/auth/google/callback?state=${encodeURIComponent(state)}&code=abc123`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`${SITE_ACCOUNT}?error=google_verification_failed`)
+  })
+
+  it('classifies a rejected GitHub client the same way', async () => {
+    useGithubCredentials()
+    stubProvider(200, { error: 'incorrect_client_credentials' })
+    const state = await signState({ kind: 'app', url: APP_CALLBACK, nonce: 'n-gh-misconfigured' })
+
+    const res = await app.request(`/auth/github/callback?state=${encodeURIComponent(state)}&code=abc123`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`${APP_CALLBACK}?error=github_misconfigured`)
+    clearGithubCredentials()
   })
 })

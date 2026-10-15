@@ -29,3 +29,7 @@ admin/.env
 # where to place it (repo root for dev; userData for a packaged install).
 github-oauth.json
 github-oauth.local.json
+
+# Development logs written by `npm run dev` and the QA servers. Never tracked:
+# they contain local paths, not secrets, but they are not part of the product.
+/logs/

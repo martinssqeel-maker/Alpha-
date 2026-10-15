@@ -522,3 +522,38 @@ td { font-variant-numeric: tabular-nums; }
 .field-row input:focus-visible { outline: 2px solid var(--brand-edge); outline-offset: 1px; }
 .email-form .muted { margin: 10px 0 0; }
 #account-code { font-family: var(--data); letter-spacing: 0.28em; }
+
+/* --- authenticated account area: downloads, install steps, requirements ---- */
+.account-section {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+/* The heading is a card-level label, not a page turn: without an explicit size
+   the global `h2` rules make it compete with the page title. */
+.account-section .section-title {
+  margin: 0 0 4px;
+  font-family: var(--plate);
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.account-section > .muted { margin: 0 0 4px; }
+
+.install-steps,
+.req-list {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--steel);
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.install-steps a,
+.req-list a,
+.req a { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* The Get started section reuses `.cta-row`, which centres its buttons; it just
+   needs a little breathing room under the requirements grid. */
+.get-started-actions { margin-top: 26px; }

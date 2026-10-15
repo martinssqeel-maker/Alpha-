@@ -85,13 +85,30 @@ for (const page of pages) {
   if (!/<link[^>]+rel=["']?icon/i.test(html)) notes.push(`${rel}: no favicon link (harmless if assets/icon.png is served by default)`)
 }
 
-// The landing and download CTAs must resolve to the public releases endpoint so
-// the download works for a visitor with no account.
+// Landing-page contract: explain the product and send visitors to the account
+// area. Installers are handed out from the authenticated account page only, so a
+// direct release or `.exe` link here would regress that rule.
 const index = join(root, 'index.html')
 if (existsSync(index)) {
   const html = readFileSync(index, 'utf8')
-  if (!/github\.com\/[^"']+\/releases\/latest/.test(html)) {
-    problems.push('index.html: no fallback link to the GitHub releases page')
+  if (!/href=["']\/account/.test(html)) {
+    problems.push('index.html: no link to /account (Get started / Sign in)')
+  }
+  if (/releases\/latest|\.exe["']/i.test(html)) {
+    problems.push('index.html: offers an installer directly; downloads belong in the account area')
+  }
+}
+
+// The download page may not hand out an installer either — it gates, then the
+// account page loads the release from the authenticated API.
+const downloadPage = join(root, 'download.html')
+if (existsSync(downloadPage)) {
+  const html = readFileSync(downloadPage, 'utf8')
+  if (/releases\/latest|\.exe["']/i.test(html)) {
+    problems.push('download.html: offers an installer directly; it must gate on sign-in')
+  }
+  if (!/href=["']\/account/.test(html)) {
+    problems.push('download.html: no route to /account, so the gate dead-ends')
   }
 }
 

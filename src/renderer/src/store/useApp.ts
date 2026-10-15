@@ -7,8 +7,14 @@ import type {
   Conversation,
   FileNode,
   GitStatus,
+  HardwareInfo,
   InspectorTab,
+  ChatMetrics,
   ModelInfo,
+  OllamaCatalogEntry,
+  OllamaPullProgress,
+  OllamaRecommendation,
+  OllamaStatus,
   PlatformStatus,
   Project,
   ProviderConfig,
@@ -17,7 +23,7 @@ import type {
   UpdateStatus
 } from '@shared/types'
 import { THEME_TOKENS, resolveTheme } from '@shared/theme'
-import { api, onChat, onPlatform, onTerminal, onUpdate } from '../lib/api'
+import { api, onChat, onOllama, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
 export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'skills' | 'settings' | 'help'
 
@@ -47,6 +53,8 @@ interface Streaming {
   text: string
   thinking: string
   activities: ActivityItem[]
+  /** Timings reported by the main process once the turn finishes. */
+  metrics?: ChatMetrics
 }
 
 interface PendingApproval {
@@ -81,10 +89,20 @@ interface State {
   selectedModelId: string | null
   modelsLoading: boolean
 
+  // Local models (Ollama): what is installed, what can be installed, and what
+  // this machine can realistically run. Progress streams from the main process.
+  ollama: OllamaStatus | null
+  ollamaCatalog: OllamaCatalogEntry[]
+  hardware: HardwareInfo | null
+  recommendations: OllamaRecommendation[]
+  pulls: Record<string, OllamaPullProgress>
+
   streaming: Streaming | null
   isSending: boolean
   cancelRequested: boolean
   pendingApprovals: PendingApproval[]
+  /** Timings for the most recent completed reply, straight from the main process. */
+  lastRun: { requestId: string; metrics: ChatMetrics } | null
 
   terminals: TerminalSession[]
   activeRunId: string | null
@@ -112,6 +130,11 @@ interface State {
   refreshProviders: () => Promise<void>
   refreshModels: () => Promise<void>
   selectModel: (providerId: string, modelId: string) => void
+
+  refreshOllama: () => Promise<void>
+  pullModel: (model: string) => Promise<void>
+  cancelPull: (model: string) => Promise<void>
+  removeLocalModel: (model: string) => Promise<void>
 
   loadConversations: () => Promise<void>
   openConversation: (id: string) => Promise<void>
@@ -153,6 +176,7 @@ let chatUnsub: (() => void) | null = null
 let termUnsub: (() => void) | null = null
 let updateUnsub: (() => void) | null = null
 let platformUnsub: (() => void) | null = null
+let ollamaUnsub: (() => void) | null = null
 
 export const useApp = create<State>((set, get) => ({
   ready: false,
@@ -179,10 +203,17 @@ export const useApp = create<State>((set, get) => ({
   selectedModelId: null,
   modelsLoading: false,
 
+  ollama: null,
+  ollamaCatalog: [],
+  hardware: null,
+  recommendations: [],
+  pulls: {},
+
   streaming: null,
   isSending: false,
   cancelRequested: false,
   pendingApprovals: [],
+  lastRun: null,
 
   terminals: [],
   activeRunId: null,
@@ -209,6 +240,7 @@ export const useApp = create<State>((set, get) => ({
     if (!chatUnsub) chatUnsub = onChat((event) => handleChatEvent(event, set, get))
     if (!termUnsub) termUnsub = onTerminal((event) => handleTerminalEvent(event, set, get))
     if (!updateUnsub) updateUnsub = onUpdate((event) => handleUpdateEvent(event, set, get))
+    if (!ollamaUnsub) ollamaUnsub = onOllama((progress) => handleOllamaProgress(progress, set))
     if (!platformUnsub) platformUnsub = onPlatform((status) => handlePlatformEvent(status, set, get))
 
     try {
@@ -304,6 +336,75 @@ export const useApp = create<State>((set, get) => ({
     }
   },
 
+  refreshOllama: async () => {
+    try {
+      // The catalog and the hardware probe are local and cheap, so they load even
+      // when Ollama is missing — the Models page can then explain the install
+      // requirement and still say which sizes this machine can run.
+      const [catalog, probe, status] = await Promise.all([
+        api.ollama.catalog(),
+        api.ollama.hardware(),
+        api.ollama.status()
+      ])
+      set({
+        ollamaCatalog: catalog,
+        hardware: probe.hardware,
+        recommendations: probe.recommendations,
+        ollama: status
+      })
+      // A refresh is what confirms an installed model, so the model list follows.
+      await get().refreshModels()
+    } catch (e) {
+      set({ ollama: null })
+      get().toast(`Could not check local models: ${(e as Error).message}`, 'error')
+    }
+  },
+
+  pullModel: async (model) => {
+    set((s) => ({
+      pulls: { ...s.pulls, [model]: { model, state: 'pulling', status: 'starting' } }
+    }))
+    try {
+      const result = await api.ollama.pull(model)
+      if (result.ok) {
+        const seconds = result.elapsedMs ? ` in ${Math.round(result.elapsedMs / 1000)}s` : ''
+        get().toast(`${model} installed${seconds}`, 'success')
+      } else {
+        get().toast(result.message ?? `Could not install ${model}`, 'error')
+      }
+    } catch (e) {
+      get().toast((e as Error).message, 'error')
+    } finally {
+      await get().refreshOllama()
+      set((s) => {
+        const next = { ...s.pulls }
+        delete next[model]
+        return { pulls: next }
+      })
+    }
+  },
+
+  cancelPull: async (model) => {
+    try {
+      const { ok } = await api.ollama.cancel(model)
+      if (!ok) get().toast(`Nothing to cancel for ${model}`, 'info')
+    } catch (e) {
+      get().toast((e as Error).message, 'error')
+    }
+  },
+
+  removeLocalModel: async (model) => {
+    try {
+      const result = await api.ollama.remove(model)
+      if (result.ok) get().toast(`${model} removed`, 'success')
+      else get().toast(result.message ?? `Could not remove ${model}`, 'error')
+    } catch (e) {
+      get().toast((e as Error).message, 'error')
+    } finally {
+      await get().refreshOllama()
+    }
+  },
+
   refreshModels: async () => {
     set({ modelsLoading: true })
     const providers = get().providers
@@ -345,6 +446,13 @@ export const useApp = create<State>((set, get) => ({
 
   selectModel: (providerId, modelId) => {
     set({ selectedProviderId: providerId, selectedModelId: modelId })
+    // Choosing a local model is the clearest signal that a request is coming, so
+    // the model load is started now instead of during the first message. Failure
+    // is harmless — the request simply pays the load itself.
+    const provider = get().providers.find((p) => p.id === providerId)
+    if (provider?.kind === 'ollama') {
+      void api.ollama.preload(modelId).catch(() => undefined)
+    }
     const conv = get().conversations.find((c) => c.id === get().activeConversationId)
     if (conv) {
       void api.conversations.update({ id: conv.id, providerId, modelId }).then(() => get().loadConversations())
@@ -833,6 +941,10 @@ function handleChatEvent(
       })
       break
     }
+    case 'metrics': {
+      set({ lastRun: { requestId: event.requestId, metrics: event.metrics } })
+      break
+    }
     case 'done':
     case 'cancelled': {
       const state = get()
@@ -907,6 +1019,19 @@ function handleTerminalEvent(
     default:
       break
   }
+}
+
+/**
+ * Live download progress for one local model.
+ *
+ * Only the main process ever talks to Ollama, so this is pure state: the numbers
+ * are Ollama's own byte counts, never an animation of our own.
+ */
+function handleOllamaProgress(
+  progress: OllamaPullProgress,
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void
+): void {
+  set((s) => ({ pulls: { ...s.pulls, [progress.model]: progress } }))
 }
 
 function handleUpdateEvent(

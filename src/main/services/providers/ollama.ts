@@ -65,6 +65,17 @@ function toModelInfo(tag: OllamaTag, baseUrl: string): ModelInfo {
   }
 }
 
+/**
+ * How long Ollama keeps a model in memory after a request.
+ *
+ * Ollama's default is 5 minutes, after which the model is evicted; the next
+ * request then pays a full reload (measured at ~39s to first token for
+ * qwen3:1.7b on a CPU-only laptop, versus ~2.4s while resident). 15 minutes
+ * covers a normal working session without pinning memory forever after the app
+ * is closed. Raise or lower it here if the trade-off matters more than the win.
+ */
+export const OLLAMA_KEEP_ALIVE = '15m'
+
 function mapMessages(messages: ProviderMessage[]): unknown[] {
   return messages.map((m) => {
     if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length) {
@@ -144,7 +155,10 @@ export class OllamaAdapter implements ProviderAdapter {
     const body: Record<string, unknown> = {
       model: req.model,
       messages: mapMessages(req.messages),
-      stream: true
+      stream: true,
+      // Keep the model resident between turns so the user does not pay a reload
+      // on the first message after a pause.
+      keep_alive: OLLAMA_KEEP_ALIVE
     }
     const tools = mapTools(req.tools)
     if (tools) body.tools = tools

@@ -1889,3 +1889,32 @@ select {
     display: none;
   }
 }
+
+/* ============================================================================
+   Model downloads
+   Real byte progress from Ollama: the track and fill only reflect counts the
+   service reported, so they are never an animated guess.
+   ========================================================================== */
+.progress-track {
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width 160ms linear;
+}
+
+/* Measured timing for the last reply. Deliberately quiet: it is reference
+   information, not a status the user has to act on. */
+.run-metrics {
+  padding: 2px var(--space-4) 6px;
+  font-size: 11px;
+  color: var(--text-disabled);
+}

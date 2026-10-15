@@ -24,7 +24,10 @@
     "smoke": "node scripts/smoke.mjs",
     "verify:auth": "node scripts/verify-auth.mjs",
     "verify:admin": "node scripts/verify-admin.mjs",
-    "smoke:desktop": "node scripts/desktop-smoke.mjs"
+    "smoke:desktop": "node scripts/desktop-smoke.mjs",
+    "serve:website": "node scripts/serve-website.mjs",
+    "stub:api": "node scripts/stub-platform-api.mjs",
+    "bench:chat": "vitest run --config vitest.bench.config.ts"
   },
   "dependencies": {
     "@neon/config": "^1.8.6",

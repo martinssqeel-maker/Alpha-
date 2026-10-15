@@ -10,6 +10,7 @@ import { GitService } from './services/git'
 import { GithubService } from './services/github'
 import { GitHubOAuthService } from './services/githubOAuth'
 import { getLogger, initLogger, type Logger } from './services/logger'
+import { OllamaManager } from './services/ollamaManager'
 import { ApprovalBroker, PermissionService } from './services/permissionService'
 import { PlatformService } from './services/platform'
 import { ProjectService } from './services/projectService'
@@ -68,6 +69,7 @@ export interface AppContext {
   git: GitService
   github: GithubService
   terminal: TerminalService
+  ollama: OllamaManager
   skills: SkillsService
   permissions: PermissionService
   broker: ApprovalBroker
@@ -171,6 +173,16 @@ export async function buildContext(
     apiBaseUrl: () => platform.apiBaseUrl()
   })
 
+  // Local model management. The base URL is the saved Ollama provider when there
+  // is one, so a custom host set in Settings → Models is honoured, and the
+  // configured default otherwise.
+  const ollama = new OllamaManager({
+    registry,
+    baseUrl: () =>
+      registry.list().find((p) => p.kind === 'ollama')?.baseUrl ?? settings.get().ollamaUrl,
+    emit: (progress) => emit('evt:ollama', progress)
+  })
+
   return {
     paths,
     logger,
@@ -187,6 +199,7 @@ export async function buildContext(
     git,
     github,
     terminal,
+    ollama,
     skills,
     permissions,
     broker,

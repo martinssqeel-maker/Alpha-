@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, Plus, RefreshCw, Trash2, Wifi } from 'lucide-react'
+import { providerEndpointProblem } from '@shared/providerUrl'
 import type { ProviderConfig, ProviderKind } from '@shared/types'
 import { api } from '../lib/api'
 import { useApp } from '../store/useApp'
@@ -163,6 +164,7 @@ function ProviderForm({
   const [isLocal, setIsLocal] = useState(existing?.isLocal ?? def.local)
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
+  const endpointProblem = baseUrl.trim() ? providerEndpointProblem(baseUrl, kind) : null
 
   const applyPreset = (id: string): void => {
     const p = PRESETS.find((x) => x.id === id)
@@ -175,6 +177,13 @@ function ProviderForm({
   }
 
   const save = async (): Promise<void> => {
+    // Check the endpoint here as well as in the main process, so the message
+    // appears next to the field instead of after a round trip.
+    const problem = providerEndpointProblem(baseUrl, kind)
+    if (problem) {
+      toast(problem, 'error')
+      return
+    }
     setSaving(true)
     try {
       await api.providers.save({
@@ -228,6 +237,11 @@ function ProviderForm({
         <label className="field">
           <span>Base URL</span>
           <input className="input mono" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          {endpointProblem ? (
+            <span className="hint" style={{ color: 'var(--danger)' }}>{endpointProblem}</span>
+          ) : (
+            <span className="hint">Every request for this provider is sent here.</span>
+          )}
         </label>
 
         <label className="field">

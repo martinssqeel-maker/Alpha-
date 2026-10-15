@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Download · Alpha AI Workspace</title>
+    <title>Download · Sign in required · Alpha AI Workspace</title>
     <meta
       name="description"
-      content="Download the Alpha AI Workspace desktop app for Windows — free, direct, no account required."
+      content="The Alpha AI Workspace Windows installer is downloaded from your account area. Sign in or create an account to get it."
     />
     <meta name="theme-color" content="#0c0f14" />
     <meta name="robots" content="noindex" />
@@ -25,6 +25,7 @@
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="/#features">Features</a>
+        <a href="/#get-started">Get started</a>
         <a href="/#faq">FAQ</a>
       </nav>
       <div class="nav-actions">
@@ -40,8 +41,7 @@
           <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
         </button>
         <a class="btn hide-sm" href="/account">Sign in</a>
-        <a class="btn hide-sm" href="/account?mode=signup">Sign up</a>
-        <a class="btn" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
       </div>
     </header>
 
@@ -50,34 +50,52 @@
         <p class="eyebrow">Desktop app</p>
         <h1>Download Alpha AI Workspace</h1>
         <p class="sub">
-          The full agent workspace for Windows. Free, direct download — no account, no sign-in.
+          The Windows installer is downloaded from your account area, so the release and its
+          checksum are only handed to signed-in accounts.
         </p>
       </div>
 
-      <div class="account-card card">
-        <div class="dl-block">
-          <div>
-            <div class="plan-name" data-version>Windows</div>
-            <div class="muted" data-size>Fetching the latest release…</div>
-          </div>
-          <a class="btn primary" data-download-link href="https://github.com/martinssqeel-maker/Alpha-/releases/latest">
-            Download installer
-          </a>
+      <div class="account-card card" data-gate>
+        <div class="plan-name">Sign in to get the installer</div>
+        <p class="muted">
+          Create an Alpha account (Google, GitHub or an email link — no password) and the
+          download appears in your account area. The desktop app signs in with that same account.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="/account?mode=signup">Create an account</a>
+          <a class="btn" href="/account?next=download">Sign in</a>
         </div>
-
-        <p class="muted" data-notes hidden></p>
-        <p class="micro mono" data-checksum hidden></p>
-
         <p class="micro">
-          After installing, open the app and pick a model — local Ollama models are discovered
-          automatically and work without any sign-in.
+          Already signed in in this browser? You will be taken to your downloads automatically.
         </p>
-        <p class="status" data-status></p>
+        <p class="status" data-status role="status" aria-live="polite"></p>
       </div>
 
-      <p class="micro">
-        Unsigned build — if SmartScreen appears, choose <em>More info → Run anyway</em>.
-      </p>
+      <div class="req-grid">
+        <div class="req">
+          <h3>Before you install</h3>
+          <ul>
+            <li>Windows 10 or 11 (x64)</li>
+            <li>Per-user install, no administrator rights</li>
+            <li>~400 MB of disk after install</li>
+          </ul>
+        </div>
+        <div class="req">
+          <h3>After you install</h3>
+          <ul>
+            <li>Install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> for local models</li>
+            <li>Or add a cloud provider API key in the app</li>
+            <li>Open a project folder and start working</li>
+          </ul>
+        </div>
+        <div class="req">
+          <h3>Need help?</h3>
+          <ul>
+            <li>The installer is unsigned — choose <em>More info → Run anyway</em> if SmartScreen warns</li>
+            <li>Releases and changelogs are on <a href="https://github.com/martinssqeel-maker/Alpha-/releases" target="_blank" rel="noopener">GitHub</a></li>
+          </ul>
+        </div>
+      </div>
     </main>
 
     <footer class="footer">
@@ -87,6 +105,7 @@
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href="/">Home</a>
+        <a href="/#get-started">Get started</a>
         <a href="/account">Sign in</a>
         <a href="/account?mode=signup">Sign up</a>
         <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>

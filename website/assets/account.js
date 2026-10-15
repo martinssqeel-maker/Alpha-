@@ -34,7 +34,18 @@ const els = {
   accountUsage: document.querySelector('[data-account-usage]'),
   usageRows: document.querySelector('[data-usage-rows]'),
   accountModels: document.querySelector('[data-account-models]'),
-  signOut: document.querySelector('[data-signout]')
+  signOut: document.querySelector('[data-signout]'),
+  pageTitle: document.querySelector('[data-page-title]'),
+  pageSub: document.querySelector('[data-page-sub]'),
+  downloadLoading: document.querySelector('[data-download-view="loading"]'),
+  downloadUnavailable: document.querySelector('[data-download-view="unavailable"]'),
+  downloadReady: document.querySelector('[data-download-view="ready"]'),
+  downloadMessage: document.querySelector('[data-download-message]'),
+  downloadVersion: document.querySelector('[data-download-version]'),
+  downloadMeta: document.querySelector('[data-download-meta]'),
+  downloadNotes: document.querySelector('[data-download-notes]'),
+  downloadChecksum: document.querySelector('[data-download-checksum]'),
+  downloadLink: document.querySelector('[data-download-link]')
 }
 
 // `?mode=signup` frames the same passwordless flow as account creation. There is
@@ -50,6 +61,22 @@ if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
       'Already have one? <a data-mode-link href="/account">Sign in</a>.'
   }
   if (els.emailSubmit) els.emailSubmit.textContent = 'Email me a sign-up link'
+}
+
+// `/download` forwards here with `?next=download` because the installer is only
+// handed to a signed-in account. The page says why the visitor landed here
+// instead of showing a download they cannot have yet.
+if (new URLSearchParams(window.location.search).get('next') === 'download') {
+  document.title = 'Sign in to download · Alpha AI Workspace'
+  if (els.pageTitle) els.pageTitle.textContent = 'Sign in to download the app'
+  if (els.pageSub) {
+    els.pageSub.textContent =
+      'The Windows installer is served to signed-in Alpha accounts. Sign in or create one — ' +
+      'it takes a moment and there is no password.'
+  }
+  if (els.cardTitle && !els.cardTitle.textContent.startsWith('Create')) {
+    els.cardTitle.textContent = 'Sign in to continue'
+  }
 }
 
 /** The committed config.js supplies the API host; empty means "not configured". */
@@ -228,6 +255,89 @@ function renderSignedIn(session, config) {
   show('signedIn')
 }
 
+function formatSize(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return null
+  const mb = bytes / (1024 * 1024)
+  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`
+}
+
+function formatDate(value) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString()
+}
+
+function setDownloadState(state, message) {
+  const views = {
+    loading: els.downloadLoading,
+    unavailable: els.downloadUnavailable,
+    ready: els.downloadReady
+  }
+  for (const key of Object.keys(views)) {
+    if (views[key]) views[key].hidden = key !== state
+  }
+  if (message && els.downloadMessage) els.downloadMessage.textContent = message
+}
+
+/**
+ * The installer link comes from `/downloads/latest`, which requires the session
+ * and re-checks the account in the database on every call. There is deliberately
+ * no public fallback here: if the API refuses, the page says so rather than
+ * handing out an installer the account is not entitled to.
+ */
+async function renderDownloads(session) {
+  if (!els.downloadLoading) return
+  setDownloadState('loading')
+  try {
+    const res = await api('/downloads/latest', { token: session.accessToken })
+    if (res.status === 401) {
+      setDownloadState('unavailable', 'Your session ended before the download could be loaded. Sign in again.')
+      return
+    }
+    if (!res.ok) {
+      const message = res.json && res.json.error ? res.json.error.message : null
+      setDownloadState(
+        'unavailable',
+        message || 'The download service did not answer. Try again in a moment.'
+      )
+      return
+    }
+
+    const release = res.json && res.json.release ? res.json.release : null
+    if (!release || !release.url) {
+      setDownloadState('unavailable', 'No desktop release is published for this deployment yet.')
+      return
+    }
+
+    if (els.downloadVersion) els.downloadVersion.textContent = release.version
+    if (els.downloadMeta) {
+      const parts = ['Windows installer']
+      const size = formatSize(release.size)
+      if (size) parts.push(size)
+      const released = formatDate(release.releasedAt)
+      if (released) parts.push(`released ${released}`)
+      els.downloadMeta.textContent = parts.join(' · ')
+    }
+    if (els.downloadLink) els.downloadLink.href = release.url
+    if (els.downloadNotes) {
+      els.downloadNotes.textContent = release.notes || ''
+      els.downloadNotes.hidden = !release.notes
+    }
+    if (els.downloadChecksum) {
+      els.downloadChecksum.textContent = release.sha512 ? `SHA-512 ${release.sha512}` : ''
+      els.downloadChecksum.hidden = !release.sha512
+    }
+    setDownloadState('ready')
+  } catch (error) {
+    setDownloadState(
+      'unavailable',
+      error && error.message === 'not_configured'
+        ? 'This site has no API address configured, so the download cannot be verified.'
+        : 'Could not reach the download service. Check your connection and try again.'
+    )
+  }
+}
+
 /** Keep the access token fresh so a visit never bounces the user back to sign-in. */
 async function ensureFresh(session) {
   const expiresAt = typeof session.expiresAt === 'number' ? session.expiresAt : 0
@@ -403,6 +513,12 @@ async function showSignedIn(email) {
   } catch {
     /* the session is still valid; only the extra detail failed to load */
   }
+  // A download failure must never break the account view, so it is isolated here.
+  try {
+    await renderDownloads(session)
+  } catch {
+    setDownloadState('unavailable', 'Could not load the download details.')
+  }
 }
 
 function bindSignOut() {
@@ -418,6 +534,9 @@ function bindSignOut() {
     } finally {
       clearSession()
       els.signOut.disabled = false
+      setDownloadState('loading', '')
+      if (els.downloadVersion) els.downloadVersion.textContent = ''
+      if (els.downloadLink) els.downloadLink.removeAttribute('href')
       if (els.codeForm) els.codeForm.hidden = true
       if (els.emailInput) els.emailInput.value = ''
       if (els.codeInput) els.codeInput.value = ''

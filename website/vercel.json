@@ -1,6 +1,12 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/auth/:path*",
+      "destination": "https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/:path*"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

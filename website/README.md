@@ -9,6 +9,11 @@ the account page that signs users in.
   (falling back to the releases page if the API is unavailable).
 - **Public download page.** `download.html` + `assets/download.js` show the current
   version, size and release notes from the same GitHub API — no session required.
+- **Legal pages.** `privacy.html` and `terms.html` are plain, dependency-free
+  documents served at `/privacy` and `/terms` (clean URLs). Both are linked from
+  every page's footer, and each links to the other. They read the account service's
+  actual behaviour from the code rather than describing a generic policy, so keep
+  them in step when what the API stores changes.
 - **Account page.** `account.html` + `assets/account.js` offer every sign-in method
   the deployment actually reports (`/auth/providers`), plus the emailed link/code
   path, and render the signed-in account's plan and usage. Signing in *is* signing
@@ -26,6 +31,8 @@ website/
   index.html            landing page
   download.html         public download page (no sign-in)
   account.html          sign-in / sign-up and account page
+  privacy.html          public privacy policy (/privacy)
+  terms.html            public terms of service (/terms)
   assets/styles.css     design system
   assets/app.js         direct-download resolution + version/size hints + reveal animations
   assets/theme.js       applies the stored palette before first paint

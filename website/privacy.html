@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="How Alpha AI Workspace handles your data: what the desktop app keeps on your machine, what the optional account service stores, and what is never collected."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="canonical" href="https://alpha-website-lime.vercel.app/privacy" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <!-- Applies the stored appearance before first paint, so the palette never flashes. -->
+    <script src="assets/theme.js"></script>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#features">Features</a>
+        <a href="/#get-started">Get started</a>
+        <a href="/#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
+        <a class="btn hide-sm" href="/account">Sign in</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
+      </div>
+    </header>
+
+    <main class="legal">
+      <div class="legal-head">
+        <p class="eyebrow">Legal</p>
+        <h1>Privacy Policy</h1>
+        <p class="legal-meta">Effective 15 October 2026 · Last updated 15 October 2026</p>
+        <p class="lede">
+          Alpha AI Workspace is a local-first Windows application. Its default posture is that
+          nothing about your work leaves your machine. This policy explains the one part that does
+          involve a server — the optional Alpha Cloud account that gets you the installer and keeps
+          your app sign-in in sync — and the choices you have over it.
+        </p>
+      </div>
+
+      <h2>1. The short version</h2>
+      <ul>
+        <li>The desktop app runs locally. Your files, prompts and conversation history stay on your computer.</li>
+        <li>An Alpha Cloud account is optional. It exists so the Windows installer and its checksum can be handed to signed-in accounts, and so the same account works on the website and in the app.</li>
+        <li>If you sign in, we store your email address, the sign-in method you used, and session metadata (a hashed refresh token, your IP address and user agent, and timestamps).</li>
+        <li>There is <strong>no analytics, no advertising, and no telemetry</strong> in the application or on this website.</li>
+        <li>Your prompts and files go to a third party <strong>only</strong> when you deliberately configure a cloud model provider. Local Ollama stays local.</li>
+      </ul>
+
+      <h2>2. Who this policy covers</h2>
+      <p>
+        This policy covers the Alpha AI Workspace desktop application, the public website at
+        <a href="https://alpha-website-lime.vercel.app">alpha-website-lime.vercel.app</a>, and the
+        Alpha Cloud account API those two use. It is operated by the Alpha AI Workspace
+        maintainers. It is not a policy for third-party services you choose to connect, such as
+        Google, GitHub or a model provider — those have their own policies, and section 6 lists
+        them.
+      </p>
+
+      <h2>3. What the desktop app handles — and keeps local</h2>
+      <p>
+        The application is local-first by design. Unless you configure a cloud provider, nothing
+        about your work is transmitted anywhere.
+      </p>
+      <ul>
+        <li>
+          <strong>Your projects.</strong> Alpha can read, edit and run commands only inside the
+          project folder you explicitly open, behind a permission and approval model. File access
+          is confined to that folder.
+        </li>
+        <li>
+          <strong>Conversations, prompts and terminal output.</strong> Stored on your machine, in
+          the application's local data directory. They are not uploaded to us.
+        </li>
+        <li>
+          <strong>Provider API keys.</strong> Stored using your operating system's secure storage
+          (Electron <code>safeStorage</code> — on Windows, the Data Protection API). If that
+          facility is unavailable, the app stores them obfuscated rather than encrypted and logs a
+          warning saying so, so the weaker state is never silent.
+        </li>
+        <li>
+          <strong>Logs.</strong> Written locally. Credentials and secrets are redacted from log
+          output rather than written in the clear.
+        </li>
+      </ul>
+
+      <h2>4. What the account service stores</h2>
+      <p>
+        If you create an Alpha Cloud account, the API keeps the minimum needed to authenticate you
+        and operate the account:
+      </p>
+      <ul>
+        <li>
+          <strong>Account.</strong> Your email address, account status, and the time of your last
+          sign-in.
+        </li>
+        <li>
+          <strong>Sign-in identities.</strong> If you sign in with Google or GitHub, we store that
+          provider's stable user identifier for you and the email address it reports. We never
+          receive or store your password at those providers.
+        </li>
+        <li>
+          <strong>Sessions.</strong> A refresh token is stored <strong>hashed</strong>, never in
+          plain text, alongside its expiry, and the IP address and user agent of the request that
+          created it. Signing out revokes the session server-side.
+        </li>
+        <li>
+          <strong>Emailed sign-in codes.</strong> Codes and magic-link tokens are stored hashed
+          with a server-side pepper, with a short expiry. A code is consumed on first use.
+        </li>
+        <li>
+          <strong>Abuse prevention.</strong> A record of succeeded and failed sign-in attempts
+          (account or IP key, outcome, time) so repeated guesses can be throttled.
+        </li>
+        <li>
+          <strong>Usage counters and entitlement.</strong> Counters such as messages used and the
+          plan attached to your account, which the account page displays.
+        </li>
+        <li>
+          <strong>Audit records.</strong> Administrator actions and downloads, kept so account and
+          release access can be reviewed.
+        </li>
+      </ul>
+
+      <h2>5. What we deliberately do not collect</h2>
+      <ul>
+        <li>No analytics, telemetry, crash-reporting or advertising SDKs — in the app or on the site.</li>
+        <li>No tracking cookies. See section 7.</li>
+        <li>No access to your source code, project files or prompts through the account service.</li>
+        <li>No selling, renting or sharing of personal data for marketing purposes.</li>
+      </ul>
+
+      <h2>6. Third parties</h2>
+      <p>
+        Data reaches a third party only in the specific cases below, and only the data that case
+        requires:
+      </p>
+      <ul>
+        <li>
+          <strong>Google or GitHub (sign-in).</strong> If you choose one of these methods, the
+          provider authenticates you directly and tells us a verified email and account identifier.
+          Their own privacy policies apply to that exchange.
+        </li>
+        <li>
+          <strong>Cloud model providers (only if you configure one).</strong> A provider you add
+          receives the prompts and attachments you send through it, under its own terms. With local
+          Ollama, no provider is involved.
+        </li>
+        <li>
+          <strong>Infrastructure.</strong> The account API and its database are hosted on Neon, this
+          website is hosted on Vercel, and desktop releases are distributed through GitHub
+          Releases. These providers process data on our behalf to run the service.
+        </li>
+        <li>
+          <strong>Legal requirements.</strong> We may disclose information where required by law or
+          to protect the service from abuse. We will not do so more broadly than necessary.
+        </li>
+      </ul>
+
+      <h2>7. Cookies and local storage</h2>
+      <p>
+        Neither the website nor the app sets advertising or analytics cookies. The account page
+        keeps your session tokens in your browser's <strong>local storage</strong> so a reload does
+        not sign you out; that value never leaves your browser except as the authorization header
+        the account API requires. The theme toggle stores your palette choice the same way.
+      </p>
+
+      <h2>8. How long we keep things</h2>
+      <ul>
+        <li>Account and identity records: kept while your account exists.</li>
+        <li>Sessions: until they expire or you sign out, whichever comes first.</li>
+        <li>Sign-in codes: a short period matching their expiry, and they are consumed on first use.</li>
+        <li>Attempt, audit and usage records: retained for a limited period for security and accounting, then removed.</li>
+        <li>Everything the desktop app stores: on your machine, until you delete it.</li>
+      </ul>
+
+      <h2>9. Your choices and rights</h2>
+      <p>
+        You can sign out at any time, which revokes the session server-side. You can ask to see or
+        delete the account data we hold, and you can request removal of your account entirely. Ask
+        through the
+        <a href="https://github.com/martinssqeel-maker/Alpha-/issues" target="_blank" rel="noopener">project issue tracker</a>
+        and state what you want done; we will not require a reason. If you never created an account,
+        there is no server-side record of you to act on — you can simply keep using the app offline.
+      </p>
+
+      <h2>10. Security</h2>
+      <p>
+        Refresh tokens and sign-in codes are stored hashed, session cookies are not used, the client
+        secret for provider sign-in never leaves the server, and the API scopes every query to the
+        authenticated account. No system is perfect; we ask that you report a suspected
+        vulnerability privately through the
+        <a href="https://github.com/martinssqeel-maker/Alpha-/issues" target="_blank" rel="noopener">issue tracker</a>
+        rather than publicly, and we will look at it promptly.
+      </p>
+
+      <h2>11. Children</h2>
+      <p>
+        The service is not directed at children under 13, and we do not knowingly collect their
+        personal data. If you believe a child has created an account, ask us to remove it.
+      </p>
+
+      <h2>12. Where data is processed</h2>
+      <p>
+        The account service is operated on cloud infrastructure in the United States. If you use the
+        account features from elsewhere, your account data is processed there. The desktop app's own
+        data stays on your device regardless.
+      </p>
+
+      <h2>13. Changes to this policy</h2>
+      <p>
+        If this policy changes, the date at the top of the page changes with it. Material changes
+        will be noted in the repository so the history of what was promised remains visible.
+      </p>
+
+      <h2>14. Contact</h2>
+      <p>
+        Questions, requests or concerns about privacy go to the
+        <a href="https://github.com/martinssqeel-maker/Alpha-/issues" target="_blank" rel="noopener">project issue tracker</a>.
+        We read it.
+      </p>
+
+      <nav class="legal-nav" aria-label="Legal">
+        <a href="/terms">Terms of Service</a>
+        <a href="/account">Account</a>
+        <a href="/">Home</a>
+      </nav>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/account">Sign in</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+  </body>
+</html>

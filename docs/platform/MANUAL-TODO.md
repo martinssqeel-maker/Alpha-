@@ -131,9 +131,20 @@ setup cannot reach production. Nothing else needs to change, and the key is neve
 committed (`.env.local` is gitignored) or returned by any endpoint.
 
 `onboarding@resend.dev` needs no domain verification, but Resend delivers from it only to the
-address that owns the Resend account. Once a domain is verified in Resend → Domains, change
-`EMAIL_FROM` to an address on it and deploy again. A sender on an unverified domain comes
-back as HTTP 422 `validation_error` and is **not** retried.
+address that owns the Resend account. Measured on 2026-10-16, a send to any other recipient is
+rejected with **HTTP 403** and this body, which is quoted because it names the fix:
+
+> You can only send testing emails to your own email address (martinssqeel@gmail.com). To send
+> emails to other recipients, please verify a domain at resend.com/domains, and change the
+> `from` address to an email using this domain.
+
+403 is not retried, so the caller gets an honest `502 email_delivery_failed`, the one-time code
+is retired, and the message reaches the function logs as `status=403` with no key material in it.
+
+**This is the gate on real sign-up.** Until a domain is verified in Resend → Domains, sign-in by
+email works **only** for `martinssqeel@gmail.com` — every other address is refused. Google and
+GitHub sign-in are unaffected and already work for everybody, so that is the fallback meanwhile.
+Once a domain is verified, set `EMAIL_FROM` to an address on it and deploy again.
 
 `WEB_ACCOUNT_URL` is already the website origin, so emailed links land on `/account` rather
 than the desktop app's `alpha://auth/callback` link. Clear it to send people to the app instead.

@@ -23,7 +23,13 @@ const apiEnv = pickEnv([
   'AUTH_DEV_ECHO_OTP',
   'EMAIL_PROVIDER',
   'EMAIL_FROM',
+  'EMAIL_REPLY_TO',
   'RESEND_API_KEY',
+  // Sign-in email volume control (per address, per IP, and the resend cooldown).
+  'AUTH_OTP_REQUEST_MAX',
+  'AUTH_OTP_REQUEST_IP_MAX',
+  'AUTH_OTP_REQUEST_WINDOW_MIN',
+  'AUTH_OTP_RESEND_COOLDOWN_SEC',
   'WEB_ACCOUNT_URL',
   'ALLOWED_ORIGINS',
   // Google sign-in: set these two to turn the Google button on (see docs).

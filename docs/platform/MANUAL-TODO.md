@@ -87,41 +87,61 @@ Currently **nothing** is configured, so `/gateway/models` lists catalog models a
 
 Then `npm run deploy`. `npm run deploy -- --check` warns while this is still unset.
 
-## [ ] 4. Bootstrap admin user — currently there are none
+## [ ] 4. Grant yourself the owner role — currently there are none
 
-Measured 2026-10-13: `select count(*) from public.admin_users;` → **0**. The control centre
-is built and verified but unreachable until this step is done. `bootstrap_admin_email` in
-`system_settings` is blank, and the bootstrap-instead-of-SQL route needs a sign-in, which
-needs email delivery (§5) — so use the SQL promotion below.
+Measured 2026-10-16: `select count(*) from public.admin_users;` → **0**, and
+`bootstrap_admin_email` is still `""`. The dashboard is reachable and its API is deployed,
+but it answers `403 forbidden` for every account until this step is done. Signing in is what
+makes an account exist, so do that first (Google and GitHub both work without any email
+setup — `/auth/providers` reports `google:true, github:true`).
 
-If `ADMIN_EMAIL` is not yet an owner, promote via SQL (Neon SQL Editor):
+Then, from this repository on your own machine:
 
-```sql
-insert into public.admin_users (user_id, role_id)
-select u.id, r.id
-from public.users u
-join public.admin_roles r on r.code = 'owner'
-where lower(u.email) = lower('$ADMIN_EMAIL')
-  and not exists (select 1 from public.admin_users au where au.user_id = u.id)
-on conflict (user_id) do nothing;
+```powershell
+npm run admin:grant                                  # prompts for the address
+npm run admin:grant -- --email you@example.com       # or pass it
+npm run admin:grant -- --email you@example.com --check   # show the plan, change nothing
 ```
 
-Verify:
+The script **cannot create an account**, refuses a suspended one, refuses to change an
+existing role without `--force`, and writes an `audit_logs` row so the change appears in the
+dashboard's own audit view. It builds the connection from `DATABASE_URL_UNPOOLED` (falling
+back to `DATABASE_URL`) in `.env.local`, parsing the URL by parts so a password containing
+`@`, `#` or `/` cannot be misread as a host.
 
-```sql
-select u.email, r.code from public.admin_users au
-join public.users u on u.id = au.user_id
-join public.admin_roles r on r.id = au.role_id;
+Verify without SQL: `npm run admin:grant -- --email <address> --check` prints the current
+administrator roster. Then open `/admin` (§7).
+
+## [ ] 5. Configure real email (one paste, then one command)
+
+The Function currently runs `EMAIL_PROVIDER=log`, which delivers **nothing** while the API
+still answers "we sent a code". `/auth/request` now reports `"delivered": false` in that
+mode, and `/account` says so instead of pointing you at an empty inbox.
+
+`.env.local` already holds the block to fill in — `EMAIL_PROVIDER=resend`,
+`EMAIL_FROM=Alpha AI Workspace <onboarding@resend.dev>`, and an empty `RESEND_API_KEY=`. Paste
+your key on that last line and deploy:
+
+```powershell
+npm run deploy
 ```
 
-## [ ] 5. Configure real email
+The deploy is **refused on purpose** while that line is empty, so a half-configured email
+setup cannot reach production. Nothing else needs to change, and the key is never printed,
+committed (`.env.local` is gitignored) or returned by any endpoint.
 
-`EMAIL_PROVIDER=log` sends nothing while the API still answers "we sent a code". Before
-real users sign in: set `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` and a verified
-`EMAIL_FROM`, then `npm run deploy`.
+`onboarding@resend.dev` needs no domain verification, but Resend delivers from it only to the
+address that owns the Resend account. Once a domain is verified in Resend → Domains, change
+`EMAIL_FROM` to an address on it and deploy again. A sender on an unverified domain comes
+back as HTTP 422 `validation_error` and is **not** retried.
 
-Also set `WEB_ACCOUNT_URL` to the website origin if the magic link should open in the
-browser instead of the app; otherwise links fall back to `alpha://auth/callback`.
+`WEB_ACCOUNT_URL` is already the website origin, so emailed links land on `/account` rather
+than the desktop app's `alpha://auth/callback` link. Clear it to send people to the app instead.
+
+There is deliberately no password-reset email: ordinary accounts have no password (email
+code, Google or GitHub only), and the only password in the system is the administrator's,
+which is seeded on this machine with `npm run admin:password` — a stronger path than an
+emailed reset link for an account that can see every user.
 
 ## [x] 6. Website: the deployed site is configured and serving
 

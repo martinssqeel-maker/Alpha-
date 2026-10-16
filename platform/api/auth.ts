@@ -4,7 +4,7 @@ import type { AppEnv } from './types'
 import { withContext } from './db'
 import { boolEnv, getEnv, intEnv } from './env'
 import { generateCode, generateToken, hashSecret, safeEqual } from './crypto'
-import { sendOtpEmail } from './email'
+import { EmailDeliveryError, sendOtpEmail } from './email'
 import { accessTtlMs, refreshTtlMs, signAccessToken } from './jwt'
 import { requireAuth } from './middleware'
 import { hashPassword, verifyPassword } from './password'
@@ -162,10 +162,46 @@ export function signInLinkUrl(email: string, magic: string): string {
   return webUrl ? `${webUrl}/account?${query}` : `${appCallbackUrl()}?${query}`
 }
 
+// ---------------------------------------------------------------------------
+// Sign-in email volume control
+//
+// `/auth/request` is unauthenticated and sends mail to an address a caller
+// chooses, so without a ceiling it is a mail-bombing tool aimed at any inbox and
+// a way to burn the email provider's quota. Two independent limits apply — per
+// address and per source IP — plus a short cooldown that turns a double-clicked
+// button into one email instead of two.
+//
+// The decision is a pure function of counts and limits so it can be tested
+// without a database; only the counting touches SQL.
+// ---------------------------------------------------------------------------
+
+export interface OtpRequestSignals {
+  emailCount: number
+  ipCount: number
+  /** Infinity when this address has not been sent a code inside the window. */
+  secondsSinceLastEmail: number
+  perEmailMax: number
+  perIpMax: number
+  cooldownSeconds: number
+}
+
+export type OtpRequestDecision = 'allow' | 'cooldown' | 'throttled'
+
+/**
+ * `throttled` outranks `cooldown`: once the ceiling is reached the honest answer
+ * is "stop asking", not "wait a minute" — the cooldown would expire and the next
+ * request would be refused again anyway.
+ */
+export function otpRequestDecision(signals: OtpRequestSignals): OtpRequestDecision {
+  if (signals.emailCount >= signals.perEmailMax || signals.ipCount >= signals.perIpMax) return 'throttled'
+  if (signals.secondsSinceLastEmail < signals.cooldownSeconds) return 'cooldown'
+  return 'allow'
+}
+
 authRoutes.post('/request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { email?: string }
   const email = (body.email ?? '').trim().toLowerCase()
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+  if (!EMAIL_RE.test(email)) {
     return c.json({ ok: false, error: { code: 'invalid_email', message: 'Enter a valid email address.' } }, 400)
   }
 
@@ -177,43 +213,137 @@ authRoutes.post('/request', async (c) => {
   }
 
   const ttlMinutes = intEnv('AUTH_OTP_TTL_MIN', 10)
+  const ip = requestIp(c) ?? 'unknown'
+  const emailKey = email
+  const ipKey = `ip:${ip}`
+  const windowMinutes = intEnv('AUTH_OTP_REQUEST_WINDOW_MIN', 15)
+  const perEmailMax = intEnv('AUTH_OTP_REQUEST_MAX', 3)
+  const perIpMax = intEnv('AUTH_OTP_REQUEST_IP_MAX', 10)
+  const cooldownSeconds = intEnv('AUTH_OTP_RESEND_COOLDOWN_SEC', 60)
+
+  // Every row here is a message we actually attempted to send, so counting rows
+  // counts emails. Throttled requests are deliberately not recorded: otherwise an
+  // attacker's own retries would keep refreshing the window and extend their own
+  // lockout.
+  const signals = await withContext(null, 'anon', async (q) => {
+    const row = (
+      await q.query<{ email_count: string; ip_count: string; seconds_since_email: string | null }>(
+        `select count(*) filter (where key = $1)::text as email_count,
+                count(*) filter (where key = $2)::text as ip_count,
+                extract(epoch from now() - max(created_at) filter (where key = $1))::text as seconds_since_email
+           from public.auth_attempts
+          where scope = 'otp_request' and created_at > now() - make_interval(mins => $3::int)`,
+        [emailKey, ipKey, windowMinutes]
+      )
+    ).rows[0]
+    const seconds = row?.seconds_since_email
+    return {
+      emailCount: Number.parseInt(row?.email_count ?? '0', 10),
+      ipCount: Number.parseInt(row?.ip_count ?? '0', 10),
+      secondsSinceLastEmail: seconds === null || seconds === undefined ? Number.POSITIVE_INFINITY : Number.parseFloat(seconds)
+    }
+  })
+
+  const decision = otpRequestDecision({
+    ...signals,
+    perEmailMax,
+    perIpMax,
+    cooldownSeconds
+  })
+
+  if (decision === 'throttled') {
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'too_many_requests',
+          message: `Too many sign-in emails requested. Try again in ${windowMinutes} minutes.`
+        }
+      },
+      429
+    )
+  }
+  if (decision === 'cooldown') {
+    const retryAfterSeconds = Math.max(1, Math.ceil(cooldownSeconds - signals.secondsSinceLastEmail))
+    return c.json({
+      ok: true,
+      alreadySent: true,
+      message: `A sign-in code was sent to ${email} moments ago. Check your inbox, or request another in ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'}.`,
+      retryAfterSeconds,
+      expiresInMinutes: ttlMinutes
+    })
+  }
+
   const code = generateCode()
   const magic = generateToken(32)
   const codeHash = hashSecret(code)
   const magicHash = hashSecret(magic)
-  const ip = requestIp(c)
   const userAgent = c.req.header('user-agent') ?? null
 
-  await withContext(null, 'anon', async (q) => {
+  const otpId = await withContext(null, 'anon', async (q) => {
     await q.query('update public.auth_otps set consumed_at = now() where email = $1 and consumed_at is null', [email])
-    await q.query(
+    const inserted = await q.query<{ id: string }>(
       `insert into public.auth_otps (email, code_hash, magic_hash, expires_at, ip, user_agent)
-       values ($1, $2, $3, now() + make_interval(mins => $4::int), $5, $6)`,
+       values ($1, $2, $3, now() + make_interval(mins => $4::int), $5, $6)
+       returning id`,
       [email, codeHash, magicHash, ttlMinutes, ip, userAgent]
     )
+    return inserted.rows[0].id
   })
 
-  await sendOtpEmail({
-    to: email,
-    code,
-    magicUrl: signInLinkUrl(email, magic),
-    expiresMinutes: ttlMinutes
-  })
+  try {
+    const delivery = await sendOtpEmail({
+      to: email,
+      code,
+      magicUrl: signInLinkUrl(email, magic),
+      expiresMinutes: ttlMinutes
+    })
+    await recordAttempt('otp_request', emailKey, true)
+    await recordAttempt('otp_request', ipKey, true)
 
-  const payload: Record<string, unknown> = {
-    ok: true,
-    message: `We sent a sign-in code to ${email}.`,
-    expiresInMinutes: ttlMinutes
+    const payload: Record<string, unknown> = {
+      ok: true,
+      message: `We sent a sign-in code to ${email}.`,
+      expiresInMinutes: ttlMinutes,
+      // Honest about the dev transport: "sent" when nothing was delivered would
+      // send a person to check an inbox that will never receive anything.
+      delivered: !delivery.simulated,
+      provider: delivery.provider
+    }
+    // Dev-only convenience: echo the freshly minted code/token so a local UI can be
+    // driven without reading the mail log. Gated on NODE_ENV as well as the flag,
+    // because a deployed Function is reachable by anyone and would otherwise hand
+    // out a valid sign-in token for an arbitrary email address.
+    if (boolEnv('AUTH_DEV_ECHO_OTP') && getEnv('NODE_ENV') === 'development') {
+      payload.devCode = code
+      payload.devMagicToken = magic
+    }
+    return c.json(payload)
+  } catch (error) {
+    // The code was already minted. If the mail never left, leaving it live would
+    // mean a usable credential nobody received, issued from an error response —
+    // so it is retired and the caller is told the truth instead.
+    await withContext(null, 'anon', async (q) => {
+      await q.query('update public.auth_otps set consumed_at = now() where id = $1', [otpId])
+    })
+    await recordAttempt('otp_request', emailKey, false)
+    await recordAttempt('otp_request', ipKey, false)
+
+    const retryable = error instanceof EmailDeliveryError && error.retryable
+    if (!(error instanceof EmailDeliveryError)) console.error('[auth:request] email send failed', error)
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'email_delivery_failed',
+          message: retryable
+            ? 'The email service is busy, so the sign-in email could not be sent. Try again in a moment.'
+            : 'The sign-in email could not be sent. If this continues, the service operator must check the email configuration.'
+        }
+      },
+      retryable ? 503 : 502
+    )
   }
-  // Dev-only convenience: echo the freshly minted code/token so a local UI can be
-  // driven without reading the mail log. Gated on NODE_ENV as well as the flag,
-  // because a deployed Function is reachable by anyone and would otherwise hand
-  // out a valid sign-in token for an arbitrary email address.
-  if (boolEnv('AUTH_DEV_ECHO_OTP') && getEnv('NODE_ENV') === 'development') {
-    payload.devCode = code
-    payload.devMagicToken = magic
-  }
-  return c.json(payload)
 })
 
 authRoutes.post('/verify', async (c) => {

@@ -20,6 +20,7 @@
     "release": "electron-vite build && electron-builder --win nsis --publish always & node scripts/ensure-release.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "admin:password": "node scripts/admin-password.mjs",
+    "admin:grant": "node scripts/admin-grant.mjs",
     "deploy": "node scripts/deploy.mjs",
     "check:oauth": "node scripts/check-oauth-credentials.mjs",
     "smoke": "node scripts/smoke.mjs",
@@ -45,6 +46,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.10.0",
     "@types/pdf-parse": "^1.1.4",

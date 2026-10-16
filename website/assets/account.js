@@ -124,7 +124,10 @@ const ERROR_TEXT = {
   github_not_configured: 'GitHub sign-in is not enabled on this deployment yet.',
   maintenance: 'Alpha is in maintenance mode right now. Please try again shortly.',
   invalid_email: 'That email address does not look right.',
-  too_many: 'Too many attempts. Wait a moment and request a new code.'
+  expired: 'That code has expired. Request a new one.',
+  too_many: 'Too many attempts. Wait a moment and request a new code.',
+  too_many_requests: 'Too many sign-in emails have been asked for. Wait a few minutes, then request one more.',
+  email_delivery_failed: 'We could not send the sign-in email. Please try again in a moment.'
 }
 
 function errorText(code, fallback) {
@@ -390,7 +393,19 @@ async function renderProviders() {
     summary = null
   }
   if (!summary) {
-    setStatus('Could not reach the sign-in service. Check your connection and reload.', 'error')
+    // The card still describes Google and GitHub at this point, but nothing has
+    // confirmed they exist here. Rather than leave that claim standing, the lede
+    // drops back to what the page can actually offer.
+    if (els.cardLede) {
+      els.cardLede.textContent =
+        'Enter your email address and we will send a six-digit code and a one-tap ' +
+        'sign-in link. New to Alpha? It creates the account.'
+    }
+    setStatus(
+      'Could not reach the sign-in service from this page. Check your connection and reload — ' +
+        'if it keeps failing, this site\u2019s address may not be on the service\u2019s allowed list.',
+      'error'
+    )
     return
   }
 
@@ -448,12 +463,27 @@ function bindEmailForm() {
     try {
       const res = await api('/auth/request', { method: 'POST', body: { email } })
       if (res.status === 200 && res.ok) {
-        const minutes = res.json && res.json.expiresInMinutes ? res.json.expiresInMinutes : 10
-        if (els.codeForm) els.codeForm.hidden = false
-        setStatus(
-          `Check ${email} — we sent a sign-in link and a six-digit code. They expire in ${minutes} minutes.`,
-          'ok'
-        )
+        const data = res.json || {}
+        const minutes = data.expiresInMinutes ? data.expiresInMinutes : 10
+        if (data.delivered === false && !data.alreadySent) {
+          // The API says plainly that it delivered nothing (the `log` transport).
+          // Telling someone to go and check an inbox would send them to wait for
+          // a message that was never sent.
+          setStatus(
+            `This deployment is not delivering email yet, so nothing was sent to ${email}. ` +
+              'Please tell the site operator to finish the email configuration.',
+            'error'
+          )
+        } else if (data.alreadySent) {
+          if (els.codeForm) els.codeForm.hidden = false
+          setStatus(data.message || `A sign-in code was already sent to ${email}.`, 'ok')
+        } else {
+          if (els.codeForm) els.codeForm.hidden = false
+          setStatus(
+            `Check ${email} — we sent a sign-in link and a six-digit code. They expire in ${minutes} minutes.`,
+            'ok'
+          )
+        }
       } else {
         const code = res.json && res.json.error ? res.json.error.code : null
         const message = res.json && res.json.error ? res.json.error.message : null

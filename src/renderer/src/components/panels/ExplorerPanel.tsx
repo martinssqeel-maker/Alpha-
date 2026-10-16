@@ -4,6 +4,7 @@ import type { FileNode, SearchResult } from '@shared/types'
 import { api } from '../../lib/api'
 import { useApp } from '../../store/useApp'
 import { useWorkspace } from '../../store/useWorkspace'
+import ProjectContextEmpty from './ProjectContextEmpty'
 
 export default function ExplorerPanel() {
   const project = useApp((s) => s.projects.find((p) => p.id === s.activeProjectId))
@@ -44,7 +45,7 @@ export default function ExplorerPanel() {
   }, [query, contentSearch, project?.id])
 
   if (!project) {
-    return <Empty text="No project open. Open a folder to browse files." />
+    return <ProjectContextEmpty title="Bring a project into focus" description="Open a local folder to browse real files, inspect changes, and give the agent project context." />
   }
 
   const openFile = (path: string): void => {
@@ -123,7 +124,6 @@ export default function ExplorerPanel() {
     </div>
   )
 }
-
 function Tree({
   nodes,
   depth,
@@ -201,14 +201,6 @@ function TreeNode({
           {children && <Tree nodes={children} depth={depth + 1} onOpen={onOpen} projectId={projectId} />}
         </div>
       )}
-    </div>
-  )
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex items-center justify-center h-full p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-      {text}
     </div>
   )
 }

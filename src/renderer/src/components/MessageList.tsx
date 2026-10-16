@@ -114,12 +114,8 @@ function LiveTurn({ streaming, startedAt }: { streaming: LiveState; startedAt: n
     <div className="msg assistant live">
       <RunStrip tone={status.tone} label={status.label} hint={status.hint} elapsed={elapsed} />
       <div className="msg-body">
-        {streaming.thinking && (
-          <details className="reasoning">
-            <summary>Reasoning</summary>
-            <pre className="mono text-xs whitespace-pre-wrap">{streaming.thinking}</pre>
-          </details>
-        )}
+        {/* Keep progress visible through the run strip and real activity events;
+            never render private model reasoning in the conversation. */}
         <ActivityTimeline activities={streaming.activities} />
         {streaming.text ? (
           <>

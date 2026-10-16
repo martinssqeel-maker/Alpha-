@@ -6,7 +6,7 @@ export default function ApprovalDialog() {
   if (!approval) return null
   return (
     <div className="modal-backdrop" role="presentation">
-      <div className="card" style={{ width: 480, maxWidth: '90vw' }} role="alertdialog" aria-modal="true" aria-labelledby="approval-title" aria-describedby="approval-description">
+      <div className="card approval-dialog" style={{ width: 480, maxWidth: '90vw' }} role="alertdialog" aria-modal="true" aria-labelledby="approval-title" aria-describedby="approval-description">
         <h3 className="text-base font-semibold mb-1">Approval required</h3>
         <p id="approval-description" className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
           Review the action, target, and consequence. This approval applies only to this request.

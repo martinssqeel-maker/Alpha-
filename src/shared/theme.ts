@@ -1,54 +1,110 @@
 /**
- * Alpha's semantic color palettes. Components consume the semantic variables;
- * each preset remaps the same variables without changing component styles.
- *
- * `group` is presentation-only: it groups the gallery cards in Settings →
- * Appearance. Every concrete entry below is validated by `tests/theme.test.ts`
- * against the same contrast gates, so adding a preset cannot quietly ship an
- * unreadable palette.
+ * Alpha's semantic palette system. Curated presets share one token
+ * contract; legacy preference IDs remain resolvable so existing settings never
+ * strand a user on an unknown palette.
  */
 export const THEME_OPTIONS = [
-  { id: 'system', label: 'System', group: 'Essentials', description: 'Follow the Windows appearance setting.' },
-  { id: 'dark', label: 'Dark', group: 'Essentials', description: 'Quiet charcoal with Alpha indigo.' },
-  { id: 'light', label: 'Light', group: 'Essentials', description: 'Clear neutral surfaces for bright rooms.' },
-  { id: 'alpine', label: 'Alpine', group: 'Dark', description: 'Cool graphite with a crisp mineral accent.' },
-  { id: 'tide', label: 'Tide', group: 'Dark', description: 'Deep blue-green surfaces with a clear aqua accent.' },
-  { id: 'after-rain', label: 'After Rain', group: 'Dark', description: 'Washed slate blue, cool and low-contrast by design.' },
-  { id: 'kanagawa', label: 'Kanagawa', group: 'Dark', description: 'Sumi-ink navy with a classic indigo accent.' },
-  { id: 'orbit', label: 'Orbit', group: 'Dark', description: 'Deep space indigo with an electric violet accent.' },
-  { id: 'violet-hour', label: 'Violet Hour', group: 'Dark', description: 'Dusk plum with a soft orchid accent.' },
-  { id: 'aurora', label: 'Aurora', group: 'Dark', description: 'Near-black polar sky with a northern-green accent.' },
-  { id: 'phosphor', label: 'Phosphor', group: 'Dark', description: 'CRT terminal black with a phosphor-green accent.' },
-  { id: 'dune', label: 'Dune', group: 'Warm', description: 'Warm stone with a restrained amber accent.' },
-  { id: 'ember', label: 'Ember', group: 'Warm', description: 'Warm charcoal with a measured coral accent.' },
-  { id: 'blossom', label: 'Blossom', group: 'Warm', description: 'Muted rose surfaces with a soft pink accent.' },
-  { id: 'mirage', label: 'Mirage', group: 'Light', description: 'Warm sand light theme with a deep teal accent.' }
+  { id: 'system', label: 'System', group: 'System', description: 'Follow your Windows light or dark preference.' },
+  { id: 'solar-flare', label: 'Solar Flare', group: 'Cinematic', description: 'Molten amber, champagne light, and blackened glass.' },
+  { id: 'cosmic-indigo', label: 'Galaxy Pulse', group: 'Cinematic', description: 'Ultramarine depth with spectral violet and magenta.' },
+  { id: 'forest-haven', label: 'Forest Haven', group: 'Organic', description: 'Emerald glass, quiet jade, and deep botanical greens.' },
+  { id: 'sunset-breeze', label: 'Sunset Breeze', group: 'Cinematic', description: 'Burnished coral, apricot light, and dusk plum.' },
+  { id: 'cyber-matrix', label: 'Cyber Matrix', group: 'Neon', description: 'Electric blue, ultraviolet, and precise hot-pink signals.' },
+  { id: 'arctic-glass', label: 'Glass Elegance', group: 'Light', description: 'Icy porcelain, clear blue, and lucid glass surfaces.' },
+  { id: 'neon-wave', label: 'Neon Wave', group: 'Neon', description: 'Ion cyan and deep-ocean blue with a magenta edge.' },
+  { id: 'obsidian', label: 'Dark Pro', group: 'Studio', description: 'Quiet graphite, steel blue, and uncompromising contrast.' },
+  { id: 'aurora', label: 'Aurora Glass', group: 'Signature', description: 'Prismatic cyan and ultraviolet over obsidian.' },
+  { id: 'neon-crystal', label: 'Neon Crystal', group: 'Neon', description: 'Glacial blue, cut-glass surfaces, and focused violet.' },
+  { id: 'liquid-glass', label: 'Liquid Glass', group: 'Glass', description: 'Fluid sapphire reflections and cool translucent layers.' },
+  { id: 'phosphor', label: 'Matrix Core', group: 'Studio', description: 'Terminal emerald, blackened graphite, and focused clarity.' }
 ] as const
 
-export type ThemePreference = (typeof THEME_OPTIONS)[number]['id']
 export const RESOLVED_THEME_OPTIONS = [
-  'dark',
-  'light',
-  'alpine',
-  'tide',
-  'after-rain',
-  'kanagawa',
-  'orbit',
-  'violet-hour',
+  'solar-flare',
+  'forest-haven',
+  'sunset-breeze',
+  'cyber-matrix',
+  'neon-wave',
+  'neon-crystal',
+  'liquid-glass',
   'aurora',
+  'obsidian',
+  'cosmic-indigo',
   'phosphor',
-  'dune',
-  'ember',
-  'blossom',
-  'mirage'
+  'arctic-glass'
 ] as const
+
 export type ResolvedTheme = (typeof RESOLVED_THEME_OPTIONS)[number]
+export type AppearanceMode = 'system' | 'dark' | 'light'
+export type AccentChoice = 'theme' | 'gold' | 'amber' | 'cyan' | 'blue' | 'violet' | 'magenta' | 'emerald' | 'rose' | 'custom'
+export interface AppearanceSettings {
+  mode: AppearanceMode
+  accent: AccentChoice
+  customAccent: string
+  density: 'comfortable' | 'compact'
+  corners: 'soft' | 'crisp'
+  glassIntensity: number
+  glowIntensity: number
+  ambientLighting: boolean
+  animations: boolean
+  animatedGradients: boolean
+}
+
+export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  mode: 'system',
+  accent: 'theme',
+  customAccent: '#ffb52e',
+  density: 'comfortable',
+  corners: 'soft',
+  glassIntensity: 55,
+  glowIntensity: 42,
+  ambientLighting: true,
+  animations: true,
+  animatedGradients: false
+}
+
+export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
+  const input = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<AppearanceSettings>
+    : {}
+  const modes: AppearanceMode[] = ['system', 'dark', 'light']
+  const accents: AccentChoice[] = ['theme', 'gold', 'amber', 'cyan', 'blue', 'violet', 'magenta', 'emerald', 'rose', 'custom']
+  const clamp = (number: unknown, fallback: number): number =>
+    typeof number === 'number' && Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : fallback
+  return {
+    mode: modes.includes(input.mode as AppearanceMode) ? input.mode as AppearanceMode : DEFAULT_APPEARANCE_SETTINGS.mode,
+    accent: accents.includes(input.accent as AccentChoice) ? input.accent as AccentChoice : DEFAULT_APPEARANCE_SETTINGS.accent,
+    customAccent: typeof input.customAccent === 'string' && /^#[\da-f]{6}$/i.test(input.customAccent) ? input.customAccent : DEFAULT_APPEARANCE_SETTINGS.customAccent,
+    density: input.density === 'compact' || input.density === 'comfortable' ? input.density : DEFAULT_APPEARANCE_SETTINGS.density,
+    corners: input.corners === 'crisp' || input.corners === 'soft' ? input.corners : DEFAULT_APPEARANCE_SETTINGS.corners,
+    glassIntensity: clamp(input.glassIntensity, DEFAULT_APPEARANCE_SETTINGS.glassIntensity),
+    glowIntensity: clamp(input.glowIntensity, DEFAULT_APPEARANCE_SETTINGS.glowIntensity),
+    ambientLighting: typeof input.ambientLighting === 'boolean' ? input.ambientLighting : DEFAULT_APPEARANCE_SETTINGS.ambientLighting,
+    animations: typeof input.animations === 'boolean' ? input.animations : DEFAULT_APPEARANCE_SETTINGS.animations,
+    animatedGradients: typeof input.animatedGradients === 'boolean' ? input.animatedGradients : DEFAULT_APPEARANCE_SETTINGS.animatedGradients
+  }
+}
+type LegacyTheme =
+  | 'dark'
+  | 'light'
+  | 'alpine'
+  | 'tide'
+  | 'after-rain'
+  | 'kanagawa'
+  | 'orbit'
+  | 'violet-hour'
+  | 'dune'
+  | 'ember'
+  | 'blossom'
+  | 'mirage'
+export type ThemePreference = (typeof THEME_OPTIONS)[number]['id'] | LegacyTheme
 
 export type ThemeTokens = Record<
   | '--surface-0'
   | '--surface-1'
   | '--surface-2'
   | '--surface-3'
+  | '--surface-glass'
   | '--text-primary'
   | '--text-secondary'
   | '--text-tertiary'
@@ -56,9 +112,14 @@ export type ThemeTokens = Record<
   | '--text-on-accent'
   | '--border-subtle'
   | '--border-strong'
+  | '--glass-border'
+  | '--ambient-light'
   | '--accent'
   | '--accent-hover'
   | '--accent-active'
+  | '--accent-secondary'
+  | '--accent-gradient'
+  | '--accent-glow'
   | '--accent-subtle-bg'
   | '--success'
   | '--success-subtle-bg'
@@ -92,9 +153,11 @@ interface Palette {
   textOnAccent: string
   borders: [string, string]
   accent: [string, string, string]
+  accentSecondary: string
   semantic: { success: string; warning: string; danger: string; info: string }
   code: { keyword: string; string: string; number: string; title: string; comment: string; attribute: string }
   shadow: string
+  ambient: string
 }
 
 function palette(p: Palette): ThemeTokens {
@@ -108,6 +171,7 @@ function palette(p: Palette): ThemeTokens {
     '--surface-1': surface1,
     '--surface-2': surface2,
     '--surface-3': surface3,
+    '--surface-glass': `color-mix(in srgb, ${surface1} 84%, transparent)`,
     '--text-primary': p.text[0],
     '--text-secondary': p.text[1],
     '--text-tertiary': p.text[2],
@@ -115,9 +179,14 @@ function palette(p: Palette): ThemeTokens {
     '--text-on-accent': p.textOnAccent,
     '--border-subtle': p.borders[0],
     '--border-strong': p.borders[1],
+    '--glass-border': `color-mix(in srgb, ${p.accentSecondary} 24%, ${p.borders[0]})`,
+    '--ambient-light': p.ambient,
     '--accent': accent,
     '--accent-hover': accentHover,
     '--accent-active': accentActive,
+    '--accent-secondary': p.accentSecondary,
+    '--accent-gradient': `linear-gradient(112deg, ${accent} 0%, ${p.accentSecondary} 100%)`,
+    '--accent-glow': `color-mix(in srgb, ${accent} 28%, transparent)`,
     '--accent-subtle-bg': tint(accent, 14),
     '--success': p.semantic.success,
     '--success-subtle-bg': tint(p.semantic.success, 12),
@@ -127,15 +196,15 @@ function palette(p: Palette): ThemeTokens {
     '--danger-subtle-bg': tint(p.semantic.danger, 12),
     '--info': p.semantic.info,
     '--info-subtle-bg': tint(p.semantic.info, 12),
-    '--focus-ring': accentHover,
-    '--modal-scrim': 'rgba(0, 0, 0, 0.48)',
-    '--composer-bg': surface1,
+    '--focus-ring': p.accentSecondary,
+    '--modal-scrim': 'rgba(1, 3, 9, 0.68)',
+    '--composer-bg': `color-mix(in srgb, ${surface1} 94%, ${accent} 6%)`,
     '--terminal-bg': surface0,
     '--diff-add-bg': tint(p.semantic.success, 12),
     '--diff-delete-bg': tint(p.semantic.danger, 12),
-    '--shadow-raised': `0 1px 2px ${p.shadow}, 0 8px 20px ${p.shadow}`,
-    '--shadow-popover': `0 12px 32px ${p.shadow}`,
-    '--shadow-modal': `0 20px 56px ${p.shadow}`,
+    '--shadow-raised': `0 1px 2px ${p.shadow}, 0 10px 28px ${p.shadow}`,
+    '--shadow-popover': `0 16px 40px ${p.shadow}`,
+    '--shadow-modal': `0 24px 64px ${p.shadow}`,
     '--code-keyword': p.code.keyword,
     '--code-string': p.code.string,
     '--code-number': p.code.number,
@@ -146,148 +215,215 @@ function palette(p: Palette): ThemeTokens {
 }
 
 export const THEME_TOKENS: Record<ResolvedTheme, ThemeTokens> = {
-  dark: palette({
-    surfaces: ['#0b0d12', '#11141d', '#161a25', '#1c2130'],
-    text: ['#eff2f8', '#c7cfde', '#98a2b5', '#7e899d'],
-    textOnAccent: '#101322',
-    borders: ['#252b38', '#374052'],
-    accent: ['#8995ff', '#a5aeff', '#727ff0'],
-    semantic: { success: '#50d7a1', warning: '#ffd06b', danger: '#ff8588', info: '#7bbcff' },
-    code: { keyword: '#b4a0ff', string: '#87d7b0', number: '#edbd78', title: '#87b8ff', comment: '#8793a6', attribute: '#8ad4e6' },
-    shadow: 'rgba(0, 0, 0, 0.28)'
-  }),
-  light: palette({
-    surfaces: ['#f5f6f8', '#ffffff', '#f1f3f7', '#e8ebf1'],
-    text: ['#171a22', '#384252', '#566174', '#5d6879'],
-    textOnAccent: '#ffffff',
-    borders: ['#dfe3e9', '#c8ced9'],
-    accent: ['#4d58c7', '#404ab4', '#333da3'],
-    semantic: { success: '#087a53', warning: '#8b5b08', danger: '#b4232d', info: '#2457a6' },
-    code: { keyword: '#674bb2', string: '#087a53', number: '#92551b', title: '#2457a6', comment: '#687487', attribute: '#08758a' },
-    shadow: 'rgba(22, 31, 49, 0.10)'
-  }),
-  alpine: palette({
-    surfaces: ['#0a1013', '#10191d', '#172328', '#203037'],
-    text: ['#eff8f8', '#c6d8da', '#9bb4b7', '#829c9f'],
-    textOnAccent: '#0a191a',
-    borders: ['#26383c', '#385054'],
-    accent: ['#73c8c7', '#91ddda', '#59b0b2'],
-    semantic: { success: '#66d5a5', warning: '#f4ca70', danger: '#ff8b8a', info: '#83c8f1' },
-    code: { keyword: '#b8a8ff', string: '#83d9b1', number: '#e9c77e', title: '#8dc6ff', comment: '#8da1a4', attribute: '#80d4df' },
-    shadow: 'rgba(0, 0, 0, 0.32)'
-  }),
-  dune: palette({
-    surfaces: ['#15110d', '#1d1813', '#282019', '#342a20'],
-    text: ['#fff7eb', '#e4d3bd', '#b9a78f', '#a29682'],
-    textOnAccent: '#27180b',
-    borders: ['#3a3025', '#514332'],
-    accent: ['#e7ae69', '#f5c17e', '#d59650'],
-    semantic: { success: '#79d0a2', warning: '#ffd078', danger: '#ff9587', info: '#83c7df' },
-    code: { keyword: '#d2a5ff', string: '#8bd6a9', number: '#f4c37c', title: '#8fc6ec', comment: '#a39889', attribute: '#89d2d8' },
-    shadow: 'rgba(0, 0, 0, 0.34)'
-  }),
-  tide: palette({
-    surfaces: ['#091219', '#0e1b24', '#142631', '#1b3441'],
-    text: ['#eff8ff', '#c8d9e8', '#96afc1', '#86a2b4'],
-    textOnAccent: '#07171b',
-    borders: ['#233946', '#345263'],
-    accent: ['#6ac8d9', '#8ad9e5', '#4bb0c4'],
-    semantic: { success: '#62d2a0', warning: '#f6cb6e', danger: '#ff898d', info: '#7bbdf5' },
-    code: { keyword: '#c3a4ff', string: '#7edcaf', number: '#f1c374', title: '#8ac6ff', comment: '#89a3b2', attribute: '#70d2dc' },
-    shadow: 'rgba(0, 0, 0, 0.34)'
-  }),
-  ember: palette({
-    surfaces: ['#151010', '#1e1615', '#2a1e1c', '#382522'],
-    text: ['#fff4f0', '#e5cbc4', '#bda39b', '#a68a82'],
-    textOnAccent: '#28120e',
-    borders: ['#3c2c29', '#563b35'],
-    accent: ['#f39a78', '#ffb08f', '#dc805f'],
-    semantic: { success: '#78cf9d', warning: '#f8cb6f', danger: '#ff9089', info: '#83c4df' },
-    code: { keyword: '#d2a0ff', string: '#88d6a6', number: '#f5bf77', title: '#8bc2f4', comment: '#a58d85', attribute: '#83cfd7' },
-    shadow: 'rgba(0, 0, 0, 0.36)'
-  }),
-  'after-rain': palette({
-    surfaces: ['#0a0f13', '#111a1f', '#18242b', '#213039'],
-    text: ['#eef4f6', '#c8d5da', '#a2b3bb', '#94a7af'],
-    textOnAccent: '#08161b',
-    borders: ['#243139', '#35454e'],
-    accent: ['#8fc7d9', '#aadcec', '#6fb0c6'],
-    semantic: { success: '#64d3a5', warning: '#f4cc74', danger: '#ff8f92', info: '#85c3ee' },
-    code: { keyword: '#b9a8ff', string: '#86dcb4', number: '#eec47c', title: '#8ec7ff', comment: '#8ea1a9', attribute: '#7cd3dd' },
-    shadow: 'rgba(0, 0, 0, 0.34)'
-  }),
-  kanagawa: palette({
-    surfaces: ['#10101a', '#16161f', '#1f1f2c', '#2a2a3a'],
-    text: ['#f8f4e3', '#cdc7af', '#aaa692', '#9e9a86'],
-    textOnAccent: '#13131a',
-    borders: ['#2c2c3b', '#3d3d52'],
-    accent: ['#8fb0e6', '#a8c4f2', '#7199d6'],
-    semantic: { success: '#9ac06e', warning: '#e8c786', danger: '#ec7c88', info: '#83b8ce' },
-    code: { keyword: '#c9a6ff', string: '#9dc47c', number: '#e8c787', title: '#8fb4e6', comment: '#94907c', attribute: '#86c6d2' },
-    shadow: 'rgba(0, 0, 0, 0.38)'
-  }),
-  orbit: palette({
-    surfaces: ['#0c0b18', '#131228', '#1b1a37', '#252349'],
-    text: ['#eef0ff', '#ccceef', '#a6a8d4', '#989ac8'],
-    textOnAccent: '#0e0b26',
-    borders: ['#2b2a4e', '#3f3e6b'],
-    accent: ['#9a9bff', '#b2b3ff', '#8283ec'],
-    semantic: { success: '#68d6a6', warning: '#f6cd74', danger: '#ff8d93', info: '#8bb8ff' },
-    code: { keyword: '#cbb0ff', string: '#8adeb8', number: '#f2c882', title: '#8fb6ff', comment: '#9295bd', attribute: '#86d0e4' },
-    shadow: 'rgba(0, 0, 0, 0.4)'
-  }),
-  'violet-hour': palette({
-    surfaces: ['#120e1a', '#1a1426', '#241c34', '#302543'],
-    text: ['#f2ecff', '#d6cbea', '#aca0c7', '#a094b9'],
-    textOnAccent: '#1a0f2c',
-    borders: ['#332847', '#493a60'],
-    accent: ['#b792f0', '#cbaaff', '#9d76da'],
-    semantic: { success: '#6dd6a4', warning: '#f7cb76', danger: '#ff8f9c', info: '#8fbcf7' },
-    code: { keyword: '#d9aaff', string: '#8adfb6', number: '#f3c67f', title: '#93beff', comment: '#9689ab', attribute: '#88d0e2' },
-    shadow: 'rgba(0, 0, 0, 0.38)'
-  }),
   aurora: palette({
-    surfaces: ['#080d0e', '#0e1617', '#142123', '#1b2c2f'],
-    text: ['#e9f7f4', '#c0e0da', '#93bfb8', '#86b2ab'],
-    textOnAccent: '#06170f',
-    borders: ['#1f2f32', '#2f4549'],
-    accent: ['#63d8b2', '#81ecc8', '#45c098'],
-    semantic: { success: '#63d8b2', warning: '#f3cd76', danger: '#ff8f8f', info: '#83c8e8' },
-    code: { keyword: '#b7a8ff', string: '#74e0b4', number: '#ecc57c', title: '#88c6f6', comment: '#8aa4a0', attribute: '#7ad4d6' },
-    shadow: 'rgba(0, 0, 0, 0.36)'
+    surfaces: ['#070a12', '#0c1220', '#111a2a', '#172335'],
+    text: ['#f1f6ff', '#cad6ea', '#9badca', '#8495b2'],
+    textOnAccent: '#041519',
+    borders: ['#202b3d', '#35445b'],
+    accent: ['#55f3e8', '#7df8f4', '#3dd8dd'],
+    accentSecondary: '#9b72ff',
+    semantic: { success: '#50e3a0', warning: '#ffd276', danger: '#ff8795', info: '#7ec5ff' },
+    code: { keyword: '#bd9cff', string: '#67e7ad', number: '#f3c976', title: '#84c8ff', comment: '#8798b2', attribute: '#6de3e5' },
+    shadow: 'rgba(0, 0, 0, 0.44)', ambient: 'rgba(67, 207, 232, 0.14)'
+  }),
+  obsidian: palette({
+    surfaces: ['#08090c', '#101319', '#181d26', '#202833'],
+    text: ['#f2f5f9', '#cbd2dc', '#a6b0bf', '#8d98a9'],
+    textOnAccent: '#071022',
+    borders: ['#252c37', '#3a4554'],
+    accent: ['#4d7cff', '#77a0ff', '#4e80ff'],
+    accentSecondary: '#77c8ff',
+    semantic: { success: '#55dda0', warning: '#f4c768', danger: '#ff858d', info: '#79c7ff' },
+    code: { keyword: '#b7a1ff', string: '#68d8a2', number: '#eebe72', title: '#84bbff', comment: '#8994a4', attribute: '#76cbd9' },
+    shadow: 'rgba(0, 0, 0, 0.46)', ambient: 'rgba(80, 126, 255, 0.08)'
+  }),
+  'cosmic-indigo': palette({
+    surfaces: ['#090817', '#111027', '#191837', '#242246'],
+    text: ['#f3f1ff', '#d2cff4', '#aeaddd', '#9694c4'],
+    textOnAccent: '#0b0b25',
+    borders: ['#2b294c', '#413e70'],
+    accent: ['#9295ff', '#b4b4ff', '#7378ed'],
+    accentSecondary: '#bd78ff',
+    semantic: { success: '#63dda5', warning: '#f4ce78', danger: '#ff899c', info: '#88bfff' },
+    code: { keyword: '#c9a4ff', string: '#77dda9', number: '#f1c77a', title: '#96b6ff', comment: '#9693bb', attribute: '#80d5e8' },
+    shadow: 'rgba(2, 1, 15, 0.5)', ambient: 'rgba(126, 89, 255, 0.16)'
   }),
   phosphor: palette({
-    surfaces: ['#050806', '#0a0f0b', '#111810', '#182218'],
-    text: ['#def8e4', '#b9ddc2', '#90bb9e', '#85af93'],
-    textOnAccent: '#04170a',
-    borders: ['#1a261c', '#28402d'],
-    accent: ['#54e887', '#72ffa4', '#38c96d'],
-    semantic: { success: '#54e887', warning: '#f0cd78', danger: '#ff8b8b', info: '#82c8e6' },
-    code: { keyword: '#bda8ff', string: '#6ee39a', number: '#eec57a', title: '#88c8f4', comment: '#87a48e', attribute: '#78d2cf' },
-    shadow: 'rgba(0, 0, 0, 0.42)'
+    surfaces: ['#060a08', '#0d1510', '#142019', '#1c2a20'],
+    text: ['#ecf7ef', '#c8dfcd', '#a2c3aa', '#8eae97'],
+    textOnAccent: '#05130a',
+    borders: ['#26382b', '#3d5945'],
+    accent: ['#42e887', '#78f6a8', '#31c96c'],
+    accentSecondary: '#a0f6bd',
+    semantic: { success: '#55e795', warning: '#f2cf75', danger: '#ff8d8c', info: '#82c8e7' },
+    code: { keyword: '#c0a5ff', string: '#65e69b', number: '#edc77e', title: '#88c8f1', comment: '#8ca391', attribute: '#7dd5ce' },
+    shadow: 'rgba(0, 0, 0, 0.48)', ambient: 'rgba(66, 232, 135, 0.1)'
   }),
-  blossom: palette({
-    surfaces: ['#140e13', '#1c141b', '#271c26', '#342431'],
-    text: ['#fdf2f7', '#e7d3dc', '#c5a8b7', '#b79dab'],
-    textOnAccent: '#2b0d1c',
-    borders: ['#3a2833', '#553b4b'],
-    accent: ['#f58fb9', '#ffaacc', '#dd6f9e'],
-    semantic: { success: '#67d3a3', warning: '#f7cd76', danger: '#ff8f99', info: '#86c6ea' },
-    code: { keyword: '#d9a8ff', string: '#8cdcb2', number: '#f2c47c', title: '#8fc6ff', comment: '#a48d9a', attribute: '#86d3da' },
-    shadow: 'rgba(0, 0, 0, 0.36)'
+  'arctic-glass': palette({
+    surfaces: ['#f3f7fc', '#fbfdff', '#eaf0f8', '#dfe8f3'],
+    text: ['#101827', '#26364b', '#435671', '#51627a'],
+    textOnAccent: '#061522',
+    borders: ['#d5deeb', '#b9c8dc'],
+    accent: ['#4e82ff', '#6998ff', '#4e82ff'],
+    accentSecondary: '#24bada',
+    semantic: { success: '#08754e', warning: '#815000', danger: '#b42332', info: '#1757a5' },
+    code: { keyword: '#6842ad', string: '#08754e', number: '#855019', title: '#1559a8', comment: '#65748a', attribute: '#087a8d' },
+    shadow: 'rgba(20, 39, 70, 0.12)', ambient: 'rgba(74, 163, 255, 0.12)'
   }),
-  mirage: palette({
-    surfaces: ['#faf6ef', '#ffffff', '#f4ede1', '#eadfcd'],
-    text: ['#1d1710', '#463b2d', '#685c48', '#655845'],
-    textOnAccent: '#ffffff',
-    borders: ['#e2d8c6', '#cdbfa6'],
-    accent: ['#0f766e', '#0d625c', '#0a4f4a'],
-    semantic: { success: '#0f6f46', warning: '#8a5a06', danger: '#b03030', info: '#1f5f96' },
-    code: { keyword: '#6a4fa8', string: '#0f6f46', number: '#8f5414', title: '#1f5f96', comment: '#6d6350', attribute: '#0f6a72' },
-    shadow: 'rgba(60, 40, 12, 0.12)'
+  'solar-flare': palette({
+    surfaces: ['#0b0907', '#15110d', '#21190f', '#2d2113'],
+    text: ['#fff7e8', '#e8d9c0', '#c5b392', '#a89673'], textOnAccent: '#241506',
+    borders: ['#382919', '#594020'], accent: ['#ffb52e', '#ffd16c', '#e89116'], accentSecondary: '#ff791f',
+    semantic: { success: '#67d59b', warning: '#ffcf70', danger: '#ff8885', info: '#86c8ff' },
+    code: { keyword: '#e9a4ff', string: '#75dc9a', number: '#ffd177', title: '#83c9ff', comment: '#a69377', attribute: '#ffb64e' },
+    shadow: 'rgba(0, 0, 0, 0.5)', ambient: 'rgba(255, 151, 35, 0.19)'
+  }),
+  'forest-haven': palette({
+    surfaces: ['#07100d', '#0d1914', '#14241c', '#1c3025'],
+    text: ['#effaf1', '#cce4d1', '#a4c4ad', '#8cae97'], textOnAccent: '#062016',
+    borders: ['#21392c', '#365844'], accent: ['#4de29a', '#7df2b5', '#30bf78'], accentSecondary: '#b1df62',
+    semantic: { success: '#6bea9e', warning: '#e9d17b', danger: '#ff898d', info: '#83c9e6' },
+    code: { keyword: '#c6a0ff', string: '#70e1a0', number: '#e9cf7a', title: '#85c8ea', comment: '#89a997', attribute: '#a3e47a' },
+    shadow: 'rgba(0, 0, 0, 0.48)', ambient: 'rgba(56, 221, 134, 0.15)'
+  }),
+  'sunset-breeze': palette({
+    surfaces: ['#11090d', '#1b1017', '#29151e', '#361b26'],
+    text: ['#fff4f1', '#f0d5d2', '#c9aaa9', '#b29396'], textOnAccent: '#2b1114',
+    borders: ['#44232a', '#66323a'], accent: ['#ff8a65', '#ffa98b', '#ed694b'], accentSecondary: '#f36bad',
+    semantic: { success: '#6cdda1', warning: '#ffd176', danger: '#ff7b83', info: '#82c9ee' },
+    code: { keyword: '#d5a1ff', string: '#78dfa4', number: '#ffd17f', title: '#8cc7ff', comment: '#ac929d', attribute: '#ff9a7f' },
+    shadow: 'rgba(10, 0, 8, 0.5)', ambient: 'rgba(255, 91, 99, 0.17)'
+  }),
+  'cyber-matrix': palette({
+    surfaces: ['#080912', '#10111e', '#181a2a', '#22243a'],
+    text: ['#f4f5ff', '#d1d5f0', '#a8afd2', '#939abc'], textOnAccent: '#0a1023',
+    borders: ['#282b47', '#3d4268'], accent: ['#58b9ff', '#88d3ff', '#388ee8'], accentSecondary: '#ec62e8',
+    semantic: { success: '#55dfa2', warning: '#f3cc76', danger: '#ff7f94', info: '#78c6ff' },
+    code: { keyword: '#dc8bff', string: '#68e5a5', number: '#f0cb78', title: '#71c4ff', comment: '#9299bd', attribute: '#ff77d1' },
+    shadow: 'rgba(0, 0, 0, 0.48)', ambient: 'rgba(82, 91, 255, 0.15)'
+  }),
+  'neon-wave': palette({
+    surfaces: ['#061019', '#0b1722', '#102330', '#173140'],
+    text: ['#edfaff', '#c5e4f0', '#9dc1d2', '#86aebf'], textOnAccent: '#041a22',
+    borders: ['#1d3945', '#2d5260'], accent: ['#35e4eb', '#6cf2f4', '#16b9d1'], accentSecondary: '#698dff',
+    semantic: { success: '#52dfa5', warning: '#f1cf76', danger: '#ff8292', info: '#79c7ff' },
+    code: { keyword: '#bba5ff', string: '#66e4a4', number: '#f1ca77', title: '#75d1ff', comment: '#83a4b8', attribute: '#43e5e5' },
+    shadow: 'rgba(0, 0, 0, 0.46)', ambient: 'rgba(40, 204, 235, 0.17)'
+  }),
+  'neon-crystal': palette({
+    surfaces: ['#080b16', '#101526', '#171e33', '#202a43'],
+    text: ['#f1f5ff', '#d0daef', '#a9bad6', '#91a4c4'], textOnAccent: '#091428',
+    borders: ['#25324d', '#384a6b'], accent: ['#79c9ff', '#a2ddff', '#51a7eb'], accentSecondary: '#a58aff',
+    semantic: { success: '#53dda0', warning: '#f2ce76', danger: '#ff8797', info: '#78c5ff' },
+    code: { keyword: '#c397ff', string: '#67dda1', number: '#efc974', title: '#7fc9ff', comment: '#8c9fbd', attribute: '#8be3ed' },
+    shadow: 'rgba(0, 0, 0, 0.46)', ambient: 'rgba(101, 160, 255, 0.16)'
+  }),
+  'liquid-glass': palette({
+    surfaces: ['#071019', '#0d1824', '#142231', '#1b2c3e'],
+    text: ['#eff8ff', '#ccdfef', '#a4bfd5', '#8caac3'], textOnAccent: '#051725',
+    borders: ['#213a4d', '#35556c'], accent: ['#58c4ff', '#8bdbff', '#35a8e3'], accentSecondary: '#5fddcf',
+    semantic: { success: '#50dda3', warning: '#f0cf78', danger: '#ff8792', info: '#71c4ff' },
+    code: { keyword: '#b7a4ff', string: '#66dda6', number: '#f1ca79', title: '#7ccfff', comment: '#88a8bf', attribute: '#5de0d6' },
+    shadow: 'rgba(0, 0, 0, 0.44)', ambient: 'rgba(48, 177, 241, 0.16)'
   })
 }
 
-export function resolveTheme(theme: ThemePreference, prefersDark: boolean): ResolvedTheme {
-  return theme === 'system' ? (prefersDark ? 'dark' : 'light') : theme
+const LEGACY_THEME_MAP: Record<LegacyTheme, ResolvedTheme> = {
+  dark: 'obsidian',
+  light: 'arctic-glass',
+  alpine: 'phosphor',
+  tide: 'aurora',
+  'after-rain': 'obsidian',
+  kanagawa: 'cosmic-indigo',
+  orbit: 'cosmic-indigo',
+  'violet-hour': 'cosmic-indigo',
+  dune: 'arctic-glass',
+  ember: 'aurora',
+  blossom: 'cosmic-indigo',
+  mirage: 'arctic-glass'
+}
+
+export function resolveTheme(theme: ThemePreference | string, prefersDark: boolean): ResolvedTheme {
+  if (theme === 'system') return prefersDark ? 'obsidian' : 'arctic-glass'
+  if (RESOLVED_THEME_OPTIONS.includes(theme as ResolvedTheme)) return theme as ResolvedTheme
+  return LEGACY_THEME_MAP[theme as LegacyTheme] ?? 'solar-flare'
+}
+
+export function isLightTheme(theme: ResolvedTheme): boolean {
+  return theme === 'arctic-glass'
+}
+
+const ACCENT_COLORS: Record<Exclude<AccentChoice, 'theme' | 'custom'>, string> = {
+  gold: '#ffd166', amber: '#ff9f43', cyan: '#52e6e8', blue: '#5b9dff',
+  violet: '#a98aff', magenta: '#ed72dc', emerald: '#50dc98', rose: '#ff7f9e'
+}
+
+function readableAccentText(hex: string): string {
+  const color = hex.replace('#', '')
+  if (!/^[\da-f]{6}$/i.test(color)) return '#10151f'
+  const channels = [0, 2, 4].map((index) => Number.parseInt(color.slice(index, index + 2), 16) / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2] > 0.48 ? '#10151f' : '#ffffff'
+}
+
+/** Resolve palette plus optional appearance-studio overrides into renderer tokens. */
+export function createThemeTokens(theme: ResolvedTheme, appearance: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS, prefersDark = true): ThemeTokens {
+  appearance = normalizeAppearanceSettings(appearance)
+  const tokens: ThemeTokens = { ...THEME_TOKENS[theme] }
+  const mode = appearance.mode === 'system'
+    ? (prefersDark ? 'dark' : 'light')
+    : appearance.mode
+
+  const modePalette = mode === 'light'
+    ? THEME_TOKENS['arctic-glass']
+    : theme === 'arctic-glass' ? THEME_TOKENS.obsidian : null
+  if (modePalette) {
+    for (const key of [
+      '--surface-0', '--surface-1', '--surface-2', '--surface-3', '--surface-glass',
+      '--text-primary', '--text-secondary', '--text-tertiary', '--text-disabled',
+      '--border-subtle', '--border-strong', '--glass-border', '--modal-scrim',
+      '--composer-bg', '--terminal-bg', '--shadow-raised', '--shadow-popover', '--shadow-modal',
+      '--code-keyword', '--code-string', '--code-number', '--code-title', '--code-comment', '--code-attribute'
+    ] as const) tokens[key] = modePalette[key]
+    tokens['--success'] = modePalette['--success']
+    tokens['--warning'] = modePalette['--warning']
+    tokens['--danger'] = modePalette['--danger']
+    tokens['--info'] = modePalette['--info']
+    tokens['--text-on-accent'] = modePalette['--text-on-accent']
+    tokens['--ambient-light'] = modePalette['--ambient-light']
+  }
+
+  let accent: string | undefined
+  if (appearance.accent === 'custom') {
+    if (/^#[\da-f]{6}$/i.test(appearance.customAccent)) accent = appearance.customAccent
+  } else if (appearance.accent !== 'theme') {
+    accent = ACCENT_COLORS[appearance.accent]
+  }
+  if (accent) {
+    const onAccent = readableAccentText(accent)
+    tokens['--accent'] = accent
+    tokens['--accent-hover'] = `color-mix(in srgb, ${accent} 82%, white)`
+    tokens['--accent-active'] = `color-mix(in srgb, ${accent} 82%, black)`
+    tokens['--accent-secondary'] = `color-mix(in srgb, ${accent} 48%, ${THEME_TOKENS[theme]['--accent-secondary']})`
+    tokens['--accent-gradient'] = `linear-gradient(112deg, ${accent} 0%, ${tokens['--accent-secondary']} 100%)`
+    tokens['--accent-subtle-bg'] = `color-mix(in srgb, ${accent} 13%, ${tokens['--surface-1']})`
+    tokens['--glass-border'] = `color-mix(in srgb, ${accent} 28%, ${tokens['--border-subtle']})`
+    tokens['--focus-ring'] = accent
+    tokens['--text-on-accent'] = onAccent
+  }
+
+  const glassMix = Math.round(44 + Math.max(0, Math.min(100, appearance.glassIntensity)) * 0.5)
+  tokens['--surface-glass'] = `color-mix(in srgb, ${tokens['--surface-1']} ${glassMix}%, transparent)`
+  tokens['--glass-border'] = `color-mix(in srgb, ${tokens['--accent-secondary']} 24%, ${tokens['--border-subtle']})`
+  tokens['--accent-subtle-bg'] = `color-mix(in srgb, ${tokens['--accent']} 14%, ${tokens['--surface-1']})`
+  tokens['--success-subtle-bg'] = `color-mix(in srgb, ${tokens['--success']} 12%, ${tokens['--surface-1']})`
+  tokens['--warning-subtle-bg'] = `color-mix(in srgb, ${tokens['--warning']} 12%, ${tokens['--surface-1']})`
+  tokens['--danger-subtle-bg'] = `color-mix(in srgb, ${tokens['--danger']} 12%, ${tokens['--surface-1']})`
+  tokens['--info-subtle-bg'] = `color-mix(in srgb, ${tokens['--info']} 12%, ${tokens['--surface-1']})`
+  tokens['--composer-bg'] = `color-mix(in srgb, ${tokens['--surface-1']} 94%, ${tokens['--accent']} 6%)`
+  tokens['--diff-add-bg'] = `color-mix(in srgb, ${tokens['--success']} 12%, ${tokens['--surface-1']})`
+  tokens['--diff-delete-bg'] = `color-mix(in srgb, ${tokens['--danger']} 12%, ${tokens['--surface-1']})`
+  tokens['--accent-glow'] = `color-mix(in srgb, ${tokens['--accent']} ${Math.round(Math.max(0, Math.min(100, appearance.glowIntensity)) * 0.5)}%, transparent)`
+  tokens['--ambient-light'] = appearance.ambientLighting ? (modePalette?.['--ambient-light'] ?? THEME_TOKENS[theme]['--ambient-light']) : 'transparent'
+  return tokens
 }

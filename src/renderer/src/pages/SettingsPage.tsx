@@ -108,9 +108,14 @@ export default function SettingsPage() {
           </nav>
           <div className="settings-sections">
         <Section id="settings-appearance" title="Appearance" note="Pick a preset. Every card previews the real palette and applies immediately across the workspace.">
-          <ThemeGallery value={settings.theme} onChange={(theme) => void save({ theme })} />
+          <ThemeGallery
+            value={settings.theme}
+            onChange={(theme) => void save({ theme })}
+            appearance={settings.appearance}
+            onAppearanceChange={(patch) => void save({ appearance: patch })}
+          />
           <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            {THEME_OPTIONS.length} presets · {THEME_OPTIONS.filter((theme) => theme.id !== 'system').length} concrete palettes · preferences are saved to this device.
+            {THEME_OPTIONS.filter((theme) => theme.id !== 'system').length} curated palettes · preferences are saved to this device.
           </div>
         </Section>
 

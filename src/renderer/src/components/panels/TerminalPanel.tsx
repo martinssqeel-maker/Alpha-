@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Play, Square, Trash2, TerminalSquare } from 'lucide-react'
 import { useApp } from '../../store/useApp'
+import ProjectContextEmpty from './ProjectContextEmpty'
 
 export default function TerminalPanel() {
   const [command, setCommand] = useState('')
@@ -35,7 +36,8 @@ export default function TerminalPanel() {
       </div>
 
       <div className="flex-1 overflow-auto p-2 flex flex-col gap-2">
-        {terminals.length === 0 && (
+        {terminals.length === 0 && !projectId && <ProjectContextEmpty title="Open a project for commands" description="Terminal commands run in the active project folder and follow Alpha's existing approval rules." Icon={TerminalSquare} />}
+        {terminals.length === 0 && projectId && (
           <div className="text-xs p-2" style={{ color: 'var(--muted)' }}>
             Commands run in the project directory. Destructive commands require approval.
           </div>

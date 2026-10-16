@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron'
 import { APP_ID } from '@shared/types'
-import { THEME_TOKENS, resolveTheme } from '@shared/theme'
+import { createThemeTokens, normalizeAppearanceSettings, resolveTheme } from '@shared/theme'
 import { buildContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
 import { EVENTS } from '@shared/channels'
@@ -60,9 +60,12 @@ function hardenSession(): void {
 }
 
 async function createWindow(): Promise<void> {
-  const preference = ctx?.settings.get().theme ?? 'dark'
+  const settings = ctx?.settings.get()
+  const preference = settings?.theme ?? 'solar-flare'
+  const appearance = normalizeAppearanceSettings(settings?.appearance)
+  nativeTheme.themeSource = appearance.mode
   const theme = resolveTheme(preference, nativeTheme.shouldUseDarkColors)
-  const tokens = THEME_TOKENS[theme]
+  const tokens = createThemeTokens(theme, appearance, nativeTheme.shouldUseDarkColors)
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -82,7 +85,7 @@ async function createWindow(): Promise<void> {
       sandbox: false,
       webSecurity: true,
       spellcheck: false,
-      additionalArguments: [`--alpha-theme=${theme}`]
+      additionalArguments: [`--alpha-theme=${theme}`, `--alpha-mode=${appearance.mode}`]
     }
   })
 

@@ -1,4 +1,4 @@
-import type { ThemePreference } from './theme'
+import type { AppearanceSettings, ThemePreference } from './theme'
 
 export const APP_NAME = 'Alpha AI Workspace'
 export const APP_ID = 'com.alpha.aiworkspace'
@@ -152,6 +152,7 @@ export interface Project {
 
 export interface AppSettings {
   theme: ThemePreference
+  appearance?: AppearanceSettings
   workspace?: WorkspaceSelection
   defaultProviderId?: string | null
   defaultModelId?: string | null

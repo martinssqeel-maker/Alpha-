@@ -22,7 +22,7 @@ import type {
   UpdateEvent,
   UpdateStatus
 } from '@shared/types'
-import { THEME_TOKENS, resolveTheme } from '@shared/theme'
+import { createThemeTokens, normalizeAppearanceSettings, resolveTheme } from '@shared/theme'
 import { api, onChat, onOllama, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
 export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'skills' | 'settings' | 'help'
@@ -177,6 +177,8 @@ let termUnsub: (() => void) | null = null
 let updateUnsub: (() => void) | null = null
 let platformUnsub: (() => void) | null = null
 let ollamaUnsub: (() => void) | null = null
+let themeMediaUnsub: (() => void) | null = null
+let settingsSaveQueue: Promise<void> = Promise.resolve()
 
 export const useApp = create<State>((set, get) => ({
   ready: false,
@@ -236,6 +238,14 @@ export const useApp = create<State>((set, get) => ({
       inspectorTab: layout.inspectorTab
     })
     get().applyTheme()
+    if (!themeMediaUnsub) {
+      const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
+      const onColorSchemeChange = (): void => {
+        if (get().settings?.appearance?.mode === 'system' || !get().settings?.appearance) get().applyTheme()
+      }
+      colorScheme.addEventListener('change', onColorSchemeChange)
+      themeMediaUnsub = () => colorScheme.removeEventListener('change', onColorSchemeChange)
+    }
 
     if (!chatUnsub) chatUnsub = onChat((event) => handleChatEvent(event, set, get))
     if (!termUnsub) termUnsub = onTerminal((event) => handleTerminalEvent(event, set, get))
@@ -296,23 +306,38 @@ export const useApp = create<State>((set, get) => ({
   },
   setInspectorWidth: (inspectorWidth) => set({ inspectorWidth }),
   applyTheme: () => {
-    const preference = get().settings?.theme ?? 'dark'
+    const preference = get().settings?.theme ?? 'solar-flare'
+    const appearance = normalizeAppearanceSettings(get().settings?.appearance)
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const theme = resolveTheme(preference, prefersDark)
     const root = document.documentElement
     root.dataset.theme = theme
     root.dataset.themePreference = preference
-    root.style.colorScheme = theme === 'light' ? 'light' : 'dark'
-    for (const [token, value] of Object.entries(THEME_TOKENS[theme])) {
+    root.dataset.appearanceMode = appearance.mode
+    root.dataset.density = appearance.density
+    root.dataset.corners = appearance.corners
+    root.dataset.animations = String(appearance.animations)
+    root.dataset.animatedGradients = String(appearance.animatedGradients)
+    root.style.colorScheme = appearance.mode === 'system' ? (prefersDark ? 'dark' : 'light') : appearance.mode
+    root.style.setProperty('--studio-glass-blur', `${Math.round(appearance.glassIntensity * 0.22)}px`)
+    root.style.setProperty('--studio-ambient-opacity', appearance.ambientLighting ? '1' : '0')
+    root.style.setProperty('--studio-motion-duration', appearance.animations ? '160ms' : '0.01ms')
+    root.style.setProperty('--duration-fast', appearance.animations ? '120ms' : '0.01ms')
+    root.style.setProperty('--duration-standard', appearance.animations ? '160ms' : '0.01ms')
+    for (const [token, value] of Object.entries(createThemeTokens(theme, appearance, prefersDark))) {
       root.style.setProperty(token, value)
     }
-    void api.setTheme(theme)
+    void api.setTheme(theme, appearance.mode)
   },
 
   saveSettings: async (patch) => {
-    const settings = await api.settings.set(patch)
-    set({ settings })
-    get().applyTheme()
+    const operation = settingsSaveQueue.then(async () => {
+      const settings = await api.settings.set(patch)
+      set({ settings })
+      get().applyTheme()
+    })
+    settingsSaveQueue = operation.then(() => undefined, () => undefined)
+    await operation
   },
 
   toast: (message, kind = 'info') => {

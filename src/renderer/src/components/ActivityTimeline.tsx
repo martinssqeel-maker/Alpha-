@@ -13,6 +13,7 @@ import {
   X
 } from 'lucide-react'
 import type { ActivityItem } from '@shared/types'
+import { redactSensitiveText, redactSensitiveValue } from '@shared/redactSensitive'
 
 export interface RunStatus {
   label: string
@@ -129,21 +130,29 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
       </button>
       {open && (
         <div className="activity-body">
-          {detail && <pre className="activity-pre">{detail}</pre>}
+          {detail && <pre className="activity-pre">{redactSensitiveText(detail)}</pre>}
           {activity.args !== undefined && (
             <details>
               <summary className="activity-summary">Inputs</summary>
-              <pre className="activity-pre block">{JSON.stringify(activity.args, null, 2).slice(0, 4000)}</pre>
+              <pre className="activity-pre block">{formatActivityValue(activity.args)}</pre>
             </details>
           )}
           {activity.result !== undefined && (
             <details open>
               <summary className="activity-summary">Result</summary>
-              <pre className="activity-pre block">{JSON.stringify(activity.result, null, 2).slice(0, 4000)}</pre>
+              <pre className="activity-pre block">{formatActivityValue(activity.result)}</pre>
             </details>
           )}
         </div>
       )}
     </div>
   )
+}
+
+function formatActivityValue(value: unknown): string {
+  try {
+    return JSON.stringify(redactSensitiveValue(value), null, 2).slice(0, 4000)
+  } catch {
+    return '[Output could not be displayed]'
+  }
 }

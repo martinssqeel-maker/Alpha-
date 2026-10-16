@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import type { ZodTypeAny } from 'zod'
 import type { ChatEvent, TerminalEvent } from '@shared/types'
 import {
@@ -46,7 +46,7 @@ import {
   zVoiceTranscribe
 } from '@shared/schemas'
 import type { DiagnosticsInfo } from '@shared/ipc'
-import { THEME_TOKENS } from '@shared/theme'
+import { createThemeTokens, DEFAULT_APPEARANCE_SETTINGS, THEME_TOKENS } from '@shared/theme'
 import { CH } from '@shared/channels'
 import type { AppContext } from './context'
 import type { BrowserPreviewService } from './services/browserPreview'
@@ -108,8 +108,9 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
   handle(CH.platformRefresh, null, () => ctx.platform.refresh())
 
   handle(CH.appTheme, zAppTheme, (p) => {
-    const theme = (p as { theme: keyof typeof THEME_TOKENS }).theme
-    const tokens = THEME_TOKENS[theme]
+    const { theme, mode } = p as { theme: keyof typeof THEME_TOKENS; mode: 'system' | 'dark' | 'light' }
+    nativeTheme.themeSource = mode
+    const tokens = createThemeTokens(theme, { ...DEFAULT_APPEARANCE_SETTINGS, mode }, nativeTheme.shouldUseDarkColors)
     for (const win of BrowserWindow.getAllWindows()) {
       try {
         win.setTitleBarOverlay?.({

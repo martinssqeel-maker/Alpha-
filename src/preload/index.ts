@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { EVENT_CHANNELS, INVOKE_CHANNELS } from '@shared/channels'
-import { RESOLVED_THEME_OPTIONS, THEME_TOKENS } from '@shared/theme'
+import { createThemeTokens, DEFAULT_APPEARANCE_SETTINGS, RESOLVED_THEME_OPTIONS } from '@shared/theme'
 
 // The main process passes the saved, resolved theme so the first renderer paint
-// already matches its surfaces. Dark remains the CSS fallback if no value is set.
+// already matches its surfaces. Solar Flare is the CSS fallback for a new profile.
 const themeArg = process.argv.find((arg) => arg.startsWith('--alpha-theme='))
 const initialTheme = themeArg?.slice('--alpha-theme='.length)
+const modeArg = process.argv.find((arg) => arg.startsWith('--alpha-mode='))?.slice('--alpha-mode='.length)
+const initialMode = modeArg === 'light' || modeArg === 'dark' || modeArg === 'system' ? modeArg : 'system'
 const preloadDocument = (globalThis as typeof globalThis & {
   document?: {
     documentElement?: {
@@ -20,8 +22,14 @@ if (initialTheme && RESOLVED_THEME_OPTIONS.includes(initialTheme as (typeof RESO
     const root = preloadDocument?.documentElement
     if (!root) return
     root.dataset.theme = initialTheme
-    root.style.colorScheme = initialTheme === 'light' ? 'light' : 'dark'
-    for (const [token, value] of Object.entries(THEME_TOKENS[initialTheme as keyof typeof THEME_TOKENS])) {
+    root.dataset.appearanceMode = initialMode
+    const prefersDark = (globalThis as typeof globalThis & { matchMedia?: (query: string) => { matches: boolean } }).matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
+    root.style.colorScheme = initialMode === 'system' ? (prefersDark ? 'dark' : 'light') : initialMode
+    for (const [token, value] of Object.entries(createThemeTokens(
+      initialTheme as (typeof RESOLVED_THEME_OPTIONS)[number],
+      { ...DEFAULT_APPEARANCE_SETTINGS, mode: initialMode },
+      prefersDark
+    ))) {
       root.style.setProperty(token, value)
     }
   }

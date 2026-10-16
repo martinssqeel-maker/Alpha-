@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Loader2, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Mic, Paperclip, Square, X } from 'lucide-react'
 import type { AttachmentRef, PermissionMode } from '@shared/types'
 import { permissionsForMode } from '@shared/permissions'
 import { api } from '../lib/api'
@@ -34,7 +34,7 @@ export default function Composer() {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 220) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 240) + 'px'
   }, [text])
 
   // Escape stops the running response — the same action as the Stop button,
@@ -152,7 +152,7 @@ export default function Composer() {
 
   return (
     <div
-      className="composer-shell p-3"
+      className="composer-shell"
       onDragOver={(e) => {
         e.preventDefault()
         setDragOver(true)
@@ -164,107 +164,121 @@ export default function Composer() {
         if (e.dataTransfer.files.length) void readDropped(e.dataTransfer.files)
       }}
     >
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {attachments.map((a) => (
-            <div key={a.id} className="card tight flex items-center gap-2" style={{ padding: 'var(--space-1) var(--space-2)' }}>
-              {a.previewUrl && a.kind === 'image' ? (
-                <img src={a.previewUrl} alt={a.name} style={{ width: 22, height: 22, borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
-              ) : (
-                <Paperclip size={13} />
-              )}
-              <span className="text-xs" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {a.name}
-              </span>
+      <div className="composer-content">
+        {attachments.length > 0 && (
+          <div className="composer-attachments" aria-label="Attached files">
+            {attachments.map((a) => (
+              <div key={a.id} className="composer-attachment">
+                {a.previewUrl && a.kind === 'image' ? (
+                  <img src={a.previewUrl} alt="" />
+                ) : (
+                  <Paperclip size={13} aria-hidden="true" />
+                )}
+                <span title={a.name}>{a.name}</span>
+                <button
+                  type="button"
+                  className="composer-remove-attachment"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setAttachments((list) => list.filter((x) => x.id !== a.id))}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className={`composer-input-card${dragOver ? ' drop-target' : ''}${isSending ? ' responding' : ''}`}>
+          <textarea
+            ref={textareaRef}
+            className="textarea composer-textarea"
+            rows={4}
+            aria-label="Message Alpha AI"
+            placeholder={
+              activeProject
+                ? `Ask Alpha about ${activeProject.name}…`
+                : 'What would you like to work on?'
+            }
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <div className="composer-toolbar">
+            <div className="composer-tool-group">
+              <button type="button" className="composer-tool-btn" onClick={attach} title="Attach files" aria-label="Attach files">
+                <Paperclip size={17} />
+              </button>
               <button
-                className="btn ghost icon compact"
-                onClick={() => setAttachments((list) => list.filter((x) => x.id !== a.id))}
+                type="button"
+                className={`composer-tool-btn${recording ? ' recording' : ''}`}
+                onClick={toggleRecording}
+                title={recording ? 'Stop voice recording' : 'Voice input'}
+                aria-label={recording ? 'Stop voice recording' : 'Start voice input'}
+                aria-pressed={recording}
               >
-                <X size={11} />
+                <Mic size={17} />
               </button>
             </div>
-          ))}
+            <span className="composer-shortcut" aria-live="polite">
+              {recording ? 'Recording voice…' : 'Enter to send · Shift + Enter for a new line'}
+            </span>
+            {isSending ? (
+              <button type="button" className="composer-send-btn stop" onClick={() => stop()} title="Stop response" aria-label="Stop response">
+                <Square size={14} fill="currentColor" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="composer-send-btn"
+                onClick={() => void doSend()}
+                disabled={!text.trim() && attachments.length === 0}
+                title="Send"
+                aria-label="Send message"
+              >
+                <span>Send</span>
+                <ArrowUp size={16} />
+              </button>
+            )}
+          </div>
         </div>
-      )}
 
-      <div
-        className="card tight flex items-end gap-2"
-        style={{
-          padding: 'var(--space-2)',
-          borderColor: dragOver ? 'var(--accent)' : 'var(--border)',
-          background: 'var(--composer-bg)'
-        }}
-      >
-        <button className="btn ghost icon" onClick={attach} title="Attach files">
-          <Paperclip size={16} />
-        </button>
-        <textarea
-          ref={textareaRef}
-          className="textarea"
-          rows={1}
-          placeholder={
-            activeProject
-              ? `Ask something about ${activeProject.name}…  (Enter to send, Shift+Enter for newline)`
-              : 'Ask a question…  (Enter to send, Shift+Enter for newline)'
-          }
-          style={{ border: 'none', background: 'transparent', padding: '0 var(--space-1)', maxHeight: 220 }}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        <button
-          className="btn ghost icon"
-          onClick={toggleRecording}
-          title={recording ? 'Stop recording' : 'Voice input'}
-          style={{ color: recording ? 'var(--danger)' : undefined }}
-        >
-          <Mic size={16} />
-        </button>
-        {isSending ? (
-          <button className="btn danger icon" onClick={() => stop()} title="Stop">
-            <Square size={15} />
-          </button>
-        ) : (
-          <button
-            className="btn primary icon"
-            onClick={() => doSend()}
-            disabled={!text.trim() && attachments.length === 0}
-            title="Send"
-          >
-            {isSending ? <Loader2 size={15} className="spin" /> : <ArrowUp size={16} />}
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 mt-2">
-        <ModelMenu />
-        <select
-          className="select text-xs"
-          style={{ width: 120, padding: '4px 8px' }}
-          value={mode}
-          onChange={(e) => switchMode(e.target.value as PermissionMode)}
-          title={MODES.find((m) => m.id === mode)?.hint}
-        >
-          {MODES.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label} mode
-            </option>
-          ))}
-        </select>
-        {activeProject ? (
-          <span className="pill">{activeProject.name}</span>
-        ) : (
-          <span className="pill warn">No project</span>
-        )}
-        {recording && <span className="pill err">recording…</span>}
-        <div className="flex-1" />
-        <span className="text-xs" style={{ color: 'var(--faint)' }}>
-          {mode === 'chat'
-            ? 'Chat mode: read/write disabled'
-            : mode === 'assist'
-              ? 'Assist mode: changes need approval'
-              : 'Agent mode: fewer prompts'}
-        </span>
+        <div className="composer-contextbar">
+          <div className="composer-context-controls">
+            <ModelMenu />
+            <label className="composer-mode-control">
+              <span className="sr-only">Agent permission mode</span>
+              <select
+                className="select composer-mode-select"
+                value={mode}
+                onChange={(e) => switchMode(e.target.value as PermissionMode)}
+                title={MODES.find((m) => m.id === mode)?.hint}
+                aria-label="Agent permission mode"
+              >
+                {MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label} mode
+                  </option>
+                ))}
+              </select>
+            </label>
+            {activeProject ? (
+              <span className="composer-project" title={`Project context: ${activeProject.name}`}>
+                <span className="composer-project-dot" aria-hidden="true" />
+                {activeProject.name}
+              </span>
+            ) : (
+              <span className="composer-project no-project">No project</span>
+            )}
+          </div>
+          <span className="composer-mode-note">
+            {mode === 'chat'
+              ? 'Chat · no project access'
+              : mode === 'assist'
+                ? 'Assist · approve file changes'
+                : 'Agent · multi-step tasks'}
+          </span>
+        </div>
       </div>
     </div>
   )

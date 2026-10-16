@@ -3,6 +3,7 @@ import type { DiffFile } from '@shared/types'
 import { api } from '../../lib/api'
 import { useApp } from '../../store/useApp'
 import { useWorkspace } from '../../store/useWorkspace'
+import ProjectContextEmpty from './ProjectContextEmpty'
 
 const STATUS_COLOR: Record<DiffFile['status'], string> = {
   modified: 'var(--warn)',
@@ -28,7 +29,7 @@ export default function ChangesPanel() {
   const openDiff = useWorkspace((s) => s.openDiff)
   const setTab = useApp((s) => s.setInspectorTab)
 
-  if (!projectId) return <Empty text="Open a project to see changes." />
+  if (!projectId) return <ProjectContextEmpty title="Review project changes" description="Open a project to see its real working-tree changes, inspect diffs, and stage files." />
 
   const files = git?.files ?? []
 
@@ -81,22 +82,18 @@ export default function ChangesPanel() {
       </div>
       <div className="flex-1 overflow-auto p-1">
         {files.map((f) => (
-          <div key={f.path} className="flex items-center gap-1 tree-item" style={{ cursor: 'pointer' }} onClick={() => void showDiff(f)}>
-            <span
-              className="mono text-xs font-bold"
-              style={{ color: STATUS_COLOR[f.status], width: 14, textAlign: 'center' }}
-            >
-              {STATUS_LABEL[f.status]}
-            </span>
-            <span className="label text-xs flex-1" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {f.path}
-            </span>
-            <span className="text-xs" style={{ color: 'var(--success)' }}>+{f.additions}</span>
-            <span className="text-xs" style={{ color: 'var(--danger)' }}>-{f.deletions}</span>
+          <div key={f.path} className="changes-row">
+            <button className="changes-file-button" title={`Open diff for ${f.path}`} onClick={() => void showDiff(f)}>
+              <span className="changes-file-status" style={{ color: STATUS_COLOR[f.status] }} title={f.status} aria-label={f.status}>{STATUS_LABEL[f.status]}</span>
+              <span className="changes-file-path">{f.path}</span>
+              <span className="changes-line-count added">+{f.additions}</span>
+              <span className="changes-line-count deleted">-{f.deletions}</span>
+            </button>
             <button
               className="btn ghost icon"
               style={{ width: 22, height: 22 }}
               title="Stage"
+              aria-label={`Stage ${f.path}`}
               onClick={(e) => {
                 e.stopPropagation()
                 void stage([f.path])

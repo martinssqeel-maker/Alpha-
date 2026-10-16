@@ -469,7 +469,7 @@ try {
           await waitFor(cdp, `!!document.querySelector('.chat-page textarea')`, 'chat view opened', 10_000)
         }
       }
-      const before = await cdp.evaluate(`document.querySelectorAll('.msg.assistant').length`)
+      const before = await cdp.evaluate(`document.querySelectorAll('.msg.assistant:not(.live)').length`)
       const typed = await typeIntoPrompt(cdp, prompt)
       if (!typed.includes(prompt)) throw new Error(`the prompt text did not land in the box ("${typed}")`)
       const send = await cdp.evaluate(
@@ -478,24 +478,24 @@ try {
       )
       if (!send) throw new Error('the send button is not enabled')
       await clickAt(cdp, send, 'send')
-      // Wait for a SETTLED reply: a new assistant bubble that has stopped
-      // streaming (no caret) and is no longer the "Thinking…" placeholder.
+      // Wait for a settled assistant message with actual Markdown content.
+      // The live status bubble says "Waiting for the model…" before the first
+      // token, so counting it as a reply would make this check pass too early.
       await waitFor(
         cdp,
         `(() => {
-          const all = document.querySelectorAll('.msg.assistant .msg-body')
+          const all = document.querySelectorAll('.msg.assistant:not(.live) .msg-body')
           if (all.length <= ${before}) return false
           const last = all[all.length - 1]
-          const text = (last.innerText || '').trim()
-          if (last.querySelector('.caret') || /^◌?\\s*Thinking/i.test(text)) return false
-          return text.length > 0
+          const response = last.querySelector('.prose-app')
+          return !!response && (response.innerText || '').trim().length > 0
         })()`,
         'a completed assistant reply',
         90_000
       )
       const reply = await cdp.evaluate(
-        `(() => { const all = document.querySelectorAll('.msg.assistant .msg-body'); const last = all[all.length - 1]
-          return last ? (last.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 120) : '' })()`
+        `(() => { const all = document.querySelectorAll('.msg.assistant:not(.live) .msg-body'); const last = all[all.length - 1]
+          const response = last?.querySelector('.prose-app'); return response ? (response.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 120) : '' })()`
       )
       record('PASS', 'a prompt round-trips to the model', `reply: "${reply}"`)
       const errors = await cdp.evaluate(`[...document.querySelectorAll('.toast.error')].map((t) => t.innerText).join(' | ')`)

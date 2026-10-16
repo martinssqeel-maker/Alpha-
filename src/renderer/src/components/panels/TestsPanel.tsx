@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Play, TestTube2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../store/useApp'
+import ProjectContextEmpty from './ProjectContextEmpty'
 
 interface Script {
   label: string
@@ -20,7 +21,7 @@ export default function TestsPanel() {
     void detect(projectId, setScripts)
   }, [projectId])
 
-  if (!projectId) return <Empty text="Open a project to run tests." />
+  if (!projectId) return <ProjectContextEmpty title="Run project checks" description="Open a project to detect its test scripts and run real checks in the terminal." Icon={TestTube2} />
 
   const run = (command: string): void => {
     void runCommand(command)
@@ -102,12 +103,4 @@ async function detect(projectId: string, setScripts: (s: Script[]) => void): Pro
   } catch {
     setScripts([])
   }
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex items-center justify-center h-full p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-      {text}
-    </div>
-  )
 }

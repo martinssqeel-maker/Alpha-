@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, GitBranch, GitCommitHorizontal, Plus, RefreshCw } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../store/useApp'
+import ProjectContextEmpty from './ProjectContextEmpty'
 
 export default function GitPanel() {
   const projectId = useApp((s) => s.activeProjectId)
@@ -22,7 +23,7 @@ export default function GitPanel() {
       .catch(() => setBranches(null))
   }, [projectId, git?.isRepo, git?.branch])
 
-  if (!projectId) return <Empty text="Open a project to use Git." />
+  if (!projectId) return <ProjectContextEmpty title="Connect a project to Git" description="Open a project to inspect its branch, stage changes, and use the repository's existing Git remotes." Icon={GitBranch} />
 
   if (!git?.isRepo) {
     return (
@@ -162,14 +163,6 @@ export default function GitPanel() {
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex items-center justify-center h-full p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-      {text}
     </div>
   )
 }

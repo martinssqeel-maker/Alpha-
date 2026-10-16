@@ -54,7 +54,7 @@ export default function AccountModal({ open, onClose }: Props) {
 
   return (
     <div className='modal-backdrop' onClick={onClose}>
-      <div className='card' style={{ width: 460, maxWidth: '94vw' }} onClick={(e) => e.stopPropagation()}>
+      <div className='card account-dialog' style={{ width: 460, maxWidth: '94vw' }} onClick={(e) => e.stopPropagation()}>
         <div className='flex items-center gap-2 mb-3'>
           <Cloud size={16} />
           <h3 className='text-base font-semibold flex-1'>Alpha Account</h3>

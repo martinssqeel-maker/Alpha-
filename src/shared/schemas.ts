@@ -244,5 +244,6 @@ export const zSettingsSet = z.object({
 })
 
 export const zAppTheme = z.object({
-  theme: z.enum(RESOLVED_THEME_OPTIONS)
+  theme: z.enum(RESOLVED_THEME_OPTIONS),
+  mode: z.enum(['system', 'dark', 'light'])
 })

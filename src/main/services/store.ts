@@ -10,6 +10,7 @@ import type {
   ProviderKind
 } from '@shared/types'
 import { DEFAULT_OLLAMA_URL } from '@shared/types'
+import { DEFAULT_APPEARANCE_SETTINGS } from '@shared/theme'
 import { DEFAULT_PERMISSIONS } from '@shared/permissions'
 import { Db } from './db'
 
@@ -21,7 +22,8 @@ export const PLATFORM_DEFAULTS: AppSettings['platform'] = {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'dark',
+  theme: 'solar-flare',
+  appearance: { ...DEFAULT_APPEARANCE_SETTINGS },
   workspace: { activeProjectId: null, activeConversationId: null },
   defaultProviderId: null,
   defaultModelId: null,

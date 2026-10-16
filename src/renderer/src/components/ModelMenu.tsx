@@ -35,7 +35,7 @@ export default function ModelMenu() {
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
           <div
-            className="card tight"
+            className="card tight model-menu"
             style={{
               position: 'absolute',
               bottom: 42,

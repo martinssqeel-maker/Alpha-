@@ -8,7 +8,7 @@ import type {
   TerminalEvent,
   UpdateEvent
 } from '@shared/types'
-import type { ResolvedTheme } from '@shared/theme'
+import type { AppearanceMode, ResolvedTheme } from '@shared/theme'
 
 async function invoke<K extends ChannelName>(
   channel: K,
@@ -40,7 +40,7 @@ export function onOllama(cb: (progress: OllamaPullProgress) => void): () => void
 
 export const api = {
   diagnostics: () => invoke(CH.diagnostics, undefined),
-  setTheme: (theme: ResolvedTheme) => invoke(CH.appTheme, { theme }),
+  setTheme: (theme: ResolvedTheme, mode: AppearanceMode) => invoke(CH.appTheme, { theme, mode }),
   revealPath: (path: string) => invoke(CH.revealPath, { path }),
   openExternal: (url: string) => invoke(CH.openExternal, { url }),
 

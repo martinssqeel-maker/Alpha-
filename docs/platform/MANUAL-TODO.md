@@ -226,7 +226,13 @@ the button rather than showing one that cannot work).
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
    Application type: **Web application**.
    Authorized redirect URI (exactly this, no trailing slash):
-   `https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/google/callback`
+   `https://alpha-website-lime.vercel.app/auth/google/callback`
+   The site URL, not the Function's own host: `vercel.json` rewrites `/auth/*`
+   through to the Function, so this keeps the whole flow on the site origin the
+   browser already has. (The raw Function URL works too — the callback route
+   forwards on to `state.url` either way — but then the callback response is
+   cross-origin, which buys nothing.) Whichever you register **must match the
+   deployed `GOOGLE_REDIRECT_URI` byte for byte**; see §7c.
 4. Add the client ID and secret to `.env.local` as `GOOGLE_CLIENT_ID` and
    `GOOGLE_CLIENT_SECRET` (never paste them into chat).
    Then prove the pair is right **before** deploying — `npm run check:oauth` asks
@@ -252,6 +258,59 @@ Desktop sign-in with Google uses the same completion path; the API returns the
 browser to the app's existing `alpha://auth/callback` link, so no desktop change is
 needed. A rejected secret shows up in the app as a plain-language message instead of
 the raw `google_misconfigured` code.
+
+### 7c. The callback URL is one string, and it has to be the callback route
+
+Observed on 2026-10-16: **both** Google and GitHub sign-in stopped working at once.
+`.env.local` held
+
+```
+GOOGLE_REDIRECT_URI=https://alpha-website-lime.vercel.app
+GITHUB_REDIRECT_URI=https://alpha-website-lime.vercel.app
+```
+
+— the site **origin**, with the `/auth/<provider>/callback` path missing. Since the
+API sends that string to the provider verbatim (`oauthRedirectUri` in `platform/api/auth.ts`
+returns the configured value as-is), the two providers failed differently but
+equally silently:
+
+* Google refuses the request outright and redirects to
+  `accounts.google.com/signin/oauth/error?authError=…` carrying
+  `redirect_uri_mismatch`, because its console has the callback route registered, not
+  the bare origin. The page the user sees never mentions our name.
+* GitHub shows its normal sign-in page and only checks the callback *after* login, so
+the code comes back to `/` — where no script exchanges it. Nothing appears to fail;
+sign-in simply does nothing.
+
+The one-line fix is the path: `https://alpha-website-lime.vercel.app/auth/google/callback`
+and the `github` equivalent, then `npm run deploy` (the redirect values are pushed from
+`.env.local`; editing the file alone changes nothing live).
+
+**How to check it without signing in as anybody.** Ask the provider directly and read
+its own verdict:
+
+```powershell
+npm run check:oauth        # ACCEPTED / REJECTED per provider, never prints a secret
+```
+
+Then confirm what the deployment is actually serving, and what Google makes of it:
+
+```powershell
+$start = Invoke-WebRequest -MaximumRedirection 0 -SkipHttpErrorCheck \
+  "https://br-flat-morning-b41hcfhc-api.compute.c-6.us-east-2.aws.neon.tech/auth/google/start?redirect=https%3A%2F%2Falpha-website-lime.vercel.app%2Faccount"
+# read redirect_uri out of $start.Headers.Location — it must end /auth/google/callback
+```
+
+Following that `Location` once more is the decisive test: a Google **sign-in page**
+means the URI is registered, while `/signin/oauth/error` means it is not. GitHub cannot
+be probed this way — it validates the callback only after login, so confirming GitHub
+still needs one real sign-in.
+
+`npm run deploy` now **refuses** an env whose callback is not the callback route
+(rule in `scripts/envRules.mjs`, tests in `tests/deployEnvRules.test.ts`), so this
+particular outage cannot be deployed a second time. It cannot catch the other half:
+a console where the registered URI disagrees with the deployed one. Only a real
+sign-in proves that.
 
 ## [ ] 8. Desktop app: connect to Alpha Cloud
 

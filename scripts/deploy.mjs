@@ -28,6 +28,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { callbackUrlProblems } from './envRules.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -133,6 +134,10 @@ if (emailProvider === 'log') {
 if (set('WEB_ACCOUNT_URL') && !/^https:\/\//.test(env.WEB_ACCOUNT_URL)) {
   warnings.push('WEB_ACCOUNT_URL should be an https URL; magic links are built from it.')
 }
+
+// A callback URL that is not the callback route breaks Google and GitHub sign-in
+// in a way that looks like a provider outage. Refuse the deploy instead.
+problems.push(...callbackUrlProblems(env))
 
 if (set('NEON_AI_GATEWAY_BASE_URL') && set('NEON_AI_GATEWAY_TOKEN')) {
   warnings.push('Neon AI Gateway env is set; it takes precedence over per-provider keys.')

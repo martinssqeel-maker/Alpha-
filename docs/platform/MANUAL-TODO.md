@@ -11,16 +11,17 @@ you do not have to re-derive any of it:
 | Thing | State |
 | --- | --- |
 | Function URL | Live — `GET /health` → `200 {ok:true, service:"alpha-platform-api", branch:"production"}` |
-| Auth on private routes | Enforced — `/platform/config`, `/gateway/models`, `/admin/rpc` all `401` anonymously |
+| Auth on private routes | Enforced — `/platform/config`, `/gateway/models`, `/admin/overview` all `401` with the API's own `unauthorized` body (re-measured 2026-10-16; the old `/admin/rpc` path no longer exists — see §10) |
 | Input validation | Working — malformed email → `400 invalid_email` before any mail is touched |
 | Sign-in token leak | **Closed** — `/auth/request` no longer returns `devCode` / `devMagicToken` |
 | CORS | **Closed** — `ALLOWED_ORIGINS` set to the website origin plus `localhost:5173`/`3000`; a foreign origin is not reflected |
-| Administrators | **None.** `admin_users` is empty and `bootstrap_admin_email` is `""` — see §4 |
+| Sign-in callbacks | **Corrected 2026-10-16** — both providers were pointed at the bare site origin, which broke Google *and* GitHub sign-in at once. `npm run deploy` now refuses that shape — see §7c |
+| Administrators | **One** — `martinssqeel@gmail.com` holds `owner` (measured 2026-10-16 via `npm run admin:grant -- --check`), and it carries a `scrypt` password credential. See §4 |
 | Maintenance mode | Off. Enforced by the API when on (verified 2026-10-13: ordinary `503 maintenance` with the admin's message, administrator `200`) |
-| Downloads | `public.downloads` has 0 rows — the Downloads metric legitimately reads 0 |
-| Email | `EMAIL_PROVIDER=log` — sends no mail, but still replies "we sent a code" |
-| Provider credentials | **None** — no Neon AI Gateway and no provider keys ⇒ every chat request returns `502 provider_unavailable` |
-| Schema | Applied on `production`; `neon config plan` reports a pending `~ function api` change |
+| Downloads | 11 rows in `public.downloads` (measured 2026-10-16) — the Downloads metric reads real data, not 0 |
+| Email | `EMAIL_PROVIDER=resend` with a live key — mail **is** sent, but from `onboarding@resend.dev`, which delivers only to the mailbox that owns the Resend account. See §5 |
+| Provider credentials | **None** — no Neon AI Gateway and no provider keys ⇒ every chat request returns `502 provider_unavailable`. All four catalog rows are active; mind that `openrouter` reads `OPENROUTER_API_KEY`, not `PROVIDER_API_KEY_OPENROUTER` — see §3 |
+| Schema | Applied on `production`; the `~ function api` change was applied by `npm run deploy` on 2026-10-16 (re-check with `neon config plan`) |
 | Deploy path | `neon deploy --env .env.local` is **broken** on CLI 8.3.5; use `npm run deploy` |
 
 ```
@@ -62,7 +63,11 @@ confirms neither `devCode` nor `devMagicToken` appears in the response.
 - [ ] Never delete a key you want turned off — `neon.ts` only forwards keys that are present,
       so a removed key keeps its live value. Set it explicitly (`AUTH_DEV_ECHO_OTP=0`).
 
-## [ ] 2. Verify the Neon schema + seed
+## [x] 2. Verify the Neon schema + seed
+
+**Measured 2026-10-16** against `production`: `users` 11 rows; `plans` → `free, pro, team` all
+active; `ai_providers` → `anthropic, groq, openai, openrouter` all active; `downloads` 11 rows.
+No `bootstrap_admin_email` is needed any more (§4 is done).
 
 Neon SQL Editor on the `production` branch:
 
@@ -76,18 +81,23 @@ To re-apply the schema on a fresh branch: `npm run db:migrate`.
 
 ## [ ] 3. Provider credentials — required before any cloud chat works
 
-Currently **nothing** is configured, so `/gateway/models` lists catalog models and every
+**Nothing is configured yet** (measured 2026-10-16: all six candidate variables are unset,
+including the Neon AI Gateway pair), so `/gateway/models` lists catalog models and every
 `/gateway/chat/completions` call returns `502 provider_unavailable`. Pick one:
 
 - **Preferred:** enable the Neon AI Gateway on the branch and set
   `NEON_AI_GATEWAY_BASE_URL` + `NEON_AI_GATEWAY_TOKEN`. One credential, every provider.
 - **Or** add per-provider keys to `.env.local` using each provider row's `api_key_env`
-  name (`PROVIDER_API_KEY_OPENAI`, `PROVIDER_API_KEY_ANTHROPIC`, `PROVIDER_API_KEY_GROQ`
-  by default).
+  name (`PROVIDER_API_KEY_OPENAI`, `PROVIDER_API_KEY_ANTHROPIC`, `PROVIDER_API_KEY_GROQ` for the first three; the **`openrouter`** row instead reads `OPENROUTER_API_KEY`, which does
+  not follow the pattern — check any row with `select code, api_key_env from public.ai_providers`).
+  Then `npm run deploy`. `npm run deploy -- --check` warns while this is still unset.
 
-Then `npm run deploy`. `npm run deploy -- --check` warns while this is still unset.
+## [x] 4. Grant yourself the owner role — done 2026-10-16
 
-## [ ] 4. Grant yourself the owner role — currently there are none
+`martinssqeel@gmail.com` holds `owner`; `npm run admin:grant -- --check` reports it as the only
+administrator. A `scrypt` password credential is set for it too — note that the `/admin` portal
+never asks for a password (it reuses the website session), so the credential is for
+`POST /auth/password`, not for the dashboard. The steps below are kept for a fresh environment.
 
 Measured 2026-10-16: `select count(*) from public.admin_users;` → **0**, and
 `bootstrap_admin_email` is still `""`. The dashboard is reachable and its API is deployed,
@@ -112,15 +122,17 @@ back to `DATABASE_URL`) in `.env.local`, parsing the URL by parts so a password 
 Verify without SQL: `npm run admin:grant -- --email <address> --check` prints the current
 administrator roster. Then open `/admin` (§7).
 
-## [ ] 5. Configure real email (one paste, then one command)
+## [x] 5. Configure real email — done 2026-10-16, sending domain still open
 
-The Function currently runs `EMAIL_PROVIDER=log`, which delivers **nothing** while the API
-still answers "we sent a code". `/auth/request` now reports `"delivered": false` in that
-mode, and `/account` says so instead of pointing you at an empty inbox.
+**Done 2026-10-16:** the key is pasted and deployed, so mail really is sent.
+`EMAIL_PROVIDER=log` is the fallback you get by emptying that key — it delivers **nothing**
+while the API still answers "we sent a code". `/auth/request` reports `"delivered": false` in
+that mode, and `/account` says so instead of pointing you at an empty inbox.
 
-`.env.local` already holds the block to fill in — `EMAIL_PROVIDER=resend`,
-`EMAIL_FROM=Alpha AI Workspace <onboarding@resend.dev>`, and an empty `RESEND_API_KEY=`. Paste
-your key on that last line and deploy:
+`.env.local` holds `EMAIL_PROVIDER=resend`, `EMAIL_FROM=Alpha AI Workspace
+<onboarding@resend.dev>` and a live `RESEND_API_KEY`, so the deploy guard that refuses a resend
+config with no key is satisfied. What is still missing is the sending **domain** — verify one at
+resend.com/domains and point `EMAIL_FROM` at it, then deploy:
 
 ```powershell
 npm run deploy
@@ -360,7 +372,7 @@ npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
 npm run verify:auth -- --with-write           # 27 checks; creates + deletes temp accounts
-npm run verify:admin                          # 15 checks; changes settings, then restores them
+npm run verify:admin                          # STALE — refuses to run (see below)
 ```
 
 `verify:admin` is the check that the portal is not decorative: it flips a feature flag, an
@@ -368,6 +380,13 @@ announcement, the application-version setting, maintenance mode and an account s
 through the portal's own RPCs and reads each one back through `/platform/config`,
 `/downloads/latest` and `/auth/request`. It restores every `system_settings` value it
 touched and prints the restored rows.
+
+**It refuses to run as of 2026-10-16.** It drove every control through `POST /admin/rpc`, and
+the admin API no longer serves that endpoint — the routes are REST now (`/admin/overview`,
+`/admin/settings`, `/admin/flags`, …). Rather than create throwaway accounts and then report
+fifteen failures that describe the script, it exits with the call-by-call mapping to the current
+routes. Rewrite those calls and delete the guard, or leave it: `verify:auth` still covers the
+half that says the admin surface cannot be reached without administrator rights.
 
 Manual part, needs a mailbox and credentials:
 

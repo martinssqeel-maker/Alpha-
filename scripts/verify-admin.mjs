@@ -66,6 +66,39 @@ if (!API || !DATABASE_URL) {
   process.exit(1)
 }
 
+// ── Stale: refuses to run rather than reporting failures about itself ────────
+//
+// Every control here is driven through `POST /admin/rpc`, and the admin API no
+// longer serves that endpoint — it was replaced by REST routes. This guard sits
+// before the first database write on purpose: without it the script would create
+// two throwaway accounts, set a password credential, and then report fifteen
+// failures that describe this file, not the deployment. Two ways forward:
+//
+//   1. Rewrite the calls below against the current routes (the mapping is listed
+//      in the error message), then delete this block.
+//   2. Leave it: `verify:auth` already proves the admin surface cannot be reached
+//      without administrator rights, and the portal's own checks are unchanged.
+const ADMIN_RPC_REPLACEMENTS = [
+  ['admin_metrics', 'GET /admin/metrics'],
+  ['admin_overview', 'GET /admin/overview'],
+  ['admin_audit_log', 'GET /admin/audit'],
+  ['admin_list_releases', 'GET /admin/releases'],
+  ['admin_set_setting', 'POST /admin/settings'],
+  ['admin_set_user_status', 'POST /admin/users/:id/status'],
+  ['admin_upsert_flag', 'POST /admin/flags'],
+  ['admin_upsert_announcement', 'POST /admin/announcements']
+]
+console.error(
+  'verify:admin is stale and will not run.\n\n' +
+    'It drives every control through POST /admin/rpc, which the admin API no longer serves.\n' +
+    'Running it would create two throwaway accounts and then fail on this script itself.\n\n' +
+    'Replace each call with the current route:\n' +
+    ADMIN_RPC_REPLACEMENTS.map(([fn, route]) => `  ${fn.padEnd(26)} -> ${route}`).join('\n') +
+    '\n\nIt also writes to system_settings and restores them in a finally block, so run it only\n' +
+    'against a deployment where you accept that write. See docs/platform/MANUAL-TODO.md §10.'
+)
+process.exit(1)
+
 const results = []
 function record(status, name, detail) {
   results.push({ status, name })

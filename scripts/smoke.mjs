@@ -77,6 +77,14 @@ async function expectUnauthorized(name, pathname, init) {
       return
     }
     const code = json?.error?.code ?? '(no error code)'
+    // The status alone is not enough. Anything in front of the Function — a
+    // proxy, a gateway, a WAF — can answer 401 without our middleware ever
+    // running, and this check would pass while proving nothing. Requiring the
+    // API's own error code means the request reached requireAuth.
+    if (code !== 'unauthorized') {
+      record('FAIL', name, `401 without the API's error body (${JSON.stringify(json)?.slice(0, 80)})`)
+      return
+    }
     record('PASS', name, `401 ${code}`)
   } catch (error) {
     record('FAIL', name, error.message)
@@ -100,11 +108,13 @@ try {
 // 2. Every private surface must require a bearer token.
 await expectUnauthorized('GET /platform/config requires auth', '/platform/config')
 await expectUnauthorized('GET /gateway/models requires auth', '/gateway/models')
-await expectUnauthorized('POST /admin/rpc requires auth', '/admin/rpc', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ fn: 'admin_overview', params: {} })
-})
+// A route that exists in the admin router, not a removed one. /admin/rpc used to
+// be checked here and was answered 401 by the same prefix middleware whether or
+// not it existed — so the check stayed green after the RPC endpoint was replaced
+// by REST routes, and proved only that *something* under /admin was guarded.
+// Existence itself still cannot be shown anonymously (an unknown path under the
+// same prefix answers identically); the authenticated admin checks cover that.
+await expectUnauthorized('GET /admin/overview requires auth', '/admin/overview')
 
 // 3. Input validation must reject junk before it reaches the OTP/email path.
 try {
@@ -129,7 +139,10 @@ try {
   const { res } = await request('/health', { headers: { origin: PROBE_ORIGIN } })
   const acao = res.headers.get('access-control-allow-origin')
   if (!acao) {
-    record('PASS', 'CORS does not reflect arbitrary origins', 'no access-control-allow-origin returned')
+    // Not the failure this check guards (that is *reflection*), but not a pass
+    // either: a response with no ACAO at all cannot show that CORS is configured
+    // on a deployment that requires it, so say so instead of implying it is fine.
+    record('WARN', 'CORS returned no header', 'cannot confirm ALLOWED_ORIGINS is set from this response')
   } else if (acao === PROBE_ORIGIN || acao === '*') {
     record('WARN', 'CORS reflects arbitrary origins', `ALLOWED_ORIGINS is unset or "*" (got "${acao}")`)
   } else {

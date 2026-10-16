@@ -5,6 +5,7 @@ import { authRoutes } from './auth'
 import { platformRoutes } from './platform'
 import { gatewayRoutes } from './gateway'
 import { downloadRoutes } from './downloads'
+import { adminRoutes } from './admin'
 
 const app = new Hono()
 
@@ -33,10 +34,16 @@ app.get('/health', (c) =>
   })
 )
 
+// Every mount below except /auth carries `requireAuth` internally, so a route
+// added to one of those routers is authenticated by default rather than by
+// remembering to say so.
 app.route('/auth', authRoutes)
 app.route('/platform', platformRoutes)
 app.route('/gateway', gatewayRoutes)
 app.route('/downloads', downloadRoutes)
+// Authorization for everything under /admin is enforced by the admin_* RPCs
+// themselves (public.require_admin), not by this mount.
+app.route('/admin', adminRoutes)
 
 app.notFound((c) => c.json({ ok: false, error: { code: 'not_found', message: 'Not found.' } }, 404))
 

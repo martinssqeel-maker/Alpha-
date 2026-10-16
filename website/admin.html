@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Administration · Alpha AI Workspace</title>
+    <!-- Operations interface: never indexed, never framed. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/theme.js"></script>
+    <style>
+      /* Administration is an application, not a marketing page: denser type,
+         more information per row, and no decorative treatments. It reuses the
+         site's own tokens so the palettes and the light/dark switch stay
+         consistent across the whole product. */
+      body.admin {
+        background: var(--ink);
+      }
+      .admin-shell {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px 20px 96px;
+      }
+      .admin-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .admin-head h1 {
+        font-family: var(--ui);
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        margin: 0;
+        color: var(--chalk);
+      }
+      .admin-head .sub {
+        font-size: 12.5px;
+        color: var(--faint);
+        margin-top: 2px;
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 20px;
+        padding-bottom: 2px;
+      }
+      .tab {
+        appearance: none;
+        border: 1px solid transparent;
+        border-bottom: none;
+        background: transparent;
+        color: var(--steel);
+        font: inherit;
+        font-size: 13px;
+        padding: 8px 12px;
+        border-radius: var(--r-sm) var(--r-sm) 0 0;
+        cursor: pointer;
+      }
+      .tab:hover {
+        color: var(--chalk);
+        background: var(--panel-2);
+      }
+      .tab[aria-selected='true'] {
+        color: var(--chalk);
+        background: var(--panel);
+        border-color: var(--line);
+      }
+      .panel[hidden] {
+        display: none;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 14px 16px;
+      }
+      .card h2 {
+        font-family: var(--ui);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--faint);
+        margin: 0 0 10px;
+        font-weight: 600;
+      }
+      .metric .v {
+        font-family: var(--data);
+        font-size: 24px;
+        color: var(--chalk);
+        line-height: 1.1;
+      }
+      .metric .k {
+        font-size: 12px;
+        color: var(--steel);
+        margin-top: 4px;
+      }
+      .metric .w {
+        font-size: 11px;
+        color: var(--faint);
+        margin-top: 2px;
+      }
+      .metric.unavailable .v {
+        color: var(--faint);
+        font-size: 15px;
+        font-family: var(--ui);
+      }
+      .section {
+        margin-bottom: 24px;
+      }
+      .section > h2 {
+        font-family: var(--ui);
+        font-size: 14px;
+        color: var(--chalk);
+        margin: 0 0 10px;
+        font-weight: 620;
+      }
+      table.admin {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        overflow: hidden;
+      }
+      table.admin th,
+      table.admin td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+        white-space: nowrap;
+      }
+      table.admin th {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+        font-weight: 600;
+        background: var(--panel-2);
+      }
+      table.admin tbody tr:hover {
+        background: var(--panel-2);
+      }
+      table.admin td.wrap {
+        white-space: normal;
+        min-width: 220px;
+      }
+      table.admin td.num {
+        font-family: var(--data);
+      }
+      .scroll {
+        overflow-x: auto;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .btn.sm {
+        font-size: 12px;
+        padding: 5px 10px;
+      }
+      .pill {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--line-2);
+        color: var(--steel);
+      }
+      .pill.ok {
+        color: var(--ok);
+        border-color: rgba(53, 211, 154, 0.4);
+        background: var(--ok-tint);
+      }
+      .pill.warn {
+        color: var(--warn);
+        border-color: rgba(233, 178, 61, 0.4);
+        background: var(--warn-tint);
+      }
+      .pill.bad {
+        color: var(--bad);
+        border-color: rgba(241, 85, 92, 0.4);
+        background: var(--bad-tint);
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--steel);
+      }
+      input[type='text'],
+      input[type='number'],
+      input[type='search'],
+      select,
+      textarea {
+        background: var(--panel-2);
+        border: 1px solid var(--line-2);
+        color: var(--chalk);
+        border-radius: var(--r-xs);
+        padding: 6px 8px;
+        font: inherit;
+        font-size: 12.5px;
+        min-width: 0;
+      }
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      button:focus-visible,
+      .tab:focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 1px;
+      }
+      .note {
+        font-size: 12.5px;
+        color: var(--steel);
+        line-height: 1.6;
+        max-width: 78ch;
+      }
+      .note code {
+        font-family: var(--data);
+        font-size: 12px;
+        background: var(--panel-3);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      .state {
+        max-width: 62ch;
+        margin: 64px auto;
+        text-align: center;
+        color: var(--steel);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .state h2 {
+        font-family: var(--ui);
+        color: var(--chalk);
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        background: var(--panel-3);
+        border: 1px solid var(--line-2);
+        color: var(--chalk);
+        border-radius: var(--r);
+        padding: 10px 14px;
+        font-size: 13px;
+        max-width: min(560px, 92vw);
+        box-shadow: var(--lift-2);
+        z-index: 40;
+      }
+      .toast.bad {
+        border-color: rgba(241, 85, 92, 0.5);
+      }
+      dialog.confirm {
+        background: var(--panel);
+        color: var(--chalk);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r-lg);
+        padding: 20px;
+        max-width: 460px;
+        box-shadow: var(--lift-2);
+      }
+      dialog.confirm::backdrop {
+        background: rgba(4, 6, 10, 0.68);
+      }
+      dialog.confirm h2 {
+        font-family: var(--ui);
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+      .danger {
+        color: var(--bad);
+      }
+      .drawer {
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--panel);
+        padding: 16px;
+        margin-top: 14px;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 10px 18px;
+        font-size: 12.5px;
+      }
+      .kv dt {
+        color: var(--faint);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .kv dd {
+        margin: 2px 0 0;
+        color: var(--chalk);
+        word-break: break-word;
+      }
+      @media (max-width: 640px) {
+        .admin-shell {
+          padding: 16px 12px 72px;
+        }
+        .tabs {
+          overflow-x: auto;
+          flex-wrap: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="admin">
+    <div class="admin-shell">
+      <header class="admin-head">
+        <div>
+          <h1>Alpha administration</h1>
+          <div class="sub" data-admin-who>Checking your access…</div>
+        </div>
+        <div class="row">
+          <a class="btn ghost" href="/account">Account</a>
+          <button class="btn ghost" type="button" data-reload>Reload data</button>
+        </div>
+      </header>
+
+      <!-- Every state is honest: nothing renders as data until it is data. -->
+      <section class="state" data-view="loading">
+        <h2>Checking your access</h2>
+        <p>This page asks the API what your account is allowed to see.</p>
+      </section>
+
+      <section class="state" data-view="signed-out" hidden>
+        <h2>Sign in to continue</h2>
+        <p>
+          Administration uses the same Alpha account session as the rest of the site.
+          <a href="/account">Sign in</a>, then come back to <code>/admin</code>.
+        </p>
+      </section>
+
+      <section class="state" data-view="unconfigured" hidden>
+        <h2>The API is not configured</h2>
+        <p>
+          This site has no Alpha Cloud API host in <code>assets/config.js</code>, so no
+          administrative call can be made.
+        </p>
+      </section>
+
+      <section class="state" data-view="forbidden" hidden>
+        <h2>Administrator access required</h2>
+        <p data-forbidden-detail>
+          Your account is signed in, but it does not hold an administrator role. Access is
+          decided by the server on every request — nothing on this page can change that.
+        </p>
+      </section>
+
+      <section data-view="ready" hidden>
+        <nav class="tabs" role="tablist" aria-label="Administration sections">
+          <button class="tab" role="tab" type="button" data-tab="overview" aria-selected="true">Overview</button>
+          <button class="tab" role="tab" type="button" data-tab="users" aria-selected="false">Users</button>
+          <button class="tab" role="tab" type="button" data-tab="ai" aria-selected="false">AI providers</button>
+          <button class="tab" role="tab" type="button" data-tab="usage" aria-selected="false">Usage &amp; cost</button>
+          <button class="tab" role="tab" type="button" data-tab="plans" aria-selected="false">Plans &amp; flags</button>
+          <button class="tab" role="tab" type="button" data-tab="security" aria-selected="false">Security</button>
+          <button class="tab" role="tab" type="button" data-tab="system" aria-selected="false">System</button>
+        </nav>
+
+        <div class="panel" data-panel="overview"></div>
+        <div class="panel" data-panel="users" hidden></div>
+        <div class="panel" data-panel="ai" hidden></div>
+        <div class="panel" data-panel="usage" hidden></div>
+        <div class="panel" data-panel="plans" hidden></div>
+        <div class="panel" data-panel="security" hidden></div>
+        <div class="panel" data-panel="system" hidden></div>
+      </section>
+    </div>
+
+    <dialog class="confirm" data-confirm>
+      <h2 data-confirm-title>Confirm</h2>
+      <p class="note" data-confirm-body></p>
+      <div class="row" style="justify-content: flex-end; margin-top: 16px">
+        <button class="btn ghost sm" type="button" data-confirm-cancel>Cancel</button>
+        <button class="btn primary sm" type="button" data-confirm-ok>Confirm</button>
+      </div>
+    </dialog>
+
+    <!-- The committed API base URL. Without it nothing on this page can call the
+         API, which is exactly what the page reports if it is missing. -->
+    <script src="config.js"></script>
+    <script src="assets/admin.js"></script>
+  </body>
+</html>

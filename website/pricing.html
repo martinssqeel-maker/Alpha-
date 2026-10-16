@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pricing · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="What each Alpha plan currently includes: local models on every plan, and metered shared cloud inference with per-plan token and request allowances."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Alpha AI Workspace — Pricing" />
+    <meta property="og:description" content="Local models on every plan. Cloud inference metered per plan." />
+    <meta property="og:image" content="assets/icon.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/theme.js"></script>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/features">Features</a>
+        <a href="/pricing" aria-current="page">Pricing</a>
+        <a href="/#workflow">How it works</a>
+        <a href="/about">About</a>
+      </nav>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
+        <a class="btn ghost hide-sm" href="/account">Sign in</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Plans</p>
+          <h2>Local models are always free</h2>
+          <p class="sub">
+            Ollama inference runs on your own machine, so it never touches an Alpha allowance or
+            a company credential. The paid plans exist for people who want cloud models metered
+            and paid for by Alpha instead of by their own provider account.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">◆</div>
+            <h3>Free</h3>
+            <p>
+              <strong>No cost.</strong> The full desktop workspace: local Ollama models, project
+              editing, permissions and approvals, terminal, Git and GitHub, and attachments.
+              Includes a small monthly allowance of shared cloud inference so you can try a
+              hosted model without creating a provider account.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">▲</div>
+            <h3>Pro</h3>
+            <p>
+              Everything in Free with a much larger monthly token allowance, a higher daily
+              request ceiling, and access to the premium models in the catalogue. Intended for
+              individual daily use.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⛭</div>
+            <h3>Team</h3>
+            <p>
+              The largest allowance of the plans defined today, for shared or team use. Team
+              membership, organisation administration and invoicing are not implemented yet, so
+              this plan is only meaningful once those exist.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⌘</div>
+            <h3>Your own key</h3>
+            <p>
+              Not a plan: connect your own OpenAI-compatible provider and your requests use your
+              own account. Usage on your key is tracked separately from Alpha-funded usage, so it
+              is always clear who paid.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">How metering works</p>
+          <h2>Limits are enforced, not advertised</h2>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">◷</div>
+            <h3>Two independent allowances</h3>
+            <p>
+              A monthly token allowance and a daily request ceiling. A request is checked against
+              both before it starts, so an exhausted allowance produces a clear refusal naming
+              the limit rather than a request that fails halfway.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⇅</div>
+            <h3>Reserved, then settled</h3>
+            <p>
+              Allowance is reserved when a request starts and adjusted to the provider's real
+              token count when it finishes. A request you cancel or that fails returns its
+              reservation, so you are not charged for output you never received.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◎</div>
+            <h3>Ceilings on the company side too</h3>
+            <p>
+              Alpha also enforces its own monthly budget and per-provider caps. If those are
+              reached, shared cloud requests stop — local models and your own provider key keep
+              working.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Before you choose</p>
+          <h2>What is and is not live today</h2>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">✓</div>
+            <h3>Working now</h3>
+            <p>
+              The desktop application, local models, project workflows, permissions, the account
+              area, and shared cloud inference with the allowances described above.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">!</div>
+            <h3>Not enabled yet</h3>
+            <p>
+              There is no checkout and no payment provider connected, so a paid plan cannot be
+              purchased from this site — a plan is set by an administrator. The plan prices
+              defined in the product are configuration values the operator can change, not an
+              offer to sell.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◈</div>
+            <h3>Allowance figures</h3>
+            <p>
+              Exact token and request allowances are configuration, and can change as the
+              service is tuned. The authoritative numbers for your account are always the ones
+              shown on your own account page, not a figure on a marketing page.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta">
+        <h2>Start on the free plan — local models need no allowance at all.</h2>
+        <p class="sub">Create an account, download the Windows build, and connect your first model.</p>
+        <div class="cta-row">
+          <a class="btn primary xl" href="/account?mode=signup">Get started</a>
+          <a class="btn xl" href="/features">Explore features</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/about">About</a>
+        <a href="/download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/account">Sign in</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="Why Alpha AI Workspace exists, the principles it is built on, what it runs on, and how to get support."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="About Alpha AI Workspace" />
+    <meta property="og:description" content="A local-first AI development workspace, built independently and released under the MIT licence." />
+    <meta property="og:image" content="assets/icon.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/theme.js"></script>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/#workflow">How it works</a>
+        <a href="/about" aria-current="page">About</a>
+      </nav>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
+        <a class="btn ghost hide-sm" href="/account">Sign in</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">About</p>
+          <h2>A workspace that asks before it acts</h2>
+          <p class="sub">
+            Alpha AI Workspace is an independently built, MIT-licensed desktop environment for
+            working with AI on your own machine. It is not a model, and it does not train on your
+            work: it is the place where you run models — local or hosted — against real projects,
+            with permissions you set and a record of what happened.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">◆</div>
+            <h3>Why it exists</h3>
+            <p>
+              Most AI coding tools assume a hosted service and a credit card. Many people have a
+              machine that can run a capable model locally, or want to choose exactly which
+              provider sees their code. Alpha exists so that running a good local model and
+              choosing a hosted one are the same workflow, not two different products.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⛨</div>
+            <h3>What it will not do</h3>
+            <p>
+              It will not silently send a local conversation to a cloud provider, push to a
+              remote behind your back, escalate its own permissions, or treat a document you
+              attached as an instruction. Those constraints are enforced in the product, not
+              described in a policy.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◈</div>
+            <h3>How it handles money</h3>
+            <p>
+              Shared cloud inference is metered against an allowance that is checked before a
+              request runs and settled against the provider's real token count afterwards.
+              Estimates are labelled as estimates; costs the provider reports are used as they
+              are reported.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">Under the surface</p>
+          <h2>What it runs on</h2>
+          <p class="sub">Stated plainly, because it tells you what you can expect to maintain.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">▤</div>
+            <h3>Desktop application</h3>
+            <p>
+              An Electron application for Windows 10 and 11 (x64) with a React interface, a
+              process-isolated preload bridge, and a local database. It stores its own settings
+              and conversations on your machine, and ships automatic updates through signed
+              releases.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">☁</div>
+            <h3>Account and AI service</h3>
+            <p>
+              A small HTTP API running as a serverless function against a Postgres database. It
+              owns accounts, sessions, plan entitlements, usage counters and the AI gateway. No
+              provider credential is ever stored in, or sent to, the desktop client.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">▣</div>
+            <h3>This website</h3>
+            <p>
+              Plain HTML, CSS and JavaScript with no build step and no tracking scripts — the
+              pages you are reading are the files in the repository.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Support</p>
+          <h2>Getting help</h2>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">⑂</div>
+            <h3>Issues and source</h3>
+            <p>
+              Development happens in the open on GitHub. Bug reports, questions and feature
+              requests belong in the issue tracker, where they can be searched and answered
+              publicly.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">✉</div>
+            <h3>Account problems</h3>
+            <p>
+              Sign-in problems, a suspended account, or a usage figure you believe is wrong: an
+              administrator can see your account's sessions, plan, entitlements and audit
+              history, and can adjust an allowance without reading your conversations.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">▷</div>
+            <h3>Try it first</h3>
+            <p>
+              The desktop download lives behind an account so releases can be tracked, but
+              creating one takes an email address and no payment details.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta">
+        <h2>Read the code, then decide.</h2>
+        <p class="sub">The repository is public, including the migrations that enforce these limits.</p>
+        <div class="cta-row">
+          <a class="btn primary xl" href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">View on GitHub</a>
+          <a class="btn xl" href="/features">Explore features</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/about">About</a>
+        <a href="/download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/account">Sign in</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

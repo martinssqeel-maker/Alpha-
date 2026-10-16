@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Features · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="What Alpha AI Workspace actually does: local Ollama models, cloud models through a metered gateway, permission-gated agent actions, real project editing, Git and GitHub, and an administration control center."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Alpha AI Workspace — Features" />
+    <meta property="og:description" content="Local and cloud AI in one workspace, with permissions you review and usage you can see." />
+    <meta property="og:image" content="assets/icon.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/theme.js"></script>
+  </head>
+  <body>
+    <div class="glow" aria-hidden="true"></div>
+
+    <header class="nav" id="top">
+      <a class="brand" href="/">
+        <img src="assets/icon.png" alt="Alpha AI Workspace" width="30" height="30" />
+        <span>Alpha <b>AI Workspace</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/features" aria-current="page">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/#workflow">How it works</a>
+        <a href="/about">About</a>
+      </nav>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-pressed="false"
+          aria-label="Switch to the light palette"
+          title="Switch to the light palette"
+        >
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+        </button>
+        <a class="btn ghost hide-sm" href="/account">Sign in</a>
+        <a class="btn primary" href="/account?mode=signup">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Capabilities</p>
+          <h2>What Alpha does today</h2>
+          <p class="sub">
+            Every item below is implemented in the shipped product. Nothing here is a roadmap,
+            a mock-up, or a stock illustration — where a limit exists it is stated next to the
+            feature.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">◆</div>
+            <h3>Local models first</h3>
+            <p>
+              Alpha talks to your own Ollama service: it discovers installed models, shows
+              capability and size, streams real download progress, and can remove a model you
+              no longer need. Nothing leaves your machine when you use a local model.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⇄</div>
+            <h3>Cloud models without your own keys</h3>
+            <p>
+              Shared cloud inference is served from Alpha's own backend, so a new account can
+              run an approved model immediately. The provider credential stays on the server —
+              it is never shipped inside the desktop app and never reaches the browser.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◷</div>
+            <h3>Usage you can actually see</h3>
+            <p>
+              Each request reserves allowance before it starts and settles to the provider's
+              real token figure when the stream ends. Your account page shows the counter and
+              the limit for the current period; a refused request tells you which limit it hit.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⛨</div>
+            <h3>Permission-gated actions</h3>
+            <p>
+              File writes, deletions, commands, installs, network calls, commits and pushes are
+              each governed by an <code>allow</code> / <code>ask</code> / <code>deny</code> level.
+              A risky action opens an approval dialog and runs only if you accept it.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⌘</div>
+            <h3>Confined to your project</h3>
+            <p>
+              File access stays inside the project folder you opened. Path traversal and
+              symlink escapes are rejected, sensitive files are denied by default, and a
+              cancelled generation stops the work rather than leaving it half-applied.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">≡</div>
+            <h3>Reviewable edits</h3>
+            <p>
+              Changes arrive as unified diffs with checkpoint and restore, atomic writes, and
+              stale-file conflict detection — so you review a proposed change before it lands.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⑂</div>
+            <h3>Git and GitHub</h3>
+            <p>
+              Status, diff, stage, commit, branch, pull and push, with no force-push path.
+              Signing in with GitHub gives identity only; repository access is a separate
+              authorization you grant deliberately.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">▸</div>
+            <h3>Streaming terminal</h3>
+            <p>
+              Run project commands with live output, real cancellation and a risk assessment
+              before anything destructive is allowed to run.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">✎</div>
+            <h3>Attachments</h3>
+            <p>
+              Attach text, source files, images and PDFs to a prompt. PDF text extraction happens
+              locally, and an uploaded document is treated as content to read — never as
+              instructions that can change what the assistant is permitted to do.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="section-head">
+          <p class="eyebrow">Your own credentials</p>
+          <h2>Bring your own provider when you want to</h2>
+          <p class="sub">
+            Alpha is not a walled garden. Any OpenAI-compatible endpoint can be configured —
+            OpenAI, OpenRouter, Groq, DeepSeek, Together, LM Studio or your own host — and a
+            configured provider is used for your requests.
+          </p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">▲</div>
+            <h3>Local versus cloud is your choice</h3>
+            <p>
+              The active model is always named in the workspace. A local conversation is not
+              silently sent to a cloud provider: cloud routing happens only for the cloud model
+              you selected.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◈</div>
+            <h3>Company-funded and self-funded are distinguished</h3>
+            <p>
+              Usage served by Alpha's shared credential and usage served by your own key are
+              metered separately, so it is always clear which account paid for a request.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">▤</div>
+            <h3>Model catalogue with real status</h3>
+            <p>
+              A model is marked verified only after a request has actually completed against it.
+              Until then it is labelled unverified, and a model whose plan does not include it is
+              refused rather than quietly upgraded.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Operations</p>
+          <h2>Built to be run, not just demonstrated</h2>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="ic">☰</div>
+            <h3>Administration control center</h3>
+            <p>
+              A separate <code>/admin</code> area reports live accounts, plan mix, downloads,
+              sessions, AI spend and audit history. Every action is authorized on the server by
+              the database itself, and every change is written to an append-only audit log.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">◎</div>
+            <h3>Spend cannot run away quietly</h3>
+            <p>
+              An operator can pause shared cloud inference, disable a provider, cap a provider's
+              monthly spend, or set a company budget — and the limits are enforced on the server
+              as each request is claimed, not merely displayed.
+            </p>
+          </article>
+          <article class="card">
+            <div class="ic">⧗</div>
+            <h3>Honest about failure</h3>
+            <p>
+              A rejected provider credential is reported as a configuration fault rather than a
+              retryable error, a refused request names the limit it hit, and a metric that cannot
+              be read shows as unavailable instead of as zero.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta">
+        <h2>Run local models free, and cloud models under your own limits.</h2>
+        <p class="sub">Create an account to download the Windows build and connect your first model.</p>
+        <div class="cta-row">
+          <a class="btn primary xl" href="/account?mode=signup">Get started</a>
+          <a class="btn xl" href="/pricing">See plans</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="foot-brand">
+        <img src="assets/icon.png" alt="" width="24" height="24" />
+        <span>Alpha AI Workspace</span>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/about">About</a>
+        <a href="/download">Download</a>
+        <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/account">Sign in</a>
+      </nav>
+      <p class="foot-note">MIT Licensed · Local-first · Built for Windows</p>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

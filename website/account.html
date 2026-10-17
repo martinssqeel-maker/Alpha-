@@ -121,10 +121,12 @@
                 </button>
               </div>
               <button class="btn primary auth-submit" type="submit" data-auth-submit>Sign in</button>
+              <!-- The rule and the recovery link belong to the password, so they sit
+                   under it rather than under the email field. -->
+              <p class="auth-hint" id="auth-password-hint">
+                12+ characters. <button class="linkish" type="button" data-forgot>Forgot password?</button>
+              </p>
             </div>
-            <p class="auth-hint" id="auth-password-hint">
-              12+ characters. <button class="linkish" type="button" data-forgot>Forgot password?</button>
-            </p>
           </form>
 
           <div class="auth-divider" data-provider-divider hidden><span>or continue with</span></div>

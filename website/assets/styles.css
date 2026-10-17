@@ -595,7 +595,14 @@ td { font-variant-numeric: tabular-nums; }
 
 .auth-submit { white-space: nowrap; }
 
-.auth-hint { margin: 10px 0 0; color: var(--faint); font-size: 12.5px; line-height: 1.5; }
+/* Row two of the bar, aligned under the password column it describes. */
+.auth-hint {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 
 /* A link that is really a button: it performs an action, not navigation. */
 .linkish {
@@ -654,6 +661,7 @@ td { font-variant-numeric: tabular-nums; }
 
 @media (max-width: 620px) {
   .auth-bar { grid-template-columns: 1fr; }
+  .auth-hint { grid-column: 1 / -1; }
   .auth-submit { width: 100%; }
 }
 

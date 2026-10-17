@@ -73,6 +73,8 @@ if (MODE === 'signup') {
   }
   if (els.authSubmit) els.authSubmit.textContent = 'Create account'
   if (els.authPassword) els.authPassword.autocomplete = 'new-password'
+  // Recovery is meaningless before there is anything to recover.
+  if (els.forgot) els.forgot.hidden = true
 }
 
 // The dashboard sends visitors here when there is no session (`?next=app`), so

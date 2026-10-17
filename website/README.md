@@ -16,7 +16,10 @@ account page that signs users in, and the authenticated account dashboard at `/a
   them in step when what the API stores changes.
 - **Account page.** `account.html` + `assets/account.js` offer every sign-in method
   the deployment actually reports (`/auth/providers`), plus the emailed link/code
-  path, and render the signed-in account's plan and usage. Signing in *is* signing
+  path, and render the signed-in account's plan and usage. Member accounts are
+  passwordless today; adding an email + password path is specified in
+  `docs/website/premium-rebuild-spec.md`, together with every claim in this site that
+  would become false with it. Signing in *is* signing
   up: the API provisions the account on the first verified sign-in, so
   `/account?mode=signup` only reframes the same card (title, lede and email button)
   instead of pretending there is a second endpoint. Every page links to it —

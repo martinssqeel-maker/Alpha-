@@ -91,6 +91,29 @@ async function call(pathname, opts = {}) {
   return { status: res.status, headers: res.headers, text, json }
 }
 
+/**
+ * The administrative controls this script drives, as the routes the portal
+ * itself calls. `tests/adminRouteParity.test.ts` checks these against the router,
+ * so a route that moves breaks a unit test instead of being reported as a broken
+ * deployment.
+ */
+const ADMIN_ROUTES = {
+  overview: ['GET', '/admin/overview'],
+  users: ['GET', '/admin/users'],
+  catalog: ['GET', '/admin/catalog'],
+  releases: ['GET', '/admin/releases'],
+  audit: ['GET', '/admin/audit'],
+  setAdmin: ['POST', '/admin/users/:id/admin']
+}
+
+/** Call an admin route and unwrap the API's `{ok, data}` envelope. */
+async function adminCall(name, { id, body, token } = {}) {
+  const [method, template] = ADMIN_ROUTES[name]
+  const pathname = template.replace(':id', id ?? '00000000-0000-0000-0000-000000000000')
+  const res = await call(pathname, { method, body, token })
+  return { ...res, data: res.json?.data ?? null }
+}
+
 // Same digest format as platform/api/password.ts. If the two ever drift, the
 // live login below fails — which is the point of doing it this way.
 function hashPassword(password) {
@@ -260,15 +283,11 @@ async function writeChecks() {
 
     if (adminToken) {
       // 4. The session carries real, database-enforced administrator rights.
-      const overview = await call('/admin/rpc', {
-        method: 'POST',
-        token: adminToken,
-        body: { fn: 'admin_overview', params: {} }
-      })
-      if (overview.status === 200 && overview.json?.ok && typeof overview.json.result?.users === 'number') {
-        record('PASS', 'the admin session can read /admin/rpc', `users=${overview.json.result.users}`)
+      const overview = await adminCall('overview', { token: adminToken })
+      if (overview.status === 200 && overview.json?.ok && typeof overview.data?.users === 'number') {
+        record('PASS', 'the admin session can read GET /admin/overview', `users=${overview.data.users}`)
       } else {
-        record('FAIL', 'the admin session can read /admin/rpc', `status=${overview.status}`)
+        record('FAIL', 'the admin session can read GET /admin/overview', `status=${overview.status}`)
       }
 
       // 5. The desktop app's own contract still answers for a signed-in account:
@@ -280,26 +299,17 @@ async function writeChecks() {
         record('FAIL', '/platform/config answers for a signed-in account', `status=${platformConfig.status}`)
       }
 
-      // 6. Every panel of the admin portal is backed by one of these RPCs, so a
+      // 6. Every panel of the admin portal is backed by one of these routes, so a
       //    failure here is a failure the dashboard would show as an empty panel.
-      for (const fn of [
-        'admin_list_users',
-        'admin_list_catalog',
-        'admin_list_releases',
-        'admin_audit_log'
-      ]) {
-        const res = await call('/admin/rpc', {
-          method: 'POST',
-          token: adminToken,
-          body: { fn, params: {} }
-        })
-        const shape = Array.isArray(res.json?.result)
-          ? `${res.json.result.length} row(s)`
-          : res.json?.result && typeof res.json.result === 'object'
+      for (const panel of ['users', 'catalog', 'releases', 'audit']) {
+        const res = await adminCall(panel, { token: adminToken })
+        const shape = Array.isArray(res.data)
+          ? `${res.data.length} row(s)`
+          : res.data && typeof res.data === 'object'
             ? 'object'
-            : typeof res.json?.result
-        if (res.status === 200 && res.json?.ok) record('PASS', `admin RPC ${fn} answers`, shape)
-        else record('FAIL', `admin RPC ${fn} answers`, `status=${res.status} ${res.json?.error?.message ?? ''}`)
+            : typeof res.data
+        if (res.status === 200 && res.json?.ok) record('PASS', `admin ${panel} panel answers`, shape)
+        else record('FAIL', `admin ${panel} panel answers`, `status=${res.status} ${res.json?.error?.message ?? ''}`)
       }
 
       const device = await call('/platform/device', {
@@ -356,13 +366,12 @@ async function writeChecks() {
       if (!userToken) {
         record('FAIL', 'an ordinary session can be minted for the authorization checks', 'no access token')
       } else {
-        const userRpc = await call('/admin/rpc', {
-          method: 'POST',
-          token: userToken,
-          body: { fn: 'admin_overview', params: {} }
-        })
-        if (userRpc.status === 403) record('PASS', 'an ordinary session is refused by /admin/rpc', '403')
-        else record('FAIL', 'an ordinary session is refused by /admin/rpc', `status=${userRpc.status}`)
+        const userRpc = await adminCall('overview', { token: userToken })
+        if (userRpc.status === 403 && userRpc.json?.error?.code === 'forbidden') {
+          record('PASS', 'an ordinary session is refused by GET /admin/overview', '403 forbidden')
+        } else {
+          record('FAIL', 'an ordinary session is refused by GET /admin/overview', `status=${userRpc.status}`)
+        }
 
         const userSystem = await call('/admin/system', { token: userToken })
         if (userSystem.status === 403) record('PASS', 'an ordinary session is refused by /admin/system', '403')
@@ -374,11 +383,7 @@ async function writeChecks() {
         if (!secret) {
           record('NOT RUN', 'a forged admin claim is still refused', 'AUTH_JWT_SECRET not available locally')
         } else {
-          const forged = await call('/admin/rpc', {
-            method: 'POST',
-            token: forgedAdminClaim(ids[1], secret),
-            body: { fn: 'admin_overview', params: {} }
-          })
+          const forged = await adminCall('overview', { token: forgedAdminClaim(ids[1], secret) })
           if (forged.status === 403) {
             record('PASS', 'a signed token claiming role=admin is still refused', '403')
           } else {
@@ -389,44 +394,40 @@ async function writeChecks() {
         // 11. Role changes take effect live and server-side: the *same* token that
         //     was just refused must work once the database grants the role, and be
         //     refused again the moment it is revoked.
-        const granted = await call('/admin/rpc', {
-          method: 'POST',
+        const granted = await adminCall('setAdmin', {
+          id: ids[1],
           token: adminToken,
-          body: { fn: 'admin_set_user_admin', params: { p_user: ids[1], p_admin: true, p_role_code: 'admin' } }
+          body: { admin: true, roleCode: 'admin' }
         })
-        const afterGrant = granted.json?.ok
-          ? await call('/admin/rpc', { method: 'POST', token: userToken, body: { fn: 'admin_overview', params: {} } })
-          : null
-        if (granted.json?.result?.isAdmin === true && afterGrant?.status === 200) {
-          record('PASS', 'granting the role lets the live session through', 'admin_set_user_admin -> 200')
+        const afterGrant = granted.json?.ok ? await adminCall('overview', { token: userToken }) : null
+        if (granted.data?.isAdmin === true && afterGrant?.status === 200) {
+          record('PASS', 'granting the role lets the live session through', 'POST /admin/users/:id/admin -> 200')
         } else {
-          record('FAIL', 'granting the role lets the live session through', `grant=${granted.status} rpc=${afterGrant?.status ?? 'n/a'}`)
+          record('FAIL', 'granting the role lets the live session through', `grant=${granted.status} read=${afterGrant?.status ?? 'n/a'}`)
         }
 
-        const revoked = await call('/admin/rpc', {
-          method: 'POST',
+        const revoked = await adminCall('setAdmin', {
+          id: ids[1],
           token: adminToken,
-          body: { fn: 'admin_set_user_admin', params: { p_user: ids[1], p_admin: false } }
+          body: { admin: false, roleCode: 'admin' }
         })
-        const afterRevoke = revoked.json?.ok
-          ? await call('/admin/rpc', { method: 'POST', token: userToken, body: { fn: 'admin_overview', params: {} } })
-          : null
-        if (revoked.json?.result?.isAdmin === false && afterRevoke?.status === 403) {
-          record('PASS', 'revoking the role cuts the live session off again', 'admin_set_user_admin -> 403')
+        const afterRevoke = revoked.json?.ok ? await adminCall('overview', { token: userToken }) : null
+        if (revoked.data?.isAdmin === false && afterRevoke?.status === 403) {
+          record('PASS', 'revoking the role cuts the live session off again', 'POST /admin/users/:id/admin -> 403')
         } else {
-          record('FAIL', 'revoking the role cuts the live session off again', `revoke=${revoked.status} rpc=${afterRevoke?.status ?? 'n/a'}`)
+          record('FAIL', 'revoking the role cuts the live session off again', `revoke=${revoked.status} read=${afterRevoke?.status ?? 'n/a'}`)
         }
 
         // 12. The last owner cannot be demoted, so the product cannot lock itself out.
-        const selfDemote = await call('/admin/rpc', {
-          method: 'POST',
+        const selfDemote = await adminCall('setAdmin', {
+          id: ids[0],
           token: adminToken,
-          body: { fn: 'admin_set_user_admin', params: { p_user: ids[0], p_admin: false } }
+          body: { admin: false, roleCode: 'admin' }
         })
-        if (selfDemote.status === 403 && /cannot_remove_own_admin/.test(selfDemote.json?.error?.message ?? '')) {
-          record('PASS', 'an administrator cannot remove its own admin rights', '403 cannot_remove_own_admin')
+        if (selfDemote.status === 409 && selfDemote.json?.error?.code === 'cannot_remove_own_admin') {
+          record('PASS', 'an administrator cannot remove its own admin rights', '409 cannot_remove_own_admin')
         } else {
-          record('FAIL', 'an administrator cannot remove its own admin rights', `status=${selfDemote.status}`)
+          record('FAIL', 'an administrator cannot remove its own admin rights', `status=${selfDemote.status} code=${selfDemote.json?.error?.code ?? 'none'}`)
         }
       }
     }

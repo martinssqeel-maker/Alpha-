@@ -50,38 +50,73 @@ const KNOWN_ERRORS: Record<string, { status: number; message?: string }> = {
   installer_url_required: { status: 400, message: 'A release needs an https installer URL.' }
 }
 
-function failure(c: Context<AppEnv>, error: unknown): Response {
+export interface AdminFailure {
+  status: number
+  body: { ok: false; error: { code: string; message: string } }
+}
+
+/**
+ * Translate a database refusal into the response the portal should render.
+ *
+ * Order matters and is asserted by `tests/adminErrorMap.test.ts`. Business
+ * refusals raised with SQLSTATE 42501 — "you cannot remove your own admin
+ * rights", "that is the last owner" — are matched *before* the generic 42501
+ * branch, so the operator sees the real reason instead of "administrator access
+ * is required". The generic `forbidden` from `require_admin` matches none of the
+ * specific keys and still lands on 403.
+ */
+export function describeAdminError(error: unknown): AdminFailure {
   const pg = error as PgError
   const message = pg?.message ?? ''
   const code = pg?.code ?? ''
 
   if (/not_authenticated/i.test(message)) {
-    return c.json({ ok: false, error: { code: 'unauthorized', message: 'Not signed in.' } }, 401)
-  }
-  if (code === '42501' || /forbidden/i.test(message)) {
-    return c.json(
-      { ok: false, error: { code: 'forbidden', message: 'Administrator access is required for that action.' } },
-      403
-    )
+    return { status: 401, body: { ok: false, error: { code: 'unauthorized', message: 'Not signed in.' } } }
   }
   for (const [key, mapped] of Object.entries(KNOWN_ERRORS)) {
     if (message.includes(key)) {
-      return c.json({ ok: false, error: { code: key, message: mapped.message ?? message } }, mapped.status as 400)
+      return {
+        status: mapped.status,
+        body: { ok: false, error: { code: key, message: mapped.message ?? message } }
+      }
+    }
+  }
+  if (code === '42501' || /forbidden/i.test(message)) {
+    return {
+      status: 403,
+      body: {
+        ok: false,
+        error: { code: 'forbidden', message: 'Administrator access is required for that action.' }
+      }
     }
   }
   if (code === 'P0002') {
-    return c.json({ ok: false, error: { code: 'not_found', message: 'That record no longer exists.' } }, 404)
+    return {
+      status: 404,
+      body: { ok: false, error: { code: 'not_found', message: 'That record no longer exists.' } }
+    }
   }
   if (code === '22P02' || code === '22023' || code === '23503' || code === '23505' || code === '23514') {
-    return c.json(
-      { ok: false, error: { code: 'invalid_input', message: 'One of the supplied values was not accepted.' } },
-      400
-    )
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        error: { code: 'invalid_input', message: 'One of the supplied values was not accepted.' }
+      }
+    }
   }
 
   // The real error goes to the operator's logs; the client gets something safe.
   console.error('[admin:error]', error)
-  return c.json({ ok: false, error: { code: 'internal', message: 'The change could not be completed.' } }, 500)
+  return {
+    status: 500,
+    body: { ok: false, error: { code: 'internal', message: 'The change could not be completed.' } }
+  }
+}
+
+function failure(c: Context<AppEnv>, error: unknown): Response {
+  const { status, body } = describeAdminError(error)
+  return c.json(body, status as 400)
 }
 
 /** Run `fn` as the caller and shape any database refusal into a response. */

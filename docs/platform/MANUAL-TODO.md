@@ -372,21 +372,27 @@ npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
 npm run verify:auth -- --with-write           # 27 checks; creates + deletes temp accounts
-npm run verify:admin                          # STALE — refuses to run (see below)
+npm run verify:admin                          # 15 checks; creates + deletes temp accounts
 ```
 
 `verify:admin` is the check that the portal is not decorative: it flips a feature flag, an
 announcement, the application-version setting, maintenance mode and an account status
-through the portal's own RPCs and reads each one back through `/platform/config`,
+through the portal's own REST routes and reads each one back through `/platform/config`,
 `/downloads/latest` and `/auth/request`. It restores every `system_settings` value it
 touched and prints the restored rows.
 
-**It refuses to run as of 2026-10-16.** It drove every control through `POST /admin/rpc`, and
-the admin API no longer serves that endpoint — the routes are REST now (`/admin/overview`,
-`/admin/settings`, `/admin/flags`, …). Rather than create throwaway accounts and then report
-fifteen failures that describe the script, it exits with the call-by-call mapping to the current
-routes. Rewrite those calls and delete the guard, or leave it: `verify:auth` still covers the
-half that says the admin surface cannot be reached without administrator rights.
+**Rewritten on 2026-10-17, not yet run against production.** It had been calling
+`POST /admin/rpc`, which the admin API stopped serving when the portal moved to REST
+(`/admin/overview`, `/admin/settings`, `/admin/flags`, …), so every check failed for a reason
+that described the script. The calls now match `website/assets/admin.js` route for route, and
+the script probes all nine routes with its ordinary throwaway session before changing
+anything — an existing route answers `403`, a removed one `404`, and the run stops there.
+`tests/adminRouteParity.test.ts` enforces the same mapping without touching a deployment.
+
+The live run is left to you because it writes: it creates two `@example.invalid` accounts,
+flips maintenance mode for a few seconds and deletes both accounts again. Run it when that is
+acceptable, then check the `restore:` lines it prints (settings row count, flag removed,
+zero leftover test accounts).
 
 Manual part, needs a mailbox and credentials:
 

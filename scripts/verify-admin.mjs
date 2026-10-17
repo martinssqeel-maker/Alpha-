@@ -5,11 +5,21 @@
  * `verify:auth` proves the admin surface cannot be reached without administrator
  * rights. This script answers the other half of the requirement: that every
  * control the portal presents is connected to something real. For each control it
- * changes the value through the same admin RPC the UI calls, then reads the
+ * changes the value through the same REST route the portal calls, then reads the
  * result back through the surface a *user* actually sees — the desktop app's own
  * `/platform/config`, `/downloads/latest`, and the public sign-in route.
  *
  *   npm run verify:admin
+ *
+ * Before any product data is written the script checks every route it is about
+ * to drive against the deployment, using the ordinary session it just minted: a
+ * route that exists refuses that account with `403`, while a route that has been
+ * removed answers `404 not_found`. That preflight is what stops this file from
+ * silently drifting out of date with the API again — it used to drive a retired
+ * `admin/rpc` endpoint, and reported the resulting 404s as product failures.
+ *
+ * (An anonymous probe cannot do this job: `requireAuth` mounts on the whole
+ * admin router, so a retired route answers `401` too.)
  *
  * It writes to the database, so it is not a read-only probe. Everything it
  * touches is restored in a `finally` block: a throwaway administrator and user
@@ -66,38 +76,25 @@ if (!API || !DATABASE_URL) {
   process.exit(1)
 }
 
-// ── Stale: refuses to run rather than reporting failures about itself ────────
-//
-// Every control here is driven through `POST /admin/rpc`, and the admin API no
-// longer serves that endpoint — it was replaced by REST routes. This guard sits
-// before the first database write on purpose: without it the script would create
-// two throwaway accounts, set a password credential, and then report fifteen
-// failures that describe this file, not the deployment. Two ways forward:
-//
-//   1. Rewrite the calls below against the current routes (the mapping is listed
-//      in the error message), then delete this block.
-//   2. Leave it: `verify:auth` already proves the admin surface cannot be reached
-//      without administrator rights, and the portal's own checks are unchanged.
-const ADMIN_RPC_REPLACEMENTS = [
-  ['admin_metrics', 'GET /admin/metrics'],
-  ['admin_overview', 'GET /admin/overview'],
-  ['admin_audit_log', 'GET /admin/audit'],
-  ['admin_list_releases', 'GET /admin/releases'],
-  ['admin_set_setting', 'POST /admin/settings'],
-  ['admin_set_user_status', 'POST /admin/users/:id/status'],
-  ['admin_upsert_flag', 'POST /admin/flags'],
-  ['admin_upsert_announcement', 'POST /admin/announcements']
-]
-console.error(
-  'verify:admin is stale and will not run.\n\n' +
-    'It drives every control through POST /admin/rpc, which the admin API no longer serves.\n' +
-    'Running it would create two throwaway accounts and then fail on this script itself.\n\n' +
-    'Replace each call with the current route:\n' +
-    ADMIN_RPC_REPLACEMENTS.map(([fn, route]) => `  ${fn.padEnd(26)} -> ${route}`).join('\n') +
-    '\n\nIt also writes to system_settings and restores them in a finally block, so run it only\n' +
-    'against a deployment where you accept that write. See docs/platform/MANUAL-TODO.md §10.'
-)
-process.exit(1)
+/**
+ * Every administrative control this script drives, as the route the portal
+ * itself calls. `tests/adminRouteParity.test.ts` asserts these paths are mounted
+ * by `platform/api/admin.ts`, so a route that moves breaks a test instead of
+ * producing fifteen misleading failures against a live deployment.
+ */
+const ROUTES = {
+  metrics: ['GET', '/admin/metrics'],
+  overview: ['GET', '/admin/overview'],
+  system: ['GET', '/admin/system'],
+  audit: ['GET', '/admin/audit'],
+  releases: ['GET', '/admin/releases'],
+  settings: ['POST', '/admin/settings'],
+  flags: ['POST', '/admin/flags'],
+  announcements: ['POST', '/admin/announcements'],
+  userStatus: ['POST', '/admin/users/:id/status']
+}
+
+const PLACEHOLDER_ID = '00000000-0000-0000-0000-000000000000'
 
 const results = []
 function record(status, name, detail) {
@@ -155,9 +152,50 @@ let adminId = null
 let announcementId = null
 let previousSettings = {}
 
-/** Call an allow-listed admin function exactly as the portal does. */
-async function adminRpc(fn, params = {}, token = adminToken) {
-  return call('/admin/rpc', { method: 'POST', token, body: { fn, params } })
+/**
+ * Drive one administrative control exactly as the portal does, and hand back the
+ * unwrapped `data` payload. The API answers `{ok:true, data}` on success and
+ * `{ok:false, error}` otherwise, so a status of 200 plus a `data` field is the
+ * only shape that counts as a real answer.
+ */
+async function adminCall(name, { id, body, token = adminToken, query } = {}) {
+  const [method, template] = ROUTES[name]
+  let pathname = template.replace(':id', id ?? PLACEHOLDER_ID)
+  if (query) {
+    const search = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)]))
+    pathname += `?${search.toString()}`
+  }
+  const res = await call(pathname, { method, body, token })
+  return { ...res, data: res.json?.data ?? null }
+}
+
+/**
+ * Prove the deployment still serves every route about to be driven, before any
+ * product setting is written.
+ *
+ * The probe uses the ordinary (non-administrator) session, which is the only
+ * caller that can tell the two failure modes apart: an existing admin route stops
+ * at `require_admin` with `403`, a removed route falls through to the router's
+ * `404 not_found`. A body-less POST may be rejected as `400` before authorization
+ * runs; that is still proof the route is mounted.
+ */
+async function preflight() {
+  const missing = []
+  const odd = []
+  for (const [name, [method, template]] of Object.entries(ROUTES)) {
+    const pathname = template.replace(':id', PLACEHOLDER_ID)
+    const res = await call(pathname, { method, body: method === 'POST' ? {} : undefined, token: userToken })
+    if (res.status === 404) missing.push(`${method} ${template}`)
+    else if (![200, 400, 403, 409].includes(res.status)) odd.push(`${method} ${template} -> ${res.status}`)
+  }
+
+  if (missing.length) {
+    record('FAIL', 'every admin route this script drives exists on the deployment', `missing ${missing.join(', ')}`)
+    return false
+  }
+  record('PASS', 'every admin route this script drives exists on the deployment', `${Object.keys(ROUTES).length} routes`)
+  for (const line of odd) record('WARN', 'preflight got an unexpected answer', line)
+  return true
 }
 
 /** `/platform/config` through the eyes of the ordinary temp user. */
@@ -180,7 +218,7 @@ async function sessionFor(uid) {
 }
 
 async function setSetting(key, value) {
-  return adminRpc('admin_set_setting', { p_key: key, p_value: value })
+  return adminCall('settings', { body: { key, value } })
 }
 
 async function setup() {
@@ -222,23 +260,30 @@ async function setup() {
 async function authorization() {
   if (!userToken) return
 
-  const rpc = await adminRpc('admin_overview', {}, userToken)
-  if (rpc.status === 403) record('PASS', 'an ordinary session cannot call /admin/rpc', '403')
-  else record('FAIL', 'an ordinary session cannot call /admin/rpc', `status=${rpc.status}`)
+  const overview = await adminCall('overview', { token: userToken })
+  if (overview.status === 403 && overview.json?.error?.code === 'forbidden') {
+    record('PASS', 'an ordinary session cannot read the admin overview', '403 forbidden')
+  } else {
+    record('FAIL', 'an ordinary session cannot read the admin overview', `status=${overview.status}`)
+  }
 
-  const system = await call('/admin/system', { token: userToken })
-  if (system.status === 403) record('PASS', 'an ordinary session cannot call /admin/system', '403')
-  else record('FAIL', 'an ordinary session cannot call /admin/system', `status=${system.status}`)
+  const system = await adminCall('system', { token: userToken })
+  if (system.status === 403 && system.json?.error?.code === 'forbidden') {
+    record('PASS', 'an ordinary session cannot read admin system status', '403 forbidden')
+  } else {
+    record('FAIL', 'an ordinary session cannot read admin system status', `status=${system.status}`)
+  }
 }
 
 async function metricsAreReal() {
-  const res = await adminRpc('admin_metrics')
-  const total = res.json?.result?.users?.total
+  const res = await adminCall('metrics')
+  const total = res.data?.users?.total
   const actual = (await client.query('select count(*)::int as n from public.users')).rows[0].n
+
   if (res.status === 200 && total === actual) {
     record('PASS', 'dashboard metrics match the database', `users.total=${total}`)
   } else {
-    record('FAIL', 'dashboard metrics match the database', `api=${total} db=${actual}`)
+    record('FAIL', 'dashboard metrics match the database', `api=${total} db=${actual} status=${res.status}`)
   }
 }
 
@@ -249,20 +294,14 @@ async function featureFlagEffect() {
     return
   }
 
-  await adminRpc('admin_upsert_flag', {
-    p_key: flagKey,
-    p_enabled: true,
-    p_description: 'verify-admin temporary flag',
-    p_rollout: 100
+  await adminCall('flags', {
+    body: { key: flagKey, enabled: true, description: 'verify-admin temporary flag', rollout: 100 }
   })
   const on = await userConfig()
   const enabled = on?.flags?.[flagKey] === true
 
-  await adminRpc('admin_upsert_flag', {
-    p_key: flagKey,
-    p_enabled: false,
-    p_description: 'verify-admin temporary flag',
-    p_rollout: 100
+  await adminCall('flags', {
+    body: { key: flagKey, enabled: false, description: 'verify-admin temporary flag', rollout: 100 }
   })
   const off = await userConfig()
   const hidden = off?.flags?.[flagKey] === undefined
@@ -275,20 +314,20 @@ async function featureFlagEffect() {
 }
 
 async function announcementEffect() {
-  const created = await adminRpc('admin_upsert_announcement', {
-    p: {
+  const created = await adminCall('announcements', {
+    body: {
       title: `Maintenance notice ${stamp}`,
       body: 'Created by scripts/verify-admin.mjs',
       level: 'warning',
       active: true
     }
   })
-  announcementId = created.json?.result ?? null
+  announcementId = created.data ?? null
 
   const live = await userConfig()
   const visible = (live?.announcements ?? []).some((a) => a.title === `Maintenance notice ${stamp}`)
 
-  await adminRpc('admin_upsert_announcement', { p: { id: announcementId, active: false } })
+  await adminCall('announcements', { body: { id: announcementId, active: false } })
   const after = await userConfig()
   const hidden = !(after?.announcements ?? []).some((a) => a.title === `Maintenance notice ${stamp}`)
 
@@ -350,9 +389,9 @@ async function maintenanceEffect() {
 
 async function accountStatusEffect() {
   const active = await call('/downloads/latest', { token: userToken })
-  await adminRpc('admin_set_user_status', { p_user: userId, p_status: 'suspended' })
+  await adminCall('userStatus', { id: userId, body: { status: 'suspended' } })
   const suspended = await call('/downloads/latest', { token: userToken })
-  await adminRpc('admin_set_user_status', { p_user: userId, p_status: 'active' })
+  await adminCall('userStatus', { id: userId, body: { status: 'active' } })
   const restored = await call('/downloads/latest', { token: userToken })
 
   if (active.status === 200 && suspended.status === 403 && restored.status === 200) {
@@ -362,8 +401,8 @@ async function accountStatusEffect() {
   }
 
   const releaseVersion = restored.json?.release?.version ?? null
-  const published = await adminRpc('admin_list_releases')
-  const publishedVersion = (published.json?.result ?? []).find((r) => r.published)?.version ?? null
+  const published = await adminCall('releases')
+  const publishedVersion = (published.data ?? []).find((r) => r.published)?.version ?? null
   if (releaseVersion && releaseVersion === publishedVersion) {
     record('PASS', 'the release the portal publishes is the one users download', `v${releaseVersion}`)
   } else {
@@ -372,8 +411,8 @@ async function accountStatusEffect() {
 }
 
 async function auditTrail() {
-  const log = await adminRpc('admin_audit_log', { p_limit: 50 })
-  const actions = new Set((log.json?.result ?? []).map((row) => row.action))
+  const log = await adminCall('audit', { query: { limit: 50 } })
+  const actions = new Set((log.data ?? []).map((row) => row.action))
   const expected = ['flag.upsert', 'announcement.upsert', 'setting.set', 'user.set_status']
   const missing = expected.filter((a) => !actions.has(a))
   if (missing.length === 0) {
@@ -388,20 +427,32 @@ async function auditTrail() {
 }
 
 console.log(`Alpha admin control verification\napi:  ${API}\nmode: write + restore\n`)
+
 await setup()
-await authorization()
-await metricsAreReal()
-await featureFlagEffect()
-await announcementEffect()
-await desktopSettingEffect()
-await maintenanceEffect()
-await accountStatusEffect()
-await auditTrail()
+
+// Nothing that changes the product is touched until the routes are known to
+// exist. A stale script then costs two throwaway accounts and no settings churn.
+const routesReady = await preflight()
+if (!routesReady) {
+  console.log('\nRefusing to drive the controls: the deployment does not serve every route above.')
+} else {
+  await authorization()
+  await metricsAreReal()
+  await featureFlagEffect()
+  await announcementEffect()
+  await desktopSettingEffect()
+  await maintenanceEffect()
+  await accountStatusEffect()
+  await auditTrail()
+}
 
 // Restore everything, whatever happened above.
 try {
-  for (const [key, value] of Object.entries(previousSettings)) {
-    await setSetting(key, value)
+  // Only write settings back if the run got far enough to change them.
+  if (routesReady) {
+    for (const [key, value] of Object.entries(previousSettings)) {
+      await setSetting(key, value)
+    }
   }
   if (announcementId) await client.query('delete from public.announcements where id = $1', [announcementId])
   // Any probe flag this script has ever created, not just this run's.

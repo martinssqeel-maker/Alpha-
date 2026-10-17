@@ -40,26 +40,34 @@ npm run verify:admin                  # 15 checks: every portal control has a re
 ```
 
 `verify:auth` proves the *authorization* boundary: an ordinary session is refused by
-`/admin/rpc` and `/admin/system`, a correctly signed token that merely claims `role:admin`
-is refused too, a role granted in the database lets the *same* session through until it is
-revoked, and an administrator cannot strip its own rights.
+`GET /admin/overview` and `GET /admin/system`, a correctly signed token that merely claims
+`role:admin` is refused too, a role granted in the database lets the *same* session through
+until it is revoked, and an administrator cannot strip its own rights.
 
 `verify:admin` proves the *effects* boundary — that no control in the portal is decorative.
-Each one is changed through the RPC the UI calls and then read back through the surface a
-user sees:
+Each one is changed through the REST route the portal's own JavaScript calls and then read
+back through the surface a user sees:
 
 | Control | Changed via | Read back through |
 | --- | --- | --- |
-| Feature flag | `admin_upsert_flag` | `GET /platform/config` → `flags` (present when on, absent when off) |
-| Announcement | `admin_upsert_announcement` | `GET /platform/config` → `announcements` |
-| Application version / minimum | `admin_set_setting` (`desktop_versions`) | `GET /platform/config` → `desktop` |
-| Maintenance mode | `admin_set_setting` (`maintenance`) | `POST /auth/request` → `503 maintenance` carrying the admin's own message, while an administrator still gets `200` |
-| Account status | `admin_set_user_status` | `GET /downloads/latest` → `200` → `403` → `200` |
-| Release | `admin_list_releases` | `GET /downloads/latest` → the published version |
-| Audit trail | all of the above | `admin_audit_log` contains each action, and no key/hash material |
+| Feature flag | `POST /admin/flags` | `GET /platform/config` → `flags` (present when on, absent when off) |
+| Announcement | `POST /admin/announcements` | `GET /platform/config` → `announcements` |
+| Application version / minimum | `POST /admin/settings` (`desktop_versions`) | `GET /platform/config` → `desktop` |
+| Maintenance mode | `POST /admin/settings` (`maintenance`) | `POST /auth/request` → `503 maintenance` carrying the admin's own message, while an administrator still gets `200` |
+| Account status | `POST /admin/users/:id/status` | `GET /downloads/latest` → `200` → `403` → `200` |
+| Release | `GET /admin/releases` | `GET /downloads/latest` → the published version |
+| Audit trail | all of the above | `GET /admin/audit` contains each action, and no key/hash material |
+
+Before it changes anything, `verify:admin` probes every route above with its ordinary
+throwaway session: an existing route answers `403`, a route that has been renamed or removed
+answers `404`, and the run stops rather than reporting fifteen failures that describe the
+script. `tests/adminRouteParity.test.ts` makes the same guarantee without a deployment — it
+extracts the routes named by both verification scripts and asserts the admin router mounts
+each one, and that the retired `admin/rpc` endpoint is still gone.
 
 It restores every `system_settings` value it touched and prints the restored rows, so a run
-leaves no switch flipped. Both scripts refuse to run without `DATABASE_URL`.
+leaves no switch flipped. `verify:admin` needs `DATABASE_URL`; `verify:auth` needs it only
+for `--with-write`.
 
 `npm run smoke` passes/fails per check and exits non-zero on any failure. Expected
 shape of a healthy API:
@@ -69,7 +77,7 @@ shape of a healthy API:
 | `GET /health` | `200 {ok:true, service:"alpha-platform-api", branch:"production"}` |
 | `GET /platform/config` | `401 unauthorized` |
 | `GET /gateway/models` | `401 unauthorized` |
-| `POST /admin/rpc` | `401 unauthorized` |
+| `GET /admin/overview` | `401 unauthorized` |
 | `POST /auth/request` with a malformed address | `400 invalid_email` (validation runs before any mail) |
 | CORS probe from a foreign origin | must **not** reflect that origin — a reflection means `ALLOWED_ORIGINS` is unset/`*` |
 | `POST /auth/request` with `--email` | `200` with **no** `devCode` / `devMagicToken` in the body |

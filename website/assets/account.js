@@ -22,9 +22,19 @@ const els = {
   signedOut: document.querySelector('[data-view="signed-out"]'),
   signedIn: document.querySelector('[data-view="signed-in"]'),
   providers: document.querySelector('[data-providers]'),
-  emailForm: document.querySelector('[data-email-form]'),
-  emailInput: document.querySelector('#account-email'),
-  emailSubmit: document.querySelector('[data-email-submit]'),
+  providerDivider: document.querySelector('[data-provider-divider]'),
+  authForm: document.querySelector('[data-auth-form]'),
+  authEmail: document.querySelector('#auth-email'),
+  authPassword: document.querySelector('#auth-password'),
+  authSubmit: document.querySelector('[data-auth-submit]'),
+  passwordToggle: document.querySelector('[data-password-toggle]'),
+  forgot: document.querySelector('[data-forgot]'),
+  emailLink: document.querySelector('[data-email-link]'),
+  resetForm: document.querySelector('[data-reset-form]'),
+  resetLede: document.querySelector('[data-reset-lede]'),
+  resetCode: document.querySelector('#reset-code'),
+  resetPassword: document.querySelector('#reset-password'),
+  resetSubmit: document.querySelector('[data-reset-submit]'),
   codeForm: document.querySelector('[data-code-form]'),
   codeInput: document.querySelector('#account-code'),
   codeSubmit: document.querySelector('[data-code-submit]'),
@@ -48,19 +58,21 @@ const els = {
   downloadLink: document.querySelector('[data-download-link]')
 }
 
-// `?mode=signup` frames the same passwordless flow as account creation. There is
-// no separate endpoint to call: the API provisions the account on the first
-// verified sign-in, so arriving from a "Sign up" link only changes what the card
-// says and which way the toggle under it points.
-if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
+// Which endpoint the bar posts to. `/account?mode=signup` is creation, everything
+// else is sign-in; both are the same account and the same session, so the toggle
+// only reframes the card.
+const MODE = new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin'
+
+if (MODE === 'signup') {
   document.title = 'Create an account · Alpha AI Workspace'
   if (els.cardTitle) els.cardTitle.textContent = 'Create your account'
   if (els.cardLede) {
     els.cardLede.innerHTML =
-      'Create your Alpha account with Google, GitHub or your email — no password needed. ' +
-      'Already have one? <a data-mode-link href="/account">Sign in</a>.'
+      'Choose an email address and a password. Already have an account? ' +
+      '<a href="/account">Sign in</a> instead.'
   }
-  if (els.emailSubmit) els.emailSubmit.textContent = 'Email me a sign-up link'
+  if (els.authSubmit) els.authSubmit.textContent = 'Create account'
+  if (els.authPassword) els.authPassword.autocomplete = 'new-password'
 }
 
 // The dashboard sends visitors here when there is no session (`?next=app`), so
@@ -71,7 +83,7 @@ if (new URLSearchParams(window.location.search).get('next') === 'app') {
   if (els.pageSub) {
     els.pageSub.textContent =
       'Your dashboard, plan, usage and installer are behind your Alpha account. Sign in or ' +
-      'create one — it takes a moment and there is no password.'
+      'create one — it takes a moment.'
   }
 }
 
@@ -84,7 +96,7 @@ if (new URLSearchParams(window.location.search).get('next') === 'download') {
   if (els.pageSub) {
     els.pageSub.textContent =
       'The Windows installer is served to signed-in Alpha accounts. Sign in or create one — ' +
-      'it takes a moment and there is no password.'
+      'it takes a moment.'
   }
   if (els.cardTitle && !els.cardTitle.textContent.startsWith('Create')) {
     els.cardTitle.textContent = 'Sign in to continue'
@@ -148,6 +160,11 @@ const ERROR_TEXT = {
   github_not_configured: 'GitHub sign-in is not enabled on this deployment yet.',
   maintenance: 'Alpha is in maintenance mode right now. Please try again shortly.',
   invalid_email: 'That email address does not look right.',
+  invalid_password: 'That password is not correct.',
+  current_required: 'Enter your current password to replace it.',
+  email_unverified:
+    'Confirm your email address first — use the code we sent, or ask for a new one below.',
+  too_many_attempts: 'Too many attempts. Wait a few minutes and try again.',
   expired: 'That code has expired. Request a new one.',
   too_many: 'Too many attempts. Wait a moment and request a new code.',
   too_many_requests: 'Too many sign-in emails have been asked for. Wait a few minutes, then request one more.',
@@ -422,8 +439,8 @@ async function renderProviders() {
     // drops back to what the page can actually offer.
     if (els.cardLede) {
       els.cardLede.textContent =
-        'Enter your email address and we will send a six-digit code and a one-tap ' +
-        'sign-in link. New to Alpha? It creates the account.'
+        'Enter your email address and password. If you would rather not use a password, ' +
+        'a six-digit code and a one-tap sign-in link work just as well.'
     }
     setStatus(
       'Could not reach the sign-in service from this page. Check your connection and reload — ' +
@@ -433,16 +450,17 @@ async function renderProviders() {
     return
   }
 
+  // GitHub first, then Google: the order a visitor is most likely to have here.
   const wanted = [
-    {
-      key: 'google',
-      label: 'Continue with Google',
-      svg: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.06-1.36-.18-2H12v3.79h5.4a4.62 4.62 0 0 1-2 3.03v2.51h3.23c1.89-1.74 2.97-4.3 2.97-7.33Z"/><path d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.23-2.51c-.9.6-2.05.96-3.39.96-2.6 0-4.8-1.76-5.59-4.12H3.08v2.59A10 10 0 0 0 12 22Z"/><path d="M6.41 13.9a6 6 0 0 1 0-3.8V7.51H3.08a10 10 0 0 0 0 8.98l3.33-2.59Z"/><path d="M12 5.98c1.47 0 2.79.5 3.83 1.5l2.86-2.86C16.95 2.99 14.7 2 12 2A10 10 0 0 0 3.08 7.51l3.33 2.59C7.2 7.74 9.4 5.98 12 5.98Z"/></svg>'
-    },
     {
       key: 'github',
       label: 'Continue with GitHub',
       svg: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.94c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.36-3.88-1.36-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.75.4-1.27.73-1.56-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>'
+    },
+    {
+      key: 'google',
+      label: 'Continue with Google',
+      svg: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.06-1.36-.18-2H12v3.79h5.4a4.62 4.62 0 0 1-2 3.03v2.51h3.23c1.89-1.74 2.97-4.3 2.97-7.33Z"/><path d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.23-2.51c-.9.6-2.05.96-3.39.96-2.6 0-4.8-1.76-5.59-4.12H3.08v2.59A10 10 0 0 0 12 22Z"/><path d="M6.41 13.9a6 6 0 0 1 0-3.8V7.51H3.08a10 10 0 0 0 0 8.98l3.33-2.59Z"/><path d="M12 5.98c1.47 0 2.79.5 3.83 1.5l2.86-2.86C16.95 2.99 14.7 2 12 2A10 10 0 0 0 3.08 7.51l3.33 2.59C7.2 7.74 9.4 5.98 12 5.98Z"/></svg>'
     }
   ]
 
@@ -451,12 +469,14 @@ async function renderProviders() {
     if (summary[provider.key] !== true) continue
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'btn primary provider-btn'
+    button.className = 'btn provider-btn'
     button.innerHTML = `${provider.svg}<span>${provider.label}</span>`
     button.addEventListener('click', () => startProvider(provider.key))
     els.providers.append(button)
   }
-  els.providers.hidden = els.providers.children.length === 0
+  const any = els.providers.children.length > 0
+  els.providers.hidden = !any
+  if (els.providerDivider) els.providerDivider.hidden = !any
 }
 
 /**
@@ -473,16 +493,172 @@ function startProvider(provider) {
   window.location.assign(url)
 }
 
-function bindEmailForm() {
-  if (!els.emailForm) return
-  els.emailForm.addEventListener('submit', async (event) => {
+/** The address entered in the bar, trimmed. One input feeds every flow. */
+function emailValue() {
+  return els.authEmail && els.authEmail.value ? els.authEmail.value.trim() : ''
+}
+
+function setBusy(button, busy) {
+  if (button) button.disabled = busy
+}
+
+/** Show/hide the password without losing the caret or the field's contents. */
+function bindPasswordToggle() {
+  if (!els.passwordToggle || !els.authPassword) return
+  els.passwordToggle.addEventListener('click', () => {
+    const show = els.authPassword.type === 'password'
+    els.authPassword.type = show ? 'text' : 'password'
+    els.passwordToggle.textContent = show ? 'Hide' : 'Show'
+    els.passwordToggle.setAttribute('aria-pressed', String(show))
+    els.passwordToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password')
+    els.authPassword.focus({ preventScroll: true })
+  })
+}
+
+/**
+ * The password bar. Sign-in posts straight to `/auth/password`; sign-up posts to
+ * `/auth/register`, which answers 202 and sends a code, so the next honest step
+ * is the code form — not a redirect that would imply a session we do not have.
+ */
+function bindAuthForm() {
+  if (!els.authForm) return
+  els.authForm.addEventListener('submit', async (event) => {
     event.preventDefault()
-    const email = (els.emailInput && els.emailInput.value ? els.emailInput.value : '').trim()
+    const email = emailValue()
+    const password = els.authPassword && els.authPassword.value ? els.authPassword.value : ''
+    if (!email || !password) {
+      setStatus(
+        MODE === 'signup' ? 'Enter an email address and a password.' : 'Enter your email address and password.',
+        'error'
+      )
+      return
+    }
+    setBusy(els.authSubmit, true)
+    setStatus(MODE === 'signup' ? 'Creating your account…' : 'Signing you in…', '')
+    try {
+      if (MODE === 'signup') {
+        const res = await api('/auth/register', { method: 'POST', body: { email, password } })
+        if (res.status === 202 && res.ok) {
+          const data = res.json || {}
+          if (els.codeForm) els.codeForm.hidden = false
+          setStatus(
+            data.message || `Check ${email} for a six-digit code to finish setting up.`,
+            data.delivered === false ? 'error' : 'ok'
+          )
+          if (els.codeInput) els.codeInput.focus()
+          return
+        }
+        const code = res.json && res.json.error ? res.json.error.code : null
+        const message = res.json && res.json.error ? res.json.error.message : null
+        setStatus(errorText(code, message), 'error')
+        return
+      }
+
+      const res = await api('/auth/password', { method: 'POST', body: { email, password } })
+      if (res.ok && res.json && res.json.accessToken) {
+        adopt(res.json, email)
+        cleanUrl()
+        window.location.assign(dashboardUrl())
+        return
+      }
+      const code = res.json && res.json.error ? res.json.error.code : null
+      const message = res.json && res.json.error ? res.json.error.message : null
+      setStatus(errorText(code, message), 'error')
+    } catch (error) {
+      setStatus(
+        error && error.message === 'not_configured'
+          ? 'This site has no API address configured.'
+          : 'Could not reach the sign-in service. Check your connection and try again.',
+        'error'
+      )
+    } finally {
+      setBusy(els.authSubmit, false)
+    }
+  })
+}
+
+/** Forgot password: ask for a code, then reveal the reset form. */
+function bindForgot() {
+  if (!els.forgot) return
+  els.forgot.addEventListener('click', async () => {
+    const email = emailValue()
+    if (!email) {
+      setStatus('Enter your email address first, then choose “Forgot password”.', 'error')
+      if (els.authEmail) els.authEmail.focus()
+      return
+    }
+    setBusy(els.forgot, true)
+    setStatus('Sending a reset code…', '')
+    try {
+      const res = await api('/auth/password/forgot', { method: 'POST', body: { email } })
+      if (res.status === 202 && res.ok) {
+        if (els.resetForm) els.resetForm.hidden = false
+        if (els.resetCode) els.resetCode.value = ''
+        if (els.resetPassword) els.resetPassword.value = ''
+        if (els.resetLede) {
+          els.resetLede.textContent = `If ${email} has an account with a password, a six-digit code is on its way. Enter it below with a new password.`
+        }
+        setStatus(res.json && res.json.message ? res.json.message : 'Check your email for the reset code.', 'ok')
+        if (els.resetCode) els.resetCode.focus()
+        return
+      }
+      const code = res.json && res.json.error ? res.json.error.code : null
+      const message = res.json && res.json.error ? res.json.error.message : null
+      setStatus(errorText(code, message), 'error')
+    } catch {
+      setStatus('Could not reach the sign-in service. Check your connection and try again.', 'error')
+    } finally {
+      setBusy(els.forgot, false)
+    }
+  })
+}
+
+/** Complete a reset: the code and the new password travel together. */
+function bindResetForm() {
+  if (!els.resetForm) return
+  els.resetForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const email = emailValue()
+    const code = els.resetCode && els.resetCode.value ? els.resetCode.value.trim() : ''
+    const password = els.resetPassword && els.resetPassword.value ? els.resetPassword.value : ''
+    if (!email || !code || !password) {
+      setStatus('Enter the code from your email and a new password.', 'error')
+      return
+    }
+    setBusy(els.resetSubmit, true)
+    setStatus('Setting your new password…', '')
+    try {
+      const res = await api('/auth/password/reset', { method: 'POST', body: { email, code, password } })
+      if (res.ok) {
+        if (els.resetForm) els.resetForm.hidden = true
+        if (els.resetPassword) els.resetPassword.value = ''
+        if (els.authPassword) {
+          els.authPassword.value = ''
+          els.authPassword.focus()
+        }
+        setStatus('Password updated. Sign in with your new password.', 'ok')
+        return
+      }
+      const errCode = res.json && res.json.error ? res.json.error.code : null
+      const message = res.json && res.json.error ? res.json.error.message : null
+      setStatus(errorText(errCode, message), 'error')
+    } catch {
+      setStatus('Could not reach the sign-in service. Check your connection and try again.', 'error')
+    } finally {
+      setBusy(els.resetSubmit, false)
+    }
+  })
+}
+
+function bindEmailLink() {
+  if (!els.emailLink) return
+  els.emailLink.addEventListener('click', async () => {
+    const email = emailValue()
     if (!email) {
       setStatus('Enter your email address first.', 'error')
       return
     }
-    if (els.emailSubmit) els.emailSubmit.disabled = true
+    setBusy(els.emailLink, true)
     setStatus('Sending your sign-in link…', '')
     try {
       const res = await api('/auth/request', { method: 'POST', body: { email } })
@@ -521,7 +697,7 @@ function bindEmailForm() {
         'error'
       )
     } finally {
-      if (els.emailSubmit) els.emailSubmit.disabled = false
+      setBusy(els.emailLink, false)
     }
   })
 }
@@ -530,7 +706,7 @@ function bindCodeForm() {
   if (!els.codeForm) return
   els.codeForm.addEventListener('submit', async (event) => {
     event.preventDefault()
-    const email = (els.emailInput && els.emailInput.value ? els.emailInput.value : '').trim()
+    const email = emailValue()
     const code = (els.codeInput && els.codeInput.value ? els.codeInput.value : '').trim()
     if (!email || !code) {
       setStatus('Enter the email address and the six-digit code.', 'error')
@@ -595,8 +771,12 @@ function bindSignOut() {
       if (els.downloadVersion) els.downloadVersion.textContent = ''
       if (els.downloadLink) els.downloadLink.removeAttribute('href')
       if (els.codeForm) els.codeForm.hidden = true
-      if (els.emailInput) els.emailInput.value = ''
+      if (els.resetForm) els.resetForm.hidden = true
+      if (els.authEmail) els.authEmail.value = ''
+      if (els.authPassword) els.authPassword.value = ''
       if (els.codeInput) els.codeInput.value = ''
+      if (els.resetCode) els.resetCode.value = ''
+      if (els.resetPassword) els.resetPassword.value = ''
       await renderProviders()
       show('signedOut')
       setStatus('Signed out.', 'ok')
@@ -617,7 +797,11 @@ async function init() {
   const magicToken = params.get('token')
   const magicEmail = params.get('email')
 
-  bindEmailForm()
+  bindAuthForm()
+  bindEmailLink()
+  bindForgot()
+  bindResetForm()
+  bindPasswordToggle()
   bindCodeForm()
   bindSignOut()
 

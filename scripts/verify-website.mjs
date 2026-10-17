@@ -112,6 +112,48 @@ if (existsSync(downloadPage)) {
   }
 }
 
+// The account card must actually offer the password path, in the promised order:
+// the email + password bar first, then GitHub, then Google. These are checked in
+// the client that renders them rather than in markup, because the provider
+// buttons are built from `/auth/providers`.
+const accountJs = join(root, 'assets', 'account.js')
+if (existsSync(accountJs)) {
+  const js = readFileSync(accountJs, 'utf8')
+  for (const needle of ['/auth/register', '/auth/password', '/auth/password/forgot', '/auth/password/reset']) {
+    if (!js.includes(needle)) problems.push(`assets/account.js: no call to ${needle}`)
+  }
+  const github = js.indexOf("key: 'github'")
+  const google = js.indexOf("key: 'google'")
+  if (github === -1 || google === -1) {
+    problems.push('assets/account.js: GitHub and Google provider buttons are not both declared')
+  } else if (github > google) {
+    problems.push('assets/account.js: GitHub must be offered before Google')
+  }
+}
+
+const accountPage = join(root, 'account.html')
+if (existsSync(accountPage)) {
+  const html = readFileSync(accountPage, 'utf8')
+  for (const needle of ['data-auth-form', 'id="auth-email"', 'id="auth-password"', 'data-forgot', 'data-reset-form']) {
+    if (!html.includes(needle)) problems.push(`account.html: missing the password path (${needle})`)
+  }
+}
+
+// Claims that a password exists nowhere on the product. They were true before
+// member passwords shipped and are now the kind of marketing copy that makes a
+// support ticket; the site must not regress into them.
+const FALSE_CLAIM = /no password to remember|passwordless|no password needed|there is no password/i
+for (const file of [join(root, 'assets', 'dashboard.js'), join(root, 'assets', 'account.js')]) {
+  if (!existsSync(file)) continue
+  const text = readFileSync(file, 'utf8')
+  const hit = text.match(FALSE_CLAIM)
+  if (hit) problems.push(`${path.relative(root, file)}: still claims "${hit[0]}"`)
+}
+for (const page of pages) {
+  const hit = readFileSync(page, 'utf8').match(FALSE_CLAIM)
+  if (hit) problems.push(`${page.slice(root.length + 1)}: still claims "${hit[0]}"`)
+}
+
 const dirEntries = readdirSync(root)
 for (const required of ['index.html', 'download.html', 'account.html', 'app.html', 'assets']) {
   if (!dirEntries.includes(required)) problems.push(`website/: missing required entry "${required}"`)

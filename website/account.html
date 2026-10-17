@@ -76,35 +76,94 @@
         <div data-view="signed-out" hidden>
           <div class="plan-name" data-card-title>Sign in</div>
 
-          <!-- One flow serves both directions: the API provisions the account on the
-               first verified sign-in, so the toggle only reframes the same form. -->
           <p class="muted" data-card-lede>
-            Sign in with Google, GitHub or your email. New to Alpha?
-            <a data-mode-link href="/account?mode=signup">Create an account</a> — it uses the
-            same methods.
+            Sign in with your email and password. New to Alpha?
+            <a data-mode-link href="/account?mode=signup">Create an account</a> — it takes a
+            moment.
           </p>
 
-          <div class="provider-list" data-providers hidden></div>
-
-          <form class="email-form" data-email-form novalidate>
-            <label for="account-email">Email address</label>
-            <div class="field-row">
+          <!-- The password bar. Email and password travel together so one submit
+               covers both directions; which endpoint it calls depends on the mode.
+               The server is the authority on the password rules, so the hint below
+               describes them rather than inventing stricter ones here. -->
+          <form class="auth-form" data-auth-form novalidate>
+            <div class="auth-bar">
+              <label class="sr-only" for="auth-email">Email address</label>
               <input
-                id="account-email"
+                id="auth-email"
                 name="email"
                 type="email"
                 autocomplete="email"
                 inputmode="email"
                 placeholder="you@example.com"
+                aria-describedby="auth-password-hint"
                 required
               />
-              <button class="btn primary" type="submit" data-email-submit>
-                Email me a sign-in link
-              </button>
+              <div class="auth-secret">
+                <label class="sr-only" for="auth-password">Password</label>
+                <input
+                  id="auth-password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="Your password"
+                  aria-describedby="auth-password-hint"
+                  required
+                />
+                <button
+                  class="reveal"
+                  type="button"
+                  data-password-toggle
+                  aria-label="Show password"
+                  aria-pressed="false"
+                >
+                  Show
+                </button>
+              </div>
+              <button class="btn primary auth-submit" type="submit" data-auth-submit>Sign in</button>
             </div>
-            <p class="muted">
-              We send a six-digit code and a one-tap link. No password to remember.
+            <p class="auth-hint" id="auth-password-hint">
+              12+ characters. <button class="linkish" type="button" data-forgot>Forgot password?</button>
             </p>
+          </form>
+
+          <div class="auth-divider" data-provider-divider hidden><span>or continue with</span></div>
+          <div class="provider-list" data-providers hidden></div>
+
+          <p class="auth-alt">
+            Prefer no password?
+            <button class="linkish" type="button" data-email-link>Email me a sign-in link</button>
+          </p>
+
+          <!-- Password recovery: request a code, then set a new password with it. -->
+          <form class="auth-form reset-form" data-reset-form hidden novalidate>
+            <div class="plan-name">Reset your password</div>
+            <p class="muted" data-reset-lede>
+              We sent a six-digit code to your email. Enter it with a new password.
+            </p>
+            <div class="auth-bar">
+              <label class="sr-only" for="reset-code">Six-digit code</label>
+              <input
+                id="reset-code"
+                name="code"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="6"
+                placeholder="000000"
+              />
+              <div class="auth-secret">
+                <label class="sr-only" for="reset-password">New password</label>
+                <input
+                  id="reset-password"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="New password"
+                />
+              </div>
+              <button class="btn primary" type="submit" data-reset-submit>Set password</button>
+            </div>
           </form>
 
           <!-- Revealed once a code has been requested, so signing in never depends

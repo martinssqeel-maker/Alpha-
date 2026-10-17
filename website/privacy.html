@@ -115,6 +115,12 @@
           sign-in.
         </li>
         <li>
+          <strong>Passwords.</strong> If you sign up with an email address and a password, we store
+          only a salted scrypt <strong>digest</strong> of it — never the password itself, and it is
+          never written to logs, emails or audit records. Password reset uses the same emailed
+          code as sign-in: the code is stored hashed, expires quickly and can be used once.
+        </li>
+        <li>
           <strong>Sign-in identities.</strong> If you sign in with Google or GitHub, we store that
           provider's stable user identifier for you and the email address it reports. We never
           receive or store your password at those providers.

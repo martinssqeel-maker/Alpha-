@@ -735,7 +735,7 @@ function viewAccount() {
       h(
         'p',
         { class: 'micro' },
-        'This website and the desktop app share one account. Member accounts sign in with a one-time code or a linked provider; passwords are only used by administrators at /admin.'
+        'This website and the desktop app share one account. Sign in with your email and password, a one-time code, or GitHub/Google when linked — it is the same account everywhere.'
       )
     ),
     panel(
@@ -865,14 +865,80 @@ function viewSecurity() {
       h(
         'p',
         { class: 'muted', style: 'margin-top:0' },
-        'Member accounts are passwordless: a one-time code sent to your email, or Google/GitHub when linked. There is no password on this account to change here.'
+        state.account && state.account.hasPassword
+          ? 'Change the password you use here and in the desktop app. Changing it signs your other devices out.'
+          : 'Set a password to sign in without waiting for an email. The emailed code keeps working either way.'
       ),
-      state.account && state.account.hasPassword
-        ? h('p', { class: 'callout' }, 'This account also holds an administrator password, managed with the operator tooling.')
-        : null
+      passwordForm(Boolean(state.account && state.account.hasPassword))
     )
   )
   return frag
+}
+
+/**
+ * Set or change the account password.
+ *
+ * The current-password field is only required by the API when a credential
+ * already exists, so it is always shown — labelled with what it is for — rather
+ * than hidden behind a state we would have to guess. A change revokes every other
+ * session server-side, which is why the confirmation says so.
+ */
+function passwordForm(hasPassword) {
+  const current = h('input', {
+    type: 'password',
+    autocomplete: 'current-password',
+    placeholder: hasPassword ? 'Current password' : 'Current password (if you have one)',
+    'aria-label': hasPassword ? 'Current password' : 'Current password, if you have one'
+  })
+  const next = h('input', {
+    type: 'password',
+    autocomplete: 'new-password',
+    placeholder: 'New password (12+ characters)',
+    'aria-label': 'New password'
+  })
+  const submit = h('button', { class: 'btn primary', type: 'button' }, hasPassword ? 'Change password' : 'Set password')
+
+  submit.addEventListener('click', async () => {
+    if (!next.value) {
+      setStatus('Enter the new password first.', 'error')
+      next.focus()
+      return
+    }
+    submit.disabled = true
+    setStatus('Saving your password…', '')
+    try {
+      const res = await api('/auth/password/change', {
+        method: 'POST',
+        token: state.session.accessToken,
+        body: { currentPassword: current.value, newPassword: next.value }
+      })
+      if (res.status === 401) {
+        sessionEnded()
+        return
+      }
+      if (!res.ok) {
+        setStatus((res.json && res.json.error && res.json.error.message) || 'That password could not be saved.', 'error')
+        return
+      }
+      current.value = ''
+      next.value = ''
+      if (state.account) state.account.hasPassword = true
+      const revoked = res.json && typeof res.json.revokedOthers === 'number' ? res.json.revokedOthers : 0
+      setStatus(
+        res.json && res.json.replaced
+          ? `Password changed.${revoked ? ` ${revoked} other session${revoked === 1 ? '' : 's'} signed out.` : ''}`
+          : 'Password set. You can sign in with it from now on.',
+        'ok'
+      )
+      renderRoute()
+    } catch {
+      setStatus('Could not reach the account service. Check your connection and try again.', 'error')
+    } finally {
+      submit.disabled = false
+    }
+  })
+
+  return h('div', { class: 'field-row' }, current, next, submit)
 }
 
 function revokeButton(session) {

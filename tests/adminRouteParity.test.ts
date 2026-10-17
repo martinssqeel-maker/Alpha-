@@ -34,8 +34,12 @@ function concrete(pathname: string): string {
   return pathname.replace(/:id\b/g, '00000000-0000-0000-0000-000000000000')
 }
 
-async function adminApp() {
-  const { adminRoutes } = await import('../platform/api/admin')
+// Imported once, at collection time: importing the admin router inside the tests
+// charged whichever test ran first for compiling the whole API module graph, which
+// takes seconds under parallel load and used to time out a passing test.
+const { adminRoutes } = await import('../platform/api/admin')
+
+function adminApp() {
   const app = new Hono()
   app.route('/admin', adminRoutes)
   return app
@@ -52,8 +56,8 @@ describe('verify:admin drives routes the admin API really serves', () => {
     }
   })
 
-  it('every route the script names is mounted on the admin router', async () => {
-    const app = await adminApp()
+  it('every route the script names is mounted on the admin router', () => {
+    const app = adminApp()
     const mounted = new Set(
       app.routes.map((route) => `${route.method} ${route.path.replace(/:id\b/g, ':param')}`)
     )
@@ -64,7 +68,7 @@ describe('verify:admin drives routes the admin API really serves', () => {
   })
 
   it('every route the script names refuses an anonymous caller', async () => {
-    const app = await adminApp()
+    const app = adminApp()
     for (const route of routesInScript()) {
       const res = await app.request(concrete(route.path), {
         method: route.method,
@@ -75,8 +79,8 @@ describe('verify:admin drives routes the admin API really serves', () => {
     }
   })
 
-  it('the retired RPC endpoint is not mounted at all', async () => {
-    const app = await adminApp()
+  it('the retired RPC endpoint is not mounted at all', () => {
+    const app = adminApp()
     const paths = app.routes.map((route) => route.path)
     expect(paths).not.toContain('/admin/rpc')
   })

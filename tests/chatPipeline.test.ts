@@ -6,11 +6,13 @@
  * below it — `ChatService`, the real tool dispatch table, the real conversation
  * store, the real permission resolver — is the production code path.
  *
- * Note on the two latency tests: they exist to record *what can overlap*. The
- * git tools await a child process and therefore genuinely run together; the file
- * tools are synchronous `readFileSync` calls and cannot overlap no matter how
- * they are scheduled, so the parallel figure there is a property of one worker
- * thread, not of this orchestration.
+ * Note on the two overlap tests: they record *what can overlap*. The git tools
+ * await a child process and therefore genuinely run together, so that test counts
+ * how many calls were in flight at once rather than timing them — elapsed time on
+ * a loaded machine cannot tell "started together" from "started in sequence".
+ * The file tools are synchronous `readFileSync` calls and cannot overlap however
+ * they are scheduled, so there the serialised total is the proof, and a lower
+ * bound on it does not depend on how busy the machine is.
  */
 import path from 'node:path'
 import fs from 'node:fs'
@@ -44,6 +46,8 @@ interface Harness {
   events: ChatEvent[]
   activities: ActivityItem[]
   metrics: () => ChatMetrics | undefined
+  /** The most git tool calls that were ever in flight at the same moment. */
+  gitOverlap: () => number
   waitFor: (type: ChatEvent['type'], timeoutMs?: number) => Promise<ChatEvent>
 }
 
@@ -92,17 +96,33 @@ async function harness(options: {
     resolveProject: (id: string) => ({ id, name: 'stub', rootPath: tmpRoot })
   }
 
-  const gitStub = {
-    status: async () => {
-      calls.push('get_git_status')
-      await sleep(options.gitDelayMs ?? 0)
-      return { isRepo: true, branch: 'main', files: [], remotes: [] }
-    },
-    diff: async () => {
-      calls.push('get_git_diff')
-      await sleep(options.gitDelayMs ?? 0)
-      return 'diff --git a/x b/x'
+  // Overlap is counted as it happens rather than inferred from elapsed time: two
+  // 120ms awaits measure ~350ms on a loaded machine, which says nothing about
+  // whether they ran together.
+  let gitInFlight = 0
+  let gitPeak = 0
+  const track = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    calls.push(name)
+    gitInFlight++
+    gitPeak = Math.max(gitPeak, gitInFlight)
+    try {
+      return await work()
+    } finally {
+      gitInFlight--
     }
+  }
+
+  const gitStub = {
+    status: () =>
+      track('get_git_status', async () => {
+        await sleep(options.gitDelayMs ?? 0)
+        return { isRepo: true, branch: 'main', files: [], remotes: [] }
+      }),
+    diff: () =>
+      track('get_git_diff', async () => {
+        await sleep(options.gitDelayMs ?? 0)
+        return 'diff --git a/x b/x'
+      })
   }
 
   const editsStub = {
@@ -165,6 +185,7 @@ async function harness(options: {
       const event = events.find((e) => e.type === 'metrics')
       return event && event.type === 'metrics' ? event.metrics : undefined
     },
+    gitOverlap: () => gitPeak,
     waitFor
   }
 }
@@ -284,7 +305,6 @@ describe('tool orchestration', () => {
       gitDelayMs: 120,
       toolCalls: [[call('get_git_status', {}, 'g1'), call('get_git_diff', {}, 'g2')], []]
     })
-    const started = Date.now()
     h.chat.send({
       conversationId: h.conversationId,
       providerId: 'fake',
@@ -294,13 +314,13 @@ describe('tool orchestration', () => {
       text: 'git state please'
     })
     await h.waitFor('done')
-    const elapsed = Date.now() - started
 
     expect(calls).toContain('get_git_status')
     expect(calls).toContain('get_git_diff')
-    // Two 120ms awaits. Started together they finish in ~120ms; serialised they
-    // would need ~240ms. The bound is generous because CI machines are noisy.
-    expect(elapsed).toBeLessThan(230)
+    // The claim is overlap, so overlap is what is measured: both stubs were in
+    // flight at the same moment. Serialised orchestration would have peaked at 1,
+    // however fast the machine is.
+    expect(h.gitOverlap()).toBe(2)
   })
 
   it('cannot overlap synchronous file reads, and says so by measurement', async () => {

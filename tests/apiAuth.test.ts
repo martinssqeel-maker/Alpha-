@@ -7,8 +7,14 @@ import { describe, expect, it } from 'vitest'
 process.env.AUTH_JWT_SECRET = 'test-only-secret-please-never-deploy-this-value'
 process.env.AUTH_ACCESS_TTL_MIN = '60'
 
-async function protectedApp() {
-  const { requireAuth } = await import('../platform/api/middleware')
+// Imported once, at collection time. Importing them inside each test charged that
+// test for compiling the module graph, which takes seconds under parallel load and
+// used to fail a passing test on the 5s default budget.
+const { requireAuth } = await import('../platform/api/middleware')
+const { signAccessToken } = await import('../platform/api/jwt')
+const { SignJWT } = await import('jose')
+
+function protectedApp() {
   const app = new Hono()
   app.use('*', requireAuth)
   app.get('/private', (c) => c.json({ ok: true, userId: c.get('userId'), email: c.get('email') }))
@@ -34,7 +40,6 @@ describe('API authentication middleware', () => {
 
   it('refuses a token signed with a different secret', async () => {
     const app = await protectedApp()
-    const { SignJWT } = await import('jose')
     const forged = await new SignJWT({ email: 'attacker@example.invalid', sid: 'x', role: 'authenticated' })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject('11111111-1111-1111-1111-111111111111')
@@ -48,7 +53,6 @@ describe('API authentication middleware', () => {
 
   it('refuses an expired token', async () => {
     const app = await protectedApp()
-    const { SignJWT } = await import('jose')
     const expired = await new SignJWT({ email: 'old@example.invalid', sid: 'x', role: 'authenticated' })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject('22222222-2222-2222-2222-222222222222')
@@ -63,7 +67,6 @@ describe('API authentication middleware', () => {
 
   it('accepts a validly signed session and exposes the caller to the handler', async () => {
     const app = await protectedApp()
-    const { signAccessToken } = await import('../platform/api/jwt')
     const token = await signAccessToken({
       userId: '33333333-3333-3333-3333-333333333333',
       email: 'member@example.invalid',
@@ -80,7 +83,6 @@ describe('API authentication middleware', () => {
   it('protects mutating verbs as well as reads', async () => {
     const app = await protectedApp()
     expect((await app.request('/private', { method: 'POST' })).status).toBe(401)
-    const { signAccessToken } = await import('../platform/api/jwt')
     const token = await signAccessToken({
       userId: '44444444-4444-4444-4444-444444444444',
       email: 'member@example.invalid',

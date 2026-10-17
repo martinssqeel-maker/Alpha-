@@ -16,7 +16,10 @@ app.use('*', cors({
     return allowed.includes(origin) ? origin : (allowed[0] ?? null)
   },
   allowHeaders: ['Authorization', 'Content-Type'],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  // PATCH and DELETE are used by the website dashboard (profile, sessions). Omitting
+  // them made the browser's preflight fail, so those controls could never reach the
+  // API at all — the request was blocked before the handler's own checks ran.
+  allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   exposeHeaders: ['Content-Type'],
   maxAge: 86400
 }))

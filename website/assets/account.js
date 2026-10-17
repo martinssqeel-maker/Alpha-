@@ -63,6 +63,18 @@ if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
   if (els.emailSubmit) els.emailSubmit.textContent = 'Email me a sign-up link'
 }
 
+// The dashboard sends visitors here when there is no session (`?next=app`), so
+// the page explains why they were redirected instead of looking like a detour.
+if (new URLSearchParams(window.location.search).get('next') === 'app') {
+  document.title = 'Sign in to your dashboard · Alpha AI Workspace'
+  if (els.pageTitle) els.pageTitle.textContent = 'Sign in to your dashboard'
+  if (els.pageSub) {
+    els.pageSub.textContent =
+      'Your dashboard, plan, usage and installer are behind your Alpha account. Sign in or ' +
+      'create one — it takes a moment and there is no password.'
+  }
+}
+
 // `/download` forwards here with `?next=download` because the installer is only
 // handed to a signed-in account. The page says why the visitor landed here
 // instead of showing a download they cannot have yet.
@@ -77,6 +89,18 @@ if (new URLSearchParams(window.location.search).get('next') === 'download') {
   if (els.cardTitle && !els.cardTitle.textContent.startsWith('Create')) {
     els.cardTitle.textContent = 'Sign in to continue'
   }
+}
+
+/**
+ * Where a just-authenticated visitor continues.
+ *
+ * The website account area is the sign-in surface; the dashboard is the product.
+ * Anything that finishes authentication here hands the visitor straight to it,
+ * keeping the download intent from `/download` when there is one.
+ */
+function dashboardUrl() {
+  const next = new URLSearchParams(window.location.search).get('next')
+  return next === 'download' ? '/app#downloads' : '/app'
 }
 
 /** The committed config.js supplies the API host; empty means "not configured". */
@@ -519,8 +543,7 @@ function bindCodeForm() {
       if (res.ok && res.json && res.json.accessToken) {
         adopt(res.json, email)
         cleanUrl()
-        await showSignedIn(res.json.email || email)
-        setStatus('You are signed in.', 'ok')
+        window.location.assign(dashboardUrl())
       } else {
         const errCode = res.json && res.json.error ? res.json.error.code : null
         const message = res.json && res.json.error ? res.json.error.message : null
@@ -613,11 +636,8 @@ async function init() {
     try {
       const res = await api('/auth/oauth/exchange', { method: 'POST', body: { code } })
       if (res.ok && res.json && res.json.accessToken) {
-        const session = adopt(res.json)
-        cleanUrl()
-        await renderProviders()
-        await showSignedIn(session.email)
-        setStatus('You are signed in.', 'ok')
+        adopt(res.json)
+        window.location.assign(dashboardUrl())
         return
       }
       const errCode = res.json && res.json.error ? res.json.error.code : null
@@ -641,11 +661,8 @@ async function init() {
         body: { email: magicEmail, token: magicToken }
       })
       if (res.ok && res.json && res.json.accessToken) {
-        const session = adopt(res.json, magicEmail)
-        cleanUrl()
-        await renderProviders()
-        await showSignedIn(session.email)
-        setStatus('You are signed in.', 'ok')
+        adopt(res.json, magicEmail)
+        window.location.assign(dashboardUrl())
         return
       }
       const errCode = res.json && res.json.error ? res.json.error.code : null

@@ -1,7 +1,7 @@
 # Alpha AI Workspace — website
 
-A dependency-free static site: marketing/landing page, a public download page, and
-the account page that signs users in.
+A dependency-free static site: marketing/landing page, a public download page, the
+account page that signs users in, and the authenticated account dashboard at `/app`.
 
 - **No framework or build step.** Plain HTML/CSS/JS.
 - **Never-stale download.** `assets/app.js` reads the latest GitHub Release from
@@ -22,7 +22,17 @@ the account page that signs users in.
   instead of pretending there is a second endpoint. Every page links to it —
   `Sign in` and `Sign up` actions in the header (both hidden below 620px, like the
   GitHub link) and `Sign in` / `Sign up` entries in the footer, so both stay
-  reachable on phones.
+  reachable on phones. Finishing a sign-in hands the browser to `/app`.
+- **Account dashboard.** `app.html` + `assets/dashboard.js` are the signed-in
+  product surface: overview, profile, security and sessions, usage, models,
+  downloads and help. Every figure is read from the API — `/platform/config`,
+  `/auth/me`, `/auth/sessions`, `/gateway/status`, `/gateway/activity` and
+  `/downloads/latest` — and a figure the API could not answer is shown as
+  unavailable, never as a zero. Without a session the page redirects to
+  `/account?next=app`; the API still enforces every call, so the redirect is
+  convenience rather than protection. Profile edits (`PATCH /auth/me`) and session
+  revocation (`DELETE /auth/sessions/:id`) go through the real endpoints, and a
+  revoked session stops opening the API on its next request.
 
 ## Files
 
@@ -31,10 +41,13 @@ website/
   index.html            landing page
   download.html         public download page (no sign-in)
   account.html          sign-in / sign-up and account page
+  app.html              authenticated dashboard (/app)
+  assets/dashboard.js   dashboard data loading, views and session controls
+  assets/app.css        dashboard shell, tiles, tables and chart
   privacy.html          public privacy policy (/privacy)
   terms.html            public terms of service (/terms)
   assets/styles.css     design system
-  assets/app.js         direct-download resolution + version/size hints + reveal animations
+  assets/app.js         landing-page behaviour (deliberately does not serve installers)
   assets/theme.js       applies the stored palette before first paint
   assets/download.js    fills the download page from the public GitHub Releases API
   assets/account.js     sign-in flows, session handling and the account view
@@ -46,7 +59,7 @@ website/
 
 ## Configuration
 
-Only the account page needs configuration: it reads the Alpha Cloud API host from the
+The account page and the dashboard both read the Alpha Cloud API host from the
 committed `config.js` (`window.ALPHA_PLATFORM.apiBaseUrl`). Regenerate it when the API
 host changes:
 
@@ -66,6 +79,9 @@ fails.
 2. `WEB_ACCOUNT_URL` must be this site's origin, so emailed sign-in links come back here.
 3. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (or the GitHub pair) are needed before that
    provider's button appears at all; without them the page shows only the email path.
+4. The API's CORS `allowMethods` must include `PATCH` and `DELETE`: the dashboard uses
+   both (profile updates, session revocation), and a browser preflight rejects them
+   before the request reaches a handler.
 
 ## Deploy to Vercel
 

@@ -5,6 +5,7 @@ import type { AppEnv } from './types'
 import { withContext } from './db'
 import { getEnv } from './env'
 import { requireAuth } from './middleware'
+import { requireLiveSession } from './sessions'
 import { loadPlatformConfig } from './platform'
 import { MAX_REQUEST_BYTES, MAX_OUTPUT_TOKENS, DEFAULT_OUTPUT_RESERVE, redact, reservationFor, upstreamFailure, estimateCostUsd } from './aiGuard'
 
@@ -27,7 +28,7 @@ export const gatewayRoutes = new Hono<AppEnv>()
 // `c.get('userId')`. The result: `userId` was always undefined, the config lookup
 // always returned null, and every request — signed in or not — was answered with
 // 402 `plan_required`. Shared inference could not have worked for anybody.
-gatewayRoutes.use('*', requireAuth)
+gatewayRoutes.use('*', requireAuth, requireLiveSession)
 
 /** Guards that exist to protect the company credential and the user's allowance. */
 const MAX_MESSAGES = 400
@@ -292,6 +293,95 @@ gatewayRoutes.get('/status', async (c) => {
       return res.rows[0]?.b ?? null
     }),
     usage: cfg?.usage ?? []
+  })
+})
+
+/**
+ * This account's own inference history, for the website dashboard.
+ *
+ * Read-only and scoped by the token's user id, so it can only ever describe the
+ * caller. Cost is what the gateway recorded when each request settled — an
+ * estimate from catalog pricing, not a provider invoice — and the response says
+ * so through `costBasis` rather than letting a UI present it as billing.
+ */
+gatewayRoutes.get('/activity', async (c) => {
+  const userId = c.get('userId')
+  const requested = Number.parseInt(c.req.query('days') ?? '30', 10)
+  const days = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 90) : 30
+
+  return withContext(userId, 'authenticated', async (q) => {
+    const totals = (
+      await q.query<{ requests: number; tokens: number; failed: number; cost: string | null }>(
+        `select count(*)::int as requests,
+                coalesce(sum(total_tokens), 0)::int as tokens,
+                count(*) filter (where status <> 'ok')::int as failed,
+                sum(cost_usd)::text as cost
+           from public.ai_requests
+          where user_id = $1 and created_at > now() - make_interval(days => $2::int)`,
+        [userId, days]
+      )
+    ).rows[0]
+
+    const daily = (
+      await q.query<{ day: string; requests: number; tokens: number; failed: number }>(
+        `select to_char(date_trunc('day', created_at), 'YYYY-MM-DD') as day,
+                count(*)::int as requests,
+                coalesce(sum(total_tokens), 0)::int as tokens,
+                count(*) filter (where status <> 'ok')::int as failed
+           from public.ai_requests
+          where user_id = $1 and created_at > now() - make_interval(days => $2::int)
+          group by 1 order by 1`,
+        [userId, days]
+      )
+    ).rows
+
+    const models = (
+      await q.query<{ modelId: string; providerId: string; requests: number; tokens: number }>(
+        `select model_id as "modelId", provider_code as "providerId",
+                count(*)::int as requests,
+                coalesce(sum(total_tokens), 0)::int as tokens
+           from public.ai_requests
+          where user_id = $1 and created_at > now() - make_interval(days => $2::int)
+          group by 1, 2 order by requests desc, tokens desc limit 10`,
+        [userId, days]
+      )
+    ).rows
+
+    const recent = (
+      await q.query<{
+        modelId: string
+        providerId: string
+        status: string
+        tokens: number | null
+        createdAt: string
+        durationMs: number | null
+        errorCode: string | null
+      }>(
+        `select model_id as "modelId", provider_code as "providerId", status,
+                total_tokens as tokens, created_at as "createdAt",
+                duration_ms as "durationMs", error_code as "errorCode"
+           from public.ai_requests
+          where user_id = $1
+          order by created_at desc limit 12`,
+        [userId]
+      )
+    ).rows
+
+    const cost = totals?.cost === null || totals?.cost === undefined ? null : Number(totals.cost)
+    return c.json({
+      ok: true,
+      days,
+      totals: {
+        requests: totals?.requests ?? 0,
+        tokens: totals?.tokens ?? 0,
+        failed: totals?.failed ?? 0,
+        estimatedCostUsd: cost === null || Number.isNaN(cost) ? null : cost,
+        costBasis: 'estimate'
+      },
+      daily,
+      models,
+      recent
+    })
   })
 })
 

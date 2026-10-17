@@ -4,6 +4,7 @@ import type { AppEnv } from './types'
 import { withContext, type Queryable } from './db'
 import { getEnv } from './env'
 import { requireAuth } from './middleware'
+import { requireLiveSession } from './sessions'
 import { credentialSummary } from './aiGuard'
 
 /**
@@ -22,7 +23,7 @@ import { credentialSummary } from './aiGuard'
  */
 export const adminRoutes = new Hono<AppEnv>()
 
-adminRoutes.use('*', requireAuth)
+adminRoutes.use('*', requireAuth, requireLiveSession)
 
 interface PgError {
   code?: string

@@ -371,7 +371,7 @@ Automated part — safe, read-only, survives a deploy:
 npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
-npm run verify:auth -- --with-write           # 27 checks; creates + deletes temp accounts
+npm run verify:auth -- --with-write           # 30 checks; creates + deletes temp accounts
 npm run verify:admin                          # 15 checks; creates + deletes temp accounts
 ```
 
@@ -402,6 +402,13 @@ Manual part, needs a mailbox and credentials:
    upgraded; with credentials, responses stream and usage rises. **Requires step 3.**
 4. Admin dashboard — sign in as owner, load Overview / Users / Catalog / Audit.
 5. Then add `ALLOWED_ORIGINS` (step 1b) and redeploy.
+6. Website `/app` with a real account — the overview figures must match
+   `/platform/config` and `/gateway/activity`; Profile -> Save name survives a reload;
+   Security lists the browser and, after signing in on the desktop, the app; revoking
+   the other session makes that client fail on its next request (`401 session_ended`).
+   Rendered locally on 2026-10-17 against `scripts/stub-platform-api.mjs` (fixtures),
+   **not yet exercised against production**; `PATCH`/`DELETE` now pass preflight, which
+   they did not before.
 
 ---
 

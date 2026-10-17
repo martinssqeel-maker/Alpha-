@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { AppEnv } from './types'
 import { withContext } from './db'
 import { requireAuth } from './middleware'
+import { requireLiveSession } from './sessions'
 import { gatingProblem, normalizeRelease } from './releases'
 import { maintenanceProblem, maintenanceState } from './maintenance'
 
@@ -13,7 +14,7 @@ export const downloadRoutes = new Hono<AppEnv>()
 
 // Every download endpoint requires a session; the account status is then checked
 // in the database, so suspending an account takes effect immediately.
-downloadRoutes.use('*', requireAuth)
+downloadRoutes.use('*', requireAuth, requireLiveSession)
 
 downloadRoutes.get('/latest', async (c) => {
   const result = await withContext(c.get('userId'), 'authenticated', async (q) => {

@@ -43,7 +43,7 @@ const json = (res, status, body) => {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization,content-type',
-    'access-control-allow-methods': 'GET,POST,OPTIONS'
+    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS'
   })
   res.end(JSON.stringify(body))
 }
@@ -53,6 +53,130 @@ const fail = (code, message) => ({ ok: false, error: { code, message } })
 
 const NOW = Date.now()
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString()
+
+// One signed-in QA account, shaped exactly like the real self-service payloads.
+const MY_ACCOUNT = {
+  id: '99999999-9999-9999-9999-999999999999',
+  email: 'qa@example.com',
+  fullName: 'QA Tester',
+  status: 'active',
+  createdAt: daysAgo(45),
+  lastSignInAt: daysAgo(0),
+  providers: ['github'],
+  hasPassword: false,
+  admin: false
+}
+
+const MY_CONFIG = {
+  account: { email: MY_ACCOUNT.email, fullName: MY_ACCOUNT.fullName, status: 'active' },
+  plan: { id: 'plan-free', code: 'free', name: 'Free', interval: 'month', isTrial: false },
+  subscription: null,
+  features: {},
+  limits: { tokens: 50000, requests_day: 10 },
+  usage: [
+    { resource: 'tokens', used: 41250, limit: 50000, unlimited: false },
+    { resource: 'requests_day', used: 3, limit: 10, unlimited: false }
+  ],
+  models: [
+    {
+      modelId: 'google/gemma-4-31b-it:free',
+      providerId: 'openrouter',
+      providerLabel: 'OpenRouter',
+      label: 'Gemma 4 31B',
+      allowed: true,
+      capabilities: { streaming: true, tools: true, vision: false },
+      contextLength: 131072
+    },
+    {
+      modelId: 'openai/gpt-5',
+      providerId: 'openrouter',
+      providerLabel: 'OpenRouter',
+      label: 'GPT-5',
+      allowed: false,
+      capabilities: { streaming: true, tools: true, vision: true },
+      contextLength: 400000
+    }
+  ],
+  flags: {},
+  maintenance: { active: false },
+  announcements: [
+    {
+      id: 'ann-1',
+      title: 'Scheduled maintenance',
+      body: 'Cloud models are paused for 20 minutes on Sunday 02:00 UTC.',
+      level: 'warning'
+    }
+  ],
+  desktop: { current: '1.0.6', minVersion: '1.0.0', recommendedVersion: '1.0.6' },
+  serverTime: new Date(NOW).toISOString()
+}
+
+const MY_SESSIONS = [
+  {
+    id: '5a5a5a5a-0000-4000-8000-000000000001',
+    createdAt: daysAgo(2),
+    lastUsedAt: daysAgo(0),
+    expiresAt: daysAgo(-27),
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/141.0 Safari/537.36',
+    ip: '203.0.113.7',
+    current: true
+  },
+  {
+    id: '5a5a5a5a-0000-4000-8000-000000000002',
+    createdAt: daysAgo(6),
+    lastUsedAt: daysAgo(1),
+    expiresAt: daysAgo(-21),
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) Firefox/142.0',
+    ip: '198.51.100.4',
+    current: false
+  }
+]
+
+const MY_ACTIVITY = {
+  days: 30,
+  totals: { requests: 46, tokens: 132840, failed: 5, estimatedCostUsd: 0.3121, costBasis: 'estimate' },
+  daily: [
+    { day: daysAgo(6).slice(0, 10), requests: 4, tokens: 9800, failed: 0 },
+    { day: daysAgo(4).slice(0, 10), requests: 9, tokens: 21400, failed: 1 },
+    { day: daysAgo(3).slice(0, 10), requests: 12, tokens: 30110, failed: 1 },
+    { day: daysAgo(2).slice(0, 10), requests: 19, tokens: 54220, failed: 3 },
+    { day: daysAgo(1).slice(0, 10), requests: 2, tokens: 17310, failed: 0 }
+  ],
+  models: [
+    { modelId: 'google/gemma-4-31b-it:free', providerId: 'openrouter', requests: 31, tokens: 61440 },
+    { modelId: 'openai/gpt-5', providerId: 'openrouter', requests: 15, tokens: 71400 }
+  ],
+  recent: [
+    { modelId: 'google/gemma-4-31b-it:free', providerId: 'openrouter', status: 'ok', tokens: 2840, createdAt: daysAgo(0), durationMs: 2210, errorCode: null },
+    { modelId: 'openai/gpt-5', providerId: 'openrouter', status: 'error', tokens: 0, createdAt: daysAgo(1), durationMs: 902, errorCode: 'provider_rate_limited' },
+    { modelId: 'google/gemma-4-31b-it:free', providerId: 'openrouter', status: 'ok', tokens: 5210, createdAt: daysAgo(1), durationMs: 3400, errorCode: null }
+  ]
+}
+
+const MY_GATEWAY = {
+  providers: [
+    { code: 'openrouter', label: 'OpenRouter', active: true, configured: true, requests7d: 23, failed7d: 2, lastRequestAt: daysAgo(0) },
+    { code: 'ollama', label: 'Ollama (local)', active: true, configured: false, requests7d: 4, failed7d: 0, lastRequestAt: daysAgo(1) }
+  ],
+  sharedEnabled: { enabled: true, message: null },
+  budget: { configured: true, enforced: true, monthlyUsd: 10, spentMtdUsd: 0.73, remainingUsd: 9.27 },
+  usage: MY_CONFIG.usage
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'))
+      } catch {
+        resolve({})
+      }
+    })
+    req.on('error', () => resolve({}))
+  })
+}
 
 const USERS = [
   {
@@ -429,13 +553,43 @@ createServer((req, res) => {
     })
   }
   if (path === '/platform/config') {
-    return json(res, 200, {
-      account: { email: 'qa@example.com' },
-      plan: { name: 'Free' },
-      subscription: { status: 'active' },
-      usage: [{ resource: 'tokens', used: 41250, limit: 50000 }],
-      models: [{ id: 'stub-model', allowed: true }]
+    return json(res, 200, MY_CONFIG)
+  }
+  if (path === '/auth/me' && req.method === 'PATCH') {
+    return readBody(req).then((body) => {
+      MY_ACCOUNT.fullName = typeof body.fullName === 'string' ? body.fullName : MY_ACCOUNT.fullName
+      MY_CONFIG.account.fullName = MY_ACCOUNT.fullName
+      json(res, 200, { ok: true, account: MY_ACCOUNT })
     })
+  }
+  if (path === '/auth/me') {
+    return json(res, 200, { ok: true, account: MY_ACCOUNT })
+  }
+  if (path === '/auth/sessions') {
+    return json(res, 200, { ok: true, sessions: MY_SESSIONS.filter((s) => !s.revoked) })
+  }
+  if (path.startsWith('/auth/sessions/') && req.method === 'DELETE') {
+    const id = path.split('/')[3]
+    const session = MY_SESSIONS.find((s) => s.id === id)
+    if (!session || session.revoked) {
+      return json(res, 404, { ok: false, error: { code: 'session_not_found', message: 'That session is already signed out.' } })
+    }
+    session.revoked = true
+    return json(res, 200, { ok: true, revoked: 1, current: session.current })
+  }
+  if (path === '/auth/sessions/revoke-others' && req.method === 'POST') {
+    const others = MY_SESSIONS.filter((s) => !s.current && !s.revoked).length
+    for (const session of MY_SESSIONS) if (!session.current) session.revoked = true
+    return json(res, 200, { ok: true, revoked: others })
+  }
+  if (path === '/auth/signout' && req.method === 'POST') {
+    return json(res, 200, { ok: true })
+  }
+  if (path === '/gateway/status') {
+    return json(res, 200, { ok: true, ...MY_GATEWAY })
+  }
+  if (path === '/gateway/activity') {
+    return json(res, 200, { ok: true, ...MY_ACTIVITY })
   }
   if (path === '/downloads/latest') {
     if (unauthorized) {

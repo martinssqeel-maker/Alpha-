@@ -165,6 +165,26 @@ async function readOnlyChecks() {
   if (ownAcao === SITE) record('PASS', 'CORS allows the website origin', SITE)
   else record('FAIL', 'CORS allows the website origin', `acao=${ownAcao ?? '(none)'}`)
 
+  // The dashboard updates a profile and revokes sessions, so the browser sends a
+  // PATCH and a DELETE. If the preflight does not allow them, every such control
+  // is dead before its handler runs.
+  const preflight = await call('/auth/me', {
+    method: 'OPTIONS',
+    headers: { Origin: SITE, 'Access-Control-Request-Method': 'PATCH' }
+  })
+  const allowMethods = preflight.headers.get('access-control-allow-methods') || ''
+  if (allowMethods.includes('PATCH') && allowMethods.includes('DELETE')) {
+    record('PASS', 'CORS preflight allows PATCH and DELETE', allowMethods)
+  } else {
+    record('FAIL', 'CORS preflight allows PATCH and DELETE', allowMethods || '(missing header)')
+  }
+
+  for (const path of ['/auth/me', '/auth/sessions']) {
+    const anon = await call(path)
+    if (anon.status === 401) record('PASS', `GET ${path} refuses anonymous callers`, '401')
+    else record('FAIL', `GET ${path} refuses anonymous callers`, `status=${anon.status}`)
+  }
+
   const wrong = await call('/auth/password', {
     method: 'POST',
     body: { email: 'nobody@example.invalid', password: 'a-long-enough-password' }
@@ -209,16 +229,29 @@ async function writeChecks() {
     return res.json?.accessToken ?? null
   }
 
+  /** Claims inside a token this script has already obtained. */
+  function tokenClaims(token) {
+    try {
+      return JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString('utf8'))
+    } catch {
+      return null
+    }
+  }
+
   /** A correctly signed token whose `role` claim simply *says* administrator.
-   *  Authorization must come from the database, so this must change nothing. */
-  function forgedAdminClaim(userId, secret) {
+   *  Authorization must come from the database, so this must change nothing.
+   *
+   *  It carries the caller's *real* session id: since the API now checks that a
+   *  token's session is still live, a fabricated id would be refused as an ended
+   *  session (401) rather than testing the claim this check is about (403). */
+  function forgedAdminClaim(userId, secret, sid) {
     const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
     const now = Math.floor(Date.now() / 1000)
     const header = b64({ alg: 'HS256', typ: 'JWT' })
     const payload = b64({
       sub: userId,
       email: userEmail,
-      sid: 'forged-verify-claim',
+      sid: sid || 'forged-verify-claim',
       role: 'admin',
       iss: 'alpha-platform',
       aud: 'alpha-clients',
@@ -383,7 +416,9 @@ async function writeChecks() {
         if (!secret) {
           record('NOT RUN', 'a forged admin claim is still refused', 'AUTH_JWT_SECRET not available locally')
         } else {
-          const forged = await adminCall('overview', { token: forgedAdminClaim(ids[1], secret) })
+          const forged = await adminCall('overview', {
+            token: forgedAdminClaim(ids[1], secret, tokenClaims(userToken)?.sid)
+          })
           if (forged.status === 403) {
             record('PASS', 'a signed token claiming role=admin is still refused', '403')
           } else {

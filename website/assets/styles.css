@@ -484,6 +484,7 @@ main { position: relative; z-index: 1; }
   border-top: 1px solid var(--line);
 }
 .dl-block .plan-name { font-family: var(--data); font-size: 18px; }
+.dl-block .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .mono { font-family: var(--data); font-variant-numeric: tabular-nums; word-break: break-all; }
 table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }

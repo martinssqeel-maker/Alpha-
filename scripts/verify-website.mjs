@@ -113,7 +113,7 @@ if (existsSync(downloadPage)) {
 }
 
 const dirEntries = readdirSync(root)
-for (const required of ['index.html', 'download.html', 'account.html', 'assets']) {
+for (const required of ['index.html', 'download.html', 'account.html', 'app.html', 'assets']) {
   if (!dirEntries.includes(required)) problems.push(`website/: missing required entry "${required}"`)
 }
 
@@ -122,6 +122,18 @@ if (problems.length) {
   console.error(`\n${problems.length} problem(s) found:`)
   for (const problem of problems) console.error(`  ${problem}`)
   process.exit(1)
+}
+
+// The dashboard is the signed-in product surface, so it must load both the
+// shared brand and its own data client, and it must not be reachable without a
+// session at the page level either (the client redirects, the API enforces).
+const appPage = join(root, 'app.html')
+if (existsSync(appPage)) {
+  const html = readFileSync(appPage, 'utf8')
+  for (const ref of ['assets/dashboard.js', 'assets/app.css', 'assets/styles.css', 'config.js']) {
+    if (!html.includes(ref)) problems.push(`app.html: missing ${ref}`)
+  }
+  if (!/noindex/i.test(html)) problems.push('app.html: missing noindex (it shows one account\'s data)')
 }
 
 console.log(`Website OK — ${pages.length} page(s) checked under ${root}`)

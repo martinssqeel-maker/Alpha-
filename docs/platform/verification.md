@@ -35,7 +35,7 @@ Two deeper live checks need a database connection (`DATABASE_URL`); they create 
 accounts and delete them again, so they are still safe to point at production:
 
 ```bash
-npm run verify:auth -- --with-write   # 27 checks: identity, authorization, gating, replay
+npm run verify:auth -- --with-write   # 30 checks: identity, authorization, gating, replay
 npm run verify:admin                  # 15 checks: every portal control has a real effect
 ```
 
@@ -155,6 +155,25 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
   allowed and a foreign origin). Add `-- --with-write` to also create two throwaway
   accounts, prove administrator password sign-in, `/admin/rpc` authorization, the gated
   release, suspension and single-use code replay, then delete them again.
+
+### Account dashboard (`/app`)
+
+The signed-in dashboard is static JavaScript against five read endpoints and three
+self-service routes. What was checked, and how:
+
+| Check | How |
+| --- | --- |
+| Every dashboard call is served | `tests/userDashboardParity.test.ts` reads `website/assets/dashboard.js`, extracts every `api(...)` path, and fails if the auth/platform/downloads/gateway routers do not serve it (and asserts `PATCH /auth/me`, `DELETE /auth/sessions/:id`, `POST /auth/sessions/revoke-others` by method) |
+| Session liveness rule | `tests/sessionPolicy.test.ts`: revoked, expired, missing row, exactly-at-expiry and camelCase shapes |
+| Layout, empty states, interactions | Browser run against `scripts/stub-platform-api.mjs` at 1280 and 390 px: overview, security, usage, models, downloads; profile rename; revoke another session; signed-out redirect to `/account?next=app` |
+| Revoked sessions stop working | `requireLiveSession` on `/platform`, `/downloads`, `/gateway`, `/admin` and the self-service routes answers `401 session_ended` on the next request. **Not verified against production** — it needs a live session |
+| Real data | **Not verified against production.** The dashboard has not been signed in to with a real account; all rendering checks used the stub's response shapes |
+
+CORS: the dashboard uses `PATCH` and `DELETE`, so `allowMethods` in `platform/api/index.ts`
+lists both. Without them the browser's preflight fails before a handler runs — this was
+caught in the browser run against the stub and fixed in both places.
+
+The stub is QA-only and holds fixture data; it is never used by the site or a deployment.
 
 ## Admin dashboard
 

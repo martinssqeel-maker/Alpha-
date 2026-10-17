@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard · Alpha AI Workspace</title>
+    <meta
+      name="description"
+      content="Your Alpha account: plan, usage, cloud models, sessions and the Windows installer."
+    />
+    <meta name="theme-color" content="#0c0f14" />
+    <!-- Everything on this page belongs to one signed-in account. -->
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="stylesheet" href="assets/app.css" />
+    <!-- Applies the stored appearance before first paint, so the palette never flashes. -->
+    <script src="assets/theme.js"></script>
+    <!-- The committed config.js supplies the Alpha Cloud API host. -->
+    <script src="config.js"></script>
+  </head>
+  <body class="app-body">
+    <a class="skip-link" href="#view">Skip to content</a>
+
+    <div class="app-shell">
+      <aside class="app-side">
+        <a class="brand app-brand" href="/">
+          <img src="assets/icon.png" alt="" width="28" height="28" />
+          <span>Alpha</span>
+        </a>
+
+        <nav class="side-nav" id="side-nav" aria-label="Account sections"></nav>
+
+        <div class="side-foot">
+          <div class="side-plan">
+            <span class="side-plan-label">Plan</span>
+            <span data-side-plan>—</span>
+          </div>
+          <button class="btn ghost side-signout" type="button" data-signout>Sign out</button>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="app-top">
+          <div class="app-top-heading">
+            <p class="eyebrow" data-view-eyebrow>Account</p>
+            <h1 data-view-title>Overview</h1>
+          </div>
+          <div class="app-top-actions">
+            <button
+              class="theme-toggle"
+              type="button"
+              data-theme-toggle
+              aria-pressed="false"
+              aria-label="Switch to the light palette"
+              title="Switch to the light palette"
+            >
+              <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></svg>
+              <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z"/></svg>
+            </button>
+            <div class="who">
+              <span class="avatar" data-avatar aria-hidden="true">A</span>
+              <span class="who-text">
+                <span class="who-name" data-who-name>Account</span>
+                <span class="who-email" data-who-email></span>
+              </span>
+            </div>
+          </div>
+        </header>
+
+        <main class="app-view" id="view" tabindex="-1">
+          <!-- Shown until the first answer arrives, so the page is never blank. -->
+          <div class="panel" data-state="loading">
+            <div class="panel-title">Loading your account…</div>
+            <p class="muted">Checking your session and plan.</p>
+          </div>
+
+          <div class="panel" data-state="signed-out" hidden>
+            <div class="panel-title">This area needs a signed-in account</div>
+            <p class="muted">Sign in and you will land back here.</p>
+            <p><a class="btn primary" href="/account?next=app">Sign in</a></p>
+          </div>
+
+          <div class="panel" data-state="unconfigured" hidden>
+            <div class="panel-title">The dashboard is not connected</div>
+            <p class="muted">
+              This copy of the site was built without an Alpha Cloud API address, so it cannot load
+              your account. If you are the operator, set <code>apiBaseUrl</code> in
+              <code>config.js</code>.
+            </p>
+          </div>
+
+          <section class="view" data-view="overview" hidden aria-labelledby="view-title-holder"></section>
+          <section class="view" data-view="account" hidden></section>
+          <section class="view" data-view="security" hidden></section>
+          <section class="view" data-view="usage" hidden></section>
+          <section class="view" data-view="models" hidden></section>
+          <section class="view" data-view="downloads" hidden></section>
+          <section class="view" data-view="help" hidden></section>
+        </main>
+
+        <p class="app-status" data-status role="status" aria-live="polite"></p>
+
+        <footer class="app-foot">
+          <span>Alpha AI Workspace</span>
+          <nav aria-label="Footer">
+            <a href="/">Website</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="https://github.com/martinssqeel-maker/Alpha-" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </footer>
+      </div>
+    </div>
+
+    <noscript>
+      <p class="noscript">This dashboard needs JavaScript to load your account data.</p>
+    </noscript>
+
+    <script src="assets/dashboard.js"></script>
+  </body>
+</html>

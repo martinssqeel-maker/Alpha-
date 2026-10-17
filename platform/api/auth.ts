@@ -7,6 +7,7 @@ import { generateCode, generateToken, hashSecret, safeEqual } from './crypto'
 import { EmailDeliveryError, sendOtpEmail } from './email'
 import { accessTtlMs, refreshTtlMs, signAccessToken } from './jwt'
 import { requireAuth } from './middleware'
+import { requireLiveSession } from './sessions'
 import { hashPassword, verifyPassword } from './password'
 import {
   appCallbackUrl,
@@ -876,6 +877,193 @@ authRoutes.post('/refresh', async (c) => {
     expiresAt: Date.now() + accessTtlMs(),
     email: result.email
   })
+})
+
+// ---------------------------------------------------------------------------
+// Self-service account and sessions
+//
+// These are the only endpoints that let a signed-in visitor read or change their
+// own account. Every statement is scoped by the user id from the verified token;
+// none of them accepts a user id from the request, so an account cannot reach
+// another account's data by editing a body. They also mount `requireLiveSession`,
+// so a revoked session stops working here immediately.
+// ---------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+interface SelfAccount {
+  id: string
+  email: string
+  fullName: string | null
+  status: string
+  createdAt: string
+  lastSignInAt: string | null
+  providers: string[]
+  hasPassword: boolean
+  admin: boolean
+}
+
+/** The signed-in account, assembled from this user's own rows only. */
+async function loadSelfAccount(userId: string): Promise<SelfAccount | null> {
+  return withContext(userId, 'authenticated', async (q) => {
+    const user = (
+      await q.query<{
+        id: string
+        email: string
+        full_name: string | null
+        status: string
+        created_at: string
+        last_sign_in_at: string | null
+      }>(
+        `select id, email, full_name, status, created_at, last_sign_in_at
+           from public.users where id = $1`,
+        [userId]
+      )
+    ).rows[0]
+    if (!user) return null
+
+    const providers = (
+      await q.query<{ provider: string }>(
+        'select distinct provider from public.user_identities where user_id = $1 order by provider',
+        [userId]
+      )
+    ).rows.map((row) => row.provider)
+
+    const credential = await q.query(
+      'select 1 from public.password_credentials where user_id = $1',
+      [userId]
+    )
+    const admin = (
+      await q.query<{ is_admin: boolean }>('select public.is_admin($1) as is_admin', [userId])
+    ).rows[0]?.is_admin
+
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.full_name,
+      status: user.status,
+      createdAt: user.created_at,
+      lastSignInAt: user.last_sign_in_at,
+      providers,
+      hasPassword: (credential.rowCount ?? 0) > 0,
+      admin: Boolean(admin)
+    }
+  })
+}
+
+/** Name is free text, but not control characters and not an essay. */
+export function normalizeFullName(input: string): string {
+  return input.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+authRoutes.get('/me', requireAuth, requireLiveSession, async (c) => {
+  const account = await loadSelfAccount(c.get('userId'))
+  if (!account) {
+    return c.json(
+      { ok: false, error: { code: 'account_unavailable', message: 'This account is no longer available.' } },
+      404
+    )
+  }
+  return c.json({ ok: true, account })
+})
+
+authRoutes.patch('/me', requireAuth, requireLiveSession, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { fullName?: unknown }
+  if (typeof body.fullName !== 'string') {
+    return c.json(
+      { ok: false, error: { code: 'invalid_request', message: 'Send a full name to save.' } },
+      400
+    )
+  }
+  const name = normalizeFullName(body.fullName)
+  if (name.length > 80) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_request', message: 'A name can be at most 80 characters.' } },
+      400
+    )
+  }
+
+  const userId = c.get('userId')
+  await withContext(userId, 'authenticated', async (q) => {
+    await q.query('update public.users set full_name = nullif($2, \'\') where id = $1', [userId, name])
+  })
+  const account = await loadSelfAccount(userId)
+  return c.json({ ok: true, account })
+})
+
+authRoutes.get('/sessions', requireAuth, requireLiveSession, async (c) => {
+  const userId = c.get('userId')
+  const sid = c.get('sid')
+  const rows = await withContext(userId, 'authenticated', async (q) => {
+    const res = await q.query<{
+      id: string
+      created_at: string
+      last_used_at: string
+      expires_at: string
+      user_agent: string | null
+      ip: string | null
+    }>(
+      `select id, created_at, last_used_at, expires_at, user_agent, ip
+         from public.sessions
+        where user_id = $1 and revoked_at is null and expires_at > now()
+        order by last_used_at desc
+        limit 50`,
+      [userId]
+    )
+    return res.rows
+  })
+
+  return c.json({
+    ok: true,
+    sessions: rows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      lastUsedAt: row.last_used_at,
+      expiresAt: row.expires_at,
+      userAgent: row.user_agent,
+      ip: row.ip,
+      current: row.id === sid
+    }))
+  })
+})
+
+authRoutes.delete('/sessions/:id', requireAuth, requireLiveSession, async (c) => {
+  const id = c.req.param('id')
+  if (!UUID_RE.test(id)) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_request', message: 'That session id is not valid.' } },
+      400
+    )
+  }
+  const userId = c.get('userId')
+  const revoked = await withContext(userId, 'authenticated', async (q) => {
+    const res = await q.query(
+      'update public.sessions set revoked_at = now() where id = $1 and user_id = $2 and revoked_at is null',
+      [id, userId]
+    )
+    return res.rowCount ?? 0
+  })
+  if (revoked === 0) {
+    return c.json(
+      { ok: false, error: { code: 'session_not_found', message: 'That session is already signed out.' } },
+      404
+    )
+  }
+  return c.json({ ok: true, revoked: 1, current: id === c.get('sid') })
+})
+
+authRoutes.post('/sessions/revoke-others', requireAuth, requireLiveSession, async (c) => {
+  const userId = c.get('userId')
+  const sid = c.get('sid')
+  const count = await withContext(userId, 'authenticated', async (q) => {
+    const res = await q.query(
+      `update public.sessions set revoked_at = now()
+        where user_id = $1 and id <> $2 and revoked_at is null and expires_at > now()`,
+      [userId, sid]
+    )
+    return res.rowCount ?? 0
+  })
+  return c.json({ ok: true, revoked: count })
 })
 
 authRoutes.post('/signout', requireAuth, async (c) => {

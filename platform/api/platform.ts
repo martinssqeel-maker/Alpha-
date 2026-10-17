@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { AppEnv } from './types'
 import { withContext } from './db'
 import { requireAuth } from './middleware'
+import { requireLiveSession } from './sessions'
 
 export const platformRoutes = new Hono<AppEnv>()
 
@@ -10,7 +11,7 @@ export const platformRoutes = new Hono<AppEnv>()
 // `get_my_platform_config()` raised `not_authenticated` inside a transaction the
 // route never checked, and `/config` answered `null` — a signed-out caller could
 // not tell "no config" from "not signed in".
-platformRoutes.use('*', requireAuth)
+platformRoutes.use('*', requireAuth, requireLiveSession)
 
 /** Load the authoritative platform config for a user (same shape as the desktop app). */
 export async function loadPlatformConfig(userId?: string): Promise<Record<string, unknown> | null> {

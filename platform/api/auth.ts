@@ -8,7 +8,7 @@ import { EmailDeliveryError, sendOtpEmail } from './email'
 import { accessTtlMs, refreshTtlMs, signAccessToken } from './jwt'
 import { requireAuth } from './middleware'
 import { requireLiveSession } from './sessions'
-import { hashPassword, verifyPassword } from './password'
+import { hashPassword, passwordNeedsRehash, passwordProblem, verifyPassword } from './password'
 import {
   appCallbackUrl,
   exchangeGithubCode,
@@ -114,6 +114,41 @@ function dummyHash(): string {
   // password take the same time to reject.
   if (!dummyDigest) dummyDigest = hashPassword(generateToken(24))
   return dummyDigest
+}
+
+/**
+ * Mint a sign-in code for `email` and send it (code + one-tap link).
+ *
+ * Callers own the throttling decision: /auth/request has the richest version of
+ * it, and the password routes apply their own per-address and per-IP ceilings
+ * before calling this. Kept separate so those routes cannot forget to retire the
+ * previous unconsumed code, which would leave two live codes for one address.
+ */
+async function sendSignInCode(
+  email: string,
+  ip: string,
+  userAgent: string | null,
+  ttlMinutes: number
+): Promise<{ simulated: boolean }> {
+  const code = generateCode()
+  const magic = generateToken(32)
+  await withContext(null, 'anon', async (q) => {
+    await q.query('update public.auth_otps set consumed_at = now() where email = $1 and consumed_at is null', [
+      email
+    ])
+    await q.query(
+      `insert into public.auth_otps (email, code_hash, magic_hash, expires_at, ip, user_agent)
+       values ($1, $2, $3, now() + make_interval(mins => $4::int), $5, $6)`,
+      [email, hashSecret(code), hashSecret(magic), ttlMinutes, ip, userAgent]
+    )
+  })
+  const delivery = await sendOtpEmail({
+    to: email,
+    code,
+    magicUrl: signInLinkUrl(email, magic),
+    expiresMinutes: ttlMinutes
+  })
+  return { simulated: delivery.simulated }
 }
 
 /** The Function's own callback for a provider, honouring an explicit override. */
@@ -395,6 +430,9 @@ authRoutes.post('/verify', async (c) => {
     // provision_user is idempotent: creates the user, ensures a free subscription,
     // and grants owner role when the email matches bootstrap_admin_email.
     const uid = (await q.query<{ id: string }>('select public.provision_user($1) as id', [row.email])).rows[0].id
+    // Redeeming the code proves the address receives mail, which is what the
+    // download gate asks for.
+    await q.query('select public.mark_email_verified($1)', [uid])
     const user = (await q.query<{ email: string }>('select email from public.users where id = $1', [uid])).rows[0]
 
     const refresh = generateToken(32)
@@ -449,6 +487,337 @@ authRoutes.post('/verify', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
+// Email + password: sign-up, recovery and change
+//
+// Member accounts were passwordless until now: /auth/password needed an admin
+// role, and 0002_auth.sql records that password_credentials could only be written
+// by scripts/admin-password.mjs on the operator's machine. These routes add the
+// missing write path.
+//
+// Both /register and /password/forgot answer identically whether or not an account
+// exists, and mail the address either way, so neither can be used to discover who
+// has an account here. Sign-in keeps its single generic refusal for the same
+// reason (see /password below).
+// ---------------------------------------------------------------------------
+
+authRoutes.post('/register', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
+  const email = (body.email ?? '').trim().toLowerCase()
+  const password = body.password ?? ''
+
+  if (!EMAIL_RE.test(email)) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_email', message: 'Enter a valid email address.' } },
+      400
+    )
+  }
+  // The same rules the sign-in side enforces, reported verbatim so the form can
+  // say what is actually wrong instead of "invalid password".
+  const problem = passwordProblem(password)
+  if (problem) {
+    return c.json({ ok: false, error: { code: 'weak_password', message: problem } }, 400)
+  }
+
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
+  }
+
+  const ip = requestIp(c) ?? 'unknown'
+  const windowMinutes = intEnv('AUTH_REGISTER_WINDOW_MIN', 60)
+  const maxAttempts = intEnv('AUTH_REGISTER_MAX', 10)
+  const throttled =
+    (await tooManyAttempts('register', email, maxAttempts, windowMinutes)) ||
+    (await tooManyAttempts('register', `ip:${ip}`, maxAttempts * 3, windowMinutes))
+  if (throttled) {
+    return c.json(
+      {
+        ok: false,
+        error: { code: 'too_many_attempts', message: 'Too many sign-up attempts. Try again later.' }
+      },
+      429
+    )
+  }
+
+  const userId = await withContext(null, 'anon', async (q) => {
+    const existing = (
+      await q.query<{ user_id: string }>(
+        `select c.user_id
+           from public.users u
+           left join public.password_credentials c on c.user_id = u.id
+          where lower(u.email) = $1
+          limit 1`,
+        [email]
+      )
+    ).rows[0]
+    // provision_user is idempotent — it is the same call first sign-in makes — so
+    // an existing address is a no-op here rather than an error.
+    const uid = (
+      await q.query<{ id: string }>('select public.provision_user($1) as id', [email])
+    ).rows[0].id
+    if (existing?.user_id) return { uid, created: false as const }
+    await q.query('select public.set_password_credential($1, $2, $3)', [
+      uid,
+      hashPassword(password),
+      'scrypt'
+    ])
+    return { uid, created: true as const }
+  })
+
+  // A code goes out either way: it finishes a new account (and signs it in) and it
+  // is the same message /auth/request would have sent to an existing one.
+  let delivered = true
+  try {
+    const sent = await sendSignInCode(email, ip, c.req.header('user-agent') ?? null, intEnv('AUTH_OTP_TTL_MIN', 10))
+    delivered = !sent.simulated
+  } catch (error) {
+    await recordAttempt('register', email, false)
+    await recordAttempt('register', `ip:${ip}`, false)
+    if (!(error instanceof EmailDeliveryError)) console.error('[auth:register] email send failed', error)
+  }
+  await recordAttempt('register', email, true)
+  await recordAttempt('register', `ip:${ip}`, true)
+  void userId
+
+  return c.json(
+    {
+      ok: true,
+      needsVerification: true,
+      delivered,
+      message: delivered
+        ? 'Check your inbox for a six-digit code. Enter it here to finish setting up your account.'
+        : 'Your account was saved, but the confirmation email could not be sent. Try “Forgot password” in a moment to request another code.'
+    },
+    202
+  )
+})
+
+authRoutes.post('/password/forgot', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string }
+  const email = (body.email ?? '').trim().toLowerCase()
+  if (!EMAIL_RE.test(email)) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_email', message: 'Enter a valid email address.' } }, 400
+    )
+  }
+
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
+  }
+
+  const ip = requestIp(c) ?? 'unknown'
+  const windowMinutes = intEnv('AUTH_PASSWORD_WINDOW_MIN', 15)
+  const maxAttempts = intEnv('AUTH_PASSWORD_MAX_ATTEMPTS', 8)
+  const throttled =
+    (await tooManyAttempts('password_reset', email, maxAttempts, windowMinutes)) ||
+    (await tooManyAttempts('password_reset', `ip:${ip}`, maxAttempts * 3, windowMinutes))
+  if (throttled) {
+    return c.json(
+      {
+        ok: false,
+        error: { code: 'too_many_attempts', message: 'Too many attempts. Try again in a few minutes.' }
+      },
+      429
+    )
+  }
+
+  const hasCredential = await withContext(null, 'anon', async (q) => {
+    const row = (
+      await q.query<{ user_id: string }>(
+        `select c.user_id
+           from public.users u
+           join public.password_credentials c on c.user_id = u.id
+          where lower(u.email) = $1
+          limit 1`,
+        [email]
+      )
+    ).rows[0]
+    return Boolean(row)
+  })
+
+  if (hasCredential) {
+    try {
+      await sendSignInCode(email, ip, c.req.header('user-agent') ?? null, intEnv('AUTH_OTP_TTL_MIN', 10))
+      await recordAttempt('password_reset', email, true)
+      await recordAttempt('password_reset', `ip:${ip}`, true)
+    } catch (error) {
+      // Deliberately not reported to the caller: a delivery error on an address
+      // that exists would be an account oracle. The operator sees it in the logs.
+      await recordAttempt('password_reset', email, false)
+      await recordAttempt('password_reset', `ip:${ip}`, false)
+      if (!(error instanceof EmailDeliveryError)) console.error('[auth:forgot] email send failed', error)
+    }
+  }
+
+  return c.json(
+    {
+      ok: true,
+      message:
+        'If that address has an account with a password, a six-digit reset code is on its way. Enter it below with a new password.'
+    },
+    202
+  )
+})
+
+authRoutes.post('/password/reset', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    email?: string
+    code?: string
+    password?: string
+  }
+  const email = (body.email ?? '').trim().toLowerCase()
+  const code = (body.code ?? '').trim()
+  const password = body.password ?? ''
+
+  if (!EMAIL_RE.test(email)) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_email', message: 'Enter a valid email address.' } }, 400
+    )
+  }
+  const problem = passwordProblem(password)
+  if (problem) {
+    return c.json({ ok: false, error: { code: 'weak_password', message: problem } }, 400)
+  }
+  if (!/^\d{6}$/.test(code)) {
+    return c.json(
+      { ok: false, error: { code: 'invalid_code', message: 'That code is not correct.' } },
+      400
+    )
+  }
+
+  const maintenance = maintenanceProblem(await maintenanceState(), false)
+  if (maintenance) {
+    return c.json({ ok: false, error: { code: maintenance.code, message: maintenance.message } }, 503)
+  }
+
+  const maxAttempts = intEnv('AUTH_MAX_ATTEMPTS', 6)
+  const result = await withContext(null, 'anon', async (q) => {
+    const row = (
+      await q.query<OtpRow>(
+        `select id, email, code_hash, magic_hash, attempts, expires_at, consumed_at
+           from public.auth_otps where email = $1 and consumed_at is null
+          order by created_at desc limit 1`,
+        [email]
+      )
+    ).rows[0]
+
+    if (!row) return { ok: false as const, error: 'invalid_code' as const }
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      return { ok: false as const, error: 'expired' as const }
+    }
+    if (row.attempts >= maxAttempts) return { ok: false as const, error: 'too_many' as const }
+    if (!safeEqual(hashSecret(code), row.code_hash)) {
+      await q.query('update public.auth_otps set attempts = attempts + 1 where id = $1', [row.id])
+      return { ok: false as const, error: 'invalid_code' as const }
+    }
+
+    await q.query('update public.auth_otps set consumed_at = now() where id = $1', [row.id])
+    // Only an account that already has a password can reset one. Provisioning here
+    // would let the reset form create accounts.
+    const uid = (
+      await q.query<{ id: string }>(
+        `select u.id from public.users u
+           join public.password_credentials c on c.user_id = u.id
+          where lower(u.email) = $1 limit 1`,
+        [email]
+      )
+    ).rows[0]?.id
+    if (!uid) return { ok: false as const, error: 'invalid_code' as const }
+
+    await q.query('select public.set_password_credential($1, $2, $3)', [
+      uid,
+      hashPassword(password),
+      'scrypt'
+    ])
+    // The code arrived in the mailbox, so this address is now proven.
+    await q.query('select public.mark_email_verified($1)', [uid])
+    await q.query(
+      `insert into public.audit_logs (actor_id, action, target, detail)
+       values (null, 'auth.password_reset', $1::text, jsonb_build_object('via', 'website_reset'))`,
+      [uid]
+    )
+    return { ok: true as const, uid }
+  })
+
+  if (!result.ok) {
+    await recordAttempt('password_reset', email, false)
+    const map = {
+      invalid_code: { status: 400, code: 'invalid_code', message: 'That code is not correct.' },
+      expired: { status: 400, code: 'expired', message: 'That code has expired. Request a new one.' },
+      too_many: { status: 429, code: 'too_many', message: 'Too many attempts. Request a new code.' }
+    } satisfies Record<string, { status: number; code: string; message: string }>
+    const info = map[result.error]
+    return c.json({ ok: false, error: { code: info.code, message: info.message } }, info.status as 400)
+  }
+
+  await recordAttempt('password_reset', email, true)
+  return c.json({ ok: true, message: 'Your password has been updated. Sign in with the new one.' })
+})
+
+authRoutes.post('/password/change', requireAuth, requireLiveSession, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    currentPassword?: string
+    newPassword?: string
+  }
+  const newPassword = body.newPassword ?? ''
+  const currentPassword = body.currentPassword ?? ''
+  const problem = passwordProblem(newPassword)
+  if (problem) {
+    return c.json({ ok: false, error: { code: 'weak_password', message: problem } }, 400)
+  }
+
+  const userId = c.get('userId')
+  const result = await withContext(userId, 'authenticated', async (q) => {
+    const stored = (
+      await q.query<{ password_hash: string }>(
+        'select password_hash from public.password_credentials where user_id = $1',
+        [userId]
+      )
+    ).rows[0]
+
+    if (stored?.password_hash) {
+      if (!currentPassword) return { ok: false as const, error: 'current_required' as const }
+      if (!verifyPassword(currentPassword, stored.password_hash)) {
+        return { ok: false as const, error: 'invalid_password' as const }
+      }
+    }
+
+    await q.query('select public.set_password_credential($1, $2, $3)', [
+      userId,
+      hashPassword(newPassword),
+      'scrypt'
+    ])
+    // Both casts are required: one parameter cannot be inferred as uuid for
+    // actor_id and text for target, and an uncast id fails the whole statement.
+    await q.query(
+      `insert into public.audit_logs (actor_id, action, target, detail)
+       values ($1::uuid, 'auth.password_set', $1::text, jsonb_build_object('via', 'website_dashboard'))`,
+      [userId]
+    )
+    // A changed password ends every other device's session, which is the behaviour
+    // people expect after they change a password because they think it leaked.
+    const revoked = await q.query(
+      `update public.sessions set revoked_at = now()
+        where user_id = $1 and id <> $2 and revoked_at is null and expires_at > now()`,
+      [userId, c.get('sid')]
+    )
+    return { ok: true as const, replaced: Boolean(stored?.password_hash), revokedOthers: revoked.rowCount ?? 0 }
+  })
+
+  if (!result.ok) {
+    const map = {
+      current_required: { status: 400, code: 'current_required', message: 'Enter your current password to replace it.' },
+      invalid_password: { status: 400, code: 'invalid_password', message: 'That password is not correct.' }
+    } satisfies Record<string, { status: number; code: string; message: string }>
+    const info = map[result.error]
+    return c.json({ ok: false, error: { code: info.code, message: info.message } }, info.status as 400)
+  }
+
+  return c.json({ ok: true, replaced: result.replaced, revokedOthers: result.revokedOthers })
+})
+
+// ---------------------------------------------------------------------------
 // Sign-in capabilities
 // ---------------------------------------------------------------------------
 
@@ -456,11 +825,15 @@ authRoutes.post('/verify', async (c) => {
 authRoutes.get('/providers', (c) => c.json({ ok: true, ...providersSummary() }))
 
 // ---------------------------------------------------------------------------
-// Administrator sign-in with an email address and password
+// Sign-in with an email address and password
 //
-// Only accounts that (a) exist, (b) are active, (c) hold an admin role and
-// (d) have a password credential can authenticate here. Authorization is decided
-// from the database on every request, never from anything the client sends.
+// Any account that exists, is active and has a password credential can
+// authenticate here. Whether the caller is an administrator is read from the
+// database after sign-in and returned as `admin` — never assumed, and never a
+// constant, which it was while this route was administrators-only.
+//
+// Authorization for admin actions is still decided from the database on every
+// request by public.require_admin, so this flag is a UI hint, not a grant.
 // ---------------------------------------------------------------------------
 authRoutes.post('/password', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
@@ -518,7 +891,7 @@ authRoutes.post('/password', async (c) => {
   }
 
   const okPassword = verifyPassword(password, account?.password_hash ?? dummyHash())
-  const allowed = Boolean(account && account.is_admin && okPassword && account.status === 'active')
+  const allowed = Boolean(account && account.password_hash && okPassword && account.status === 'active')
 
   await recordAttempt('password', email, allowed)
   await recordAttempt('password', `ip:${ip}`, allowed)
@@ -543,8 +916,20 @@ authRoutes.post('/password', async (c) => {
     )
   })
 
+  // Cost parameters move over time; a successful sign-in is the one moment the
+  // plaintext is available to bring an old digest up to today's.
+  if (account.password_hash && passwordNeedsRehash(account.password_hash)) {
+    await withContext(account.id, 'authenticated', async (q) => {
+      await q.query('select public.set_password_credential($1, $2, $3)', [
+        account.id,
+        hashPassword(password),
+        'scrypt'
+      ])
+    })
+  }
+
   const session = await mintSession(account.id, account.email, userAgent, ip)
-  return c.json({ ok: true, ...session, admin: true })
+  return c.json({ ok: true, ...session, admin: Boolean(account.is_admin) })
 })
 
 // ---------------------------------------------------------------------------
@@ -574,6 +959,8 @@ async function finishOAuthSignIn(
       ])
     ).rows[0]?.uid
     if (!uid) return null
+    // The provider verified this address before it would return an identity.
+    await q.query('select public.mark_email_verified($1)', [uid])
     return (
       (
         await q.query<{ id: string; email: string; status: string }>(

@@ -3,7 +3,7 @@ import type { AppEnv } from './types'
 import { withContext } from './db'
 import { requireAuth } from './middleware'
 import { requireLiveSession } from './sessions'
-import { gatingProblem, normalizeRelease } from './releases'
+import { gatingProblem, normalizeRelease, verificationProblem } from './releases'
 import { maintenanceProblem, maintenanceState } from './maintenance'
 
 function requestIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
@@ -19,13 +19,15 @@ downloadRoutes.use('*', requireAuth, requireLiveSession)
 downloadRoutes.get('/latest', async (c) => {
   const result = await withContext(c.get('userId'), 'authenticated', async (q) => {
     const user = (
-      await q.query<{ id: string; email: string; status: string }>(
-        'select id, email, status from public.users where id = $1',
+      await q.query<{ id: string; email: string; status: string; email_verified_at: string | null }>(
+        'select id, email, status, email_verified_at from public.users where id = $1',
         [c.get('userId')]
       )
     ).rows[0] ?? null
 
-    const gate = gatingProblem(user)
+    // Status first, then proof of mailbox: an unverified address is still a
+    // signed-in person who needs a different message, not a stranger.
+    const gate = gatingProblem(user) ?? verificationProblem(user)
     if (gate) return { gate, release: null, downloads: 0 }
 
     if (user) {

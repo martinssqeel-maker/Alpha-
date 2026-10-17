@@ -75,3 +75,24 @@ export function gatingProblem(user: { status?: string } | null | undefined): Dow
   }
   return null
 }
+
+/**
+ * A password proves knowledge of a secret; it does not prove the address exists.
+ * Accounts created with a password are therefore usable immediately — they can
+ * sign in, see their plan and manage sessions — but the installer is withheld
+ * until the emailed code has been redeemed once. Accounts from a provider are
+ * marked verified by the provider's own confirmation (and accounts that predate
+ * this rule are backfilled by migration 0005), so this only ever asks a person to
+ * finish something they started.
+ */
+export function verificationProblem(
+  user: { email_verified_at?: string | null } | null | undefined
+): DownloadGatingProblem | null {
+  if (!user) return null
+  if (user.email_verified_at) return null
+  return {
+    status: 403,
+    code: 'email_unverified',
+    message: 'Confirm your email address to download. Enter the six-digit code we emailed you, or request a new one.'
+  }
+}

@@ -153,8 +153,20 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
   `npm run verify:auth`. The latter is read-only by default (capability endpoints, the
   anonymous `401` on `/downloads/latest`, the foreign-redirect refusal, and CORS for both an
   allowed and a foreign origin). Add `-- --with-write` to also create two throwaway
-  accounts, prove administrator password sign-in, `/admin/rpc` authorization, the gated
-  release, suspension and single-use code replay, then delete them again.
+  accounts, prove administrator password sign-in, `/admin/*` authorization, the gated
+  release, suspension and single-use code replay, then delete them again. It mints its
+  sessions through the API's own one-time-code exchange, so it needs no mailbox.
+- **Run 2026-10-17 against production: 26 passed, 4 failed.** Everything the deployed API
+  serves passed, including `a signed-in account gets the release metadata — version=1.0.6`
+  (a real session created through the real exchange, reading the real `/downloads/latest`).
+  The four failures are all the same cause: the **deployed Function is older than `main`**.
+  It answers `404` for `/auth/me` and `/auth/sessions` and its CORS preflight allows only
+  `GET,POST,OPTIONS`, so the dashboard's profile and session controls cannot work until
+  `npm run deploy` ships the current `platform/api`. The fourth — `an administrator cannot
+  remove its own admin rights` answered `403 forbidden` instead of `409
+  cannot_remove_own_admin` — is the same staleness: the message-first mapping in
+  `describeAdminError` (asserted by `tests/adminErrorMap.test.ts`) is not in the deployed
+  build. Re-run this after deploying; if those four still fail, it is a real defect.
 
 ### Account dashboard (`/app`)
 
@@ -167,7 +179,8 @@ self-service routes. What was checked, and how:
 | Session liveness rule | `tests/sessionPolicy.test.ts`: revoked, expired, missing row, exactly-at-expiry and camelCase shapes |
 | Layout, empty states, interactions | Browser run against `scripts/stub-platform-api.mjs` at 1280 and 390 px: overview, security, usage, models, downloads; profile rename; revoke another session; signed-out redirect to `/account?next=app` |
 | Revoked sessions stop working | `requireLiveSession` on `/platform`, `/downloads`, `/gateway`, `/admin` and the self-service routes answers `401 session_ended` on the next request. **Not verified against production** — it needs a live session |
-| Real data | **Not verified against production.** The dashboard has not been signed in to with a real account; all rendering checks used the stub's response shapes |
+| Real data | Rendering was checked against the stub only. The one production check with a real session is `/downloads/latest` (see the `verify:auth` run below), which now answers `1.0.6` |
+| The version the dashboard offers | `npm run release:register -- --check` compares the GitHub asset's length with the local installer and prints what it would register; the write path then prints what `/downloads/latest` answers |
 
 CORS: the dashboard uses `PATCH` and `DELETE`, so `allowMethods` in `platform/api/index.ts`
 lists both. Without them the browser's preflight fails before a handler runs — this was
@@ -188,3 +201,12 @@ The stub is QA-only and holds fixture data; it is never used by the site or a de
 Signing in needs a real mailbox and an authenticated session, and the gateway needs a
 provider credential. Those steps are listed in `docs/platform/MANUAL-TODO.md` and are
 the only ones that require a human.
+
+## Deployed vs committed
+
+A green CI run proves `main` builds, not that production runs it. On 2026-10-17 the
+website had picked up `522d32f` (Vercel deploys on push — `/app` answers `200`) while the
+Function had not: `npm run deploy` is the only thing that ships `platform/api`, and
+`npm run deploy -- --plan` is the read-only way to see how far behind it is. Check the
+live surface before claiming a backend change is live — `curl -o /dev/null -w '%{http_code}'
+<api>/auth/me` answering `404` means "not deployed", not "route missing".

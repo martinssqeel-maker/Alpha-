@@ -337,12 +337,42 @@ window opens and looks fine but nothing responds), and the `v1.0.3` assets on Gi
 Releases also predate the Neon migration. Build from source instead:
 
 ```powershell
-npm run dist        # → release/Alpha AI Workspace-Setup-1.0.4.exe
+npm run dist        # → release/Alpha AI Workspace-Setup-<package.json version>.exe
 ```
 
 Uninstall the old copy first (Programs & Features) so the `alpha://` protocol handler is
 re-registered, then install. When the installer is good, publish it so auto-update
-customers get it: `npm run release` (needs `GH_TOKEN`).
+customers get it: `node scripts/ensure-release.mjs` (needs `GH_TOKEN`), which creates or
+publishes the GitHub release and guarantees the exe, blockmap and `latest.yml` are all
+present with hashes that match the signed installer. It is idempotent, so re-run it after
+a failed upload; `electron-builder`'s own uploader can report an upload as failed when the
+asset did in fact land.
+
+**Published 2026-10-17: `v1.0.6`** — installer 125,522,122 bytes, `sha512`
+`CMMtIbyMVJ4bl1ux13/NMEfcb9gUmOs74NkUs/01U55h1PwyEunVCJmT3cmmkpR37YjDxt+YkSGUJfvlJORiIA==`,
+tag `v1.0.6` on commit `522d32f`. Installed copies on `1.0.5` are offered it on next launch.
+
+### 9a. Publishing to GitHub does not update the download the product hands out
+
+Auto-update reads the GitHub release. The gated surfaces — `GET /downloads/latest` and the
+Download panel on the signed-in dashboard — read `public.releases`. Nothing kept the two in
+step: the table was seeded once by `0002_auth.sql`, and the admin portal only *lists*
+releases, so there was no in-product way to advance it. Measured 2026-10-17: one row, still
+`1.0.4`, while `1.0.5` and `1.0.6` were public on GitHub — every signed-in account was
+handed an installer two releases old.
+
+Register the built version after publishing:
+
+```powershell
+npm run release:register -- --check     # what it would change, changes nothing
+npm run release:register -- --notes "What changed"
+```
+
+It refuses unless the GitHub asset for the current package version exists and its length
+equals the local installer's, and it advertises the `sha512` it computes from that file, so
+the row cannot describe bytes nobody can download. It is idempotent, writes the same
+`release.upsert` audit row the admin route writes, and prints what `/downloads/latest` now
+answers. Needs `DATABASE_URL` (env or `.env.local`).
 
 ### 9b. The installer file is public — a decision, not an oversight
 

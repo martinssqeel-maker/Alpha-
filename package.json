@@ -18,6 +18,7 @@
     "dist": "electron-vite build && electron-builder --win nsis",
     "dist:dir": "electron-vite build && electron-builder --win --dir",
     "release": "electron-vite build && electron-builder --win nsis --publish always & node scripts/ensure-release.mjs",
+    "release:register": "node scripts/register-release.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "admin:password": "node scripts/admin-password.mjs",
     "admin:grant": "node scripts/admin-grant.mjs",

@@ -269,6 +269,10 @@ async function writeChecks() {
     ]) {
       const uid = (await client.query('select public.provision_user($1) as id', [email])).rows[0].id
       ids.push(uid)
+      // These accounts stand in for people who signed in through a code or a
+      // provider, both of which prove the mailbox. Without this they would be
+      // refused the download for a reason the fixture invented, not the product.
+      await client.query('select public.mark_email_verified($1)', [uid])
       if (isAdmin) {
         await client.query(
           `insert into public.admin_users (user_id, role_id)
@@ -303,15 +307,39 @@ async function writeChecks() {
     if (badPassword.status === 401) record('PASS', 'wrong password is refused', '401')
     else record('FAIL', 'wrong password is refused', `status=${badPassword.status}`)
 
-    // 3. An ordinary account holding a password still gets nothing.
-    const nonAdmin = await call('/auth/password', {
+    // 3. An ordinary account holding a password signs in — and the `admin` flag is
+    //    read from the database rather than being the constant it used to be when
+    //    this route was administrators-only.
+    const memberLogin = await call('/auth/password', {
       method: 'POST',
       body: { email: userEmail, password: userPassword }
     })
-    if (nonAdmin.status === 401) {
-      record('PASS', 'a non-administrator cannot sign in through the admin path', '401')
+    if (memberLogin.status === 200 && memberLogin.json?.accessToken && memberLogin.json?.admin === false) {
+      record('PASS', 'a member with a password signs in and is not an administrator', 'admin=false')
     } else {
-      record('FAIL', 'a non-administrator cannot sign in through the admin path', `status=${nonAdmin.status}`)
+      record(
+        'FAIL',
+        'a member with a password signs in and is not an administrator',
+        `status=${memberLogin.status} admin=${String(memberLogin.json?.admin)}`
+      )
+    }
+
+    // 4. An account with no credential still cannot sign in this way: the password
+    //    path must not become a way to authenticate anything that exists.
+    const noCredentialEmail = `verify-nopw-${stamp}@example.invalid`
+    const noCredentialUid = (
+      await client.query('select public.provision_user($1) as id', [noCredentialEmail])
+    ).rows[0].id
+    ids.push(noCredentialUid)
+    await client.query('select public.mark_email_verified($1)', [noCredentialUid])
+    const noCredential = await call('/auth/password', {
+      method: 'POST',
+      body: { email: noCredentialEmail, password: 'Any-Long-Password-123' }
+    })
+    if (noCredential.status === 401) {
+      record('PASS', 'an account without a password cannot sign in with one', '401')
+    } else {
+      record('FAIL', 'an account without a password cannot sign in with one', `status=${noCredential.status}`)
     }
 
     if (adminToken) {
@@ -466,10 +494,187 @@ async function writeChecks() {
         }
       }
     }
+
+    // ---------------------------------------------------------------- passwords
+    // The member password lifecycle, driven through the real API. Codes are minted
+    // here rather than read from mail: this run has no mailbox, and what is being
+    // proven is the account/session/download behaviour that follows a confirmed
+    // code. Delivery itself is the one part only a human can check.
+    const pwStamp = Date.now()
+    const newEmail = `verify-pw-${pwStamp}@example.invalid`
+    const secondEmail = `verify-pw2-${pwStamp}@example.invalid`
+    const firstPassword = `Harbour-Basalt-${pwStamp}-Tide`
+    const secondPassword = `Lantern-Meadow-${pwStamp}-Ridge`
+    const thirdPassword = `Copper-Lantern-${pwStamp}-Harbour`
+
+    /** Mint a code row for an address, the part the mailbox would normally do. */
+    async function mintCode(email) {
+      const value = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+      const digest = createHash('sha256').update(`${pepper}:${value}`).digest('hex')
+      await client.query('update public.auth_otps set consumed_at = now() where lower(email) = $1 and consumed_at is null', [email])
+      await client.query(
+        `insert into public.auth_otps (email, code_hash, magic_hash, expires_at)
+         values ($1, $2, $3, now() + interval '10 minutes')`,
+        [email, digest, `${digest}-magic`]
+      )
+      return value
+    }
+
+    // 13. Sign-up accepts a password without claiming a session, and answers a
+    //     second address identically — the response is not an account oracle.
+    const registered = await call('/auth/register', {
+      method: 'POST',
+      body: { email: newEmail, password: firstPassword }
+    })
+    if (registered.status === 202 && registered.json?.ok && registered.json?.needsVerification === true) {
+      record('PASS', 'sign-up takes an email and password without claiming a session', '202 needsVerification')
+    } else {
+      record('FAIL', 'sign-up takes an email and password without claiming a session', `status=${registered.status}`)
+    }
+
+    const secondSignUp = await call('/auth/register', {
+      method: 'POST',
+      body: { email: secondEmail, password: firstPassword }
+    })
+    if (secondSignUp.status === registered.status) {
+      record('PASS', 'sign-up answers a second address the same way', `status=${secondSignUp.status}`)
+    } else {
+      record('FAIL', 'sign-up answers a second address the same way', `statuses ${registered.status} vs ${secondSignUp.status}`)
+    }
+
+    const newRows = (
+      await client.query('select id, email, email_verified_at from public.users where lower(email) = any($1::text[])', [
+        [newEmail, secondEmail]
+      ])
+    ).rows
+    for (const row of newRows) ids.push(row.id)
+    const newRow = newRows.find((row) => row.email.toLowerCase() === newEmail)
+
+    if (newRow && newRow.email_verified_at === null) {
+      record('PASS', 'a password sign-up has not proved the mailbox yet', 'email_verified_at is null')
+    } else {
+      record('FAIL', 'a password sign-up has not proved the mailbox yet', newRow ? 'already verified' : 'no account row')
+    }
+
+    // 14. The password they chose signs them in.
+    const memberPasswordLogin = await call('/auth/password', {
+      method: 'POST',
+      body: { email: newEmail, password: firstPassword }
+    })
+    const newMemberToken = memberPasswordLogin.json?.accessToken
+    if (memberPasswordLogin.status === 200 && newMemberToken && memberPasswordLogin.json?.admin === false) {
+      record('PASS', 'a new member signs in with the password they chose', 'admin=false')
+    } else {
+      record(
+        'FAIL',
+        'a new member signs in with the password they chose',
+        `status=${memberPasswordLogin.status} admin=${String(memberPasswordLogin.json?.admin)}`
+      )
+    }
+
+    // 15. A password is knowledge, not proof of the mailbox: the installer waits.
+    if (newMemberToken) {
+      const unverifiedDownload = await call('/downloads/latest', { token: newMemberToken })
+      if (unverifiedDownload.status === 403 && unverifiedDownload.json?.error?.code === 'email_unverified') {
+        record('PASS', 'an unconfirmed address is refused the installer', '403 email_unverified')
+      } else {
+        record(
+          'FAIL',
+          'an unconfirmed address is refused the installer',
+          `status=${unverifiedDownload.status} code=${unverifiedDownload.json?.error?.code ?? 'none'}`
+        )
+      }
+    }
+
+    // 16. Redeeming the code confirms the address, and the installer follows.
+    const confirmCode = await mintCode(newEmail)
+    const confirmed = await call('/auth/verify', {
+      method: 'POST',
+      body: { email: newEmail, code: confirmCode }
+    })
+    const confirmedToken = confirmed.json?.accessToken
+    if (confirmed.status === 200 && confirmedToken) {
+      record('PASS', 'redeeming the emailed code confirms the address and signs in', '200')
+    } else {
+      record('FAIL', 'redeeming the emailed code confirms the address and signs in', `status=${confirmed.status}`)
+    }
+
+    if (confirmedToken) {
+      const confirmedDownload = await call('/downloads/latest', { token: confirmedToken })
+      if (confirmedDownload.status === 200 && confirmedDownload.json?.release?.version) {
+        record('PASS', 'a confirmed member is handed the current installer', `version=${confirmedDownload.json.release.version}`)
+      } else {
+        record('FAIL', 'a confirmed member is handed the current installer', `status=${confirmedDownload.status}`)
+      }
+
+      // 17. Changing it from a live session: the old password stops working and
+      //     other devices are signed out.
+      const changed = await call('/auth/password/change', {
+        method: 'POST',
+        token: confirmedToken,
+        body: { currentPassword: firstPassword, newPassword: secondPassword }
+      })
+      if (changed.status === 200 && changed.json?.ok) {
+        record('PASS', 'a signed-in member can change their password', `revokedOthers=${changed.json.revokedOthers ?? 0}`)
+      } else {
+        record('FAIL', 'a signed-in member can change their password', `status=${changed.status}`)
+      }
+
+      const replacedLogin = await call('/auth/password', {
+        method: 'POST',
+        body: { email: newEmail, password: firstPassword }
+      })
+      if (replacedLogin.status === 401) record('PASS', 'the replaced password no longer signs in', '401')
+      else record('FAIL', 'the replaced password no longer signs in', `status=${replacedLogin.status}`)
+    }
+
+    // 18. Forgot-password answers without describing the account, and its code
+    //     sets a new password exactly once.
+    const forgot = await call('/auth/password/forgot', { method: 'POST', body: { email: newEmail } })
+    if (forgot.status === 202 && forgot.json?.ok) {
+      record('PASS', 'forgot-password answers without describing the account', '202')
+    } else {
+      record('FAIL', 'forgot-password answers without describing the account', `status=${forgot.status}`)
+    }
+
+    const resetCode = await mintCode(newEmail)
+    const reset = await call('/auth/password/reset', {
+      method: 'POST',
+      body: { email: newEmail, code: resetCode, password: thirdPassword }
+    })
+    if (reset.status === 200 && reset.json?.ok) {
+      record('PASS', 'a reset code sets a new password', '200')
+    } else {
+      record('FAIL', 'a reset code sets a new password', `status=${reset.status}`)
+    }
+
+    const replay = await call('/auth/password/reset', {
+      method: 'POST',
+      body: { email: newEmail, code: resetCode, password: 'Replay-Attempt-4711-Cobalt' }
+    })
+    if (replay.status === 400 && replay.json?.error?.code === 'invalid_code') {
+      record('PASS', 'a reset code cannot be replayed', '400 invalid_code')
+    } else {
+      record('FAIL', 'a reset code cannot be replayed', `status=${replay.status} code=${replay.json?.error?.code ?? 'none'}`)
+    }
+
+    const resetLogin = await call('/auth/password', {
+      method: 'POST',
+      body: { email: newEmail, password: thirdPassword }
+    })
+    if (resetLogin.status === 200 && resetLogin.json?.accessToken) {
+      record('PASS', 'the reset password signs in', '200')
+    } else {
+      record('FAIL', 'the reset password signs in', `status=${resetLogin.status}`)
+    }
   } finally {
     // Always clean up, even when an assertion threw above.
     if (ids.length) {
+      // Audit rows this run wrote, by actor and by target, then the accounts
+      // themselves (sessions, credentials, overrides cascade from users).
       await client.query('delete from public.audit_logs where actor_id = any($1::uuid[])', [ids])
+      await client.query('delete from public.audit_logs where target = any($1::text[])', [ids])
+      await client.query('delete from public.auth_otps where lower(email) like $1', ['verify-%@example.invalid'])
       await client.query('delete from public.users where id = any($1::uuid[])', [ids])
     }
     // admin_users rows (and sessions, credentials, overrides) cascade from users.

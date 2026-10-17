@@ -161,10 +161,22 @@ Once a domain is verified, set `EMAIL_FROM` to an address on it and deploy again
 `WEB_ACCOUNT_URL` is already the website origin, so emailed links land on `/account` rather
 than the desktop app's `alpha://auth/callback` link. Clear it to send people to the app instead.
 
-There is deliberately no password-reset email: ordinary accounts have no password (email
-code, Google or GitHub only), and the only password in the system is the administrator's,
-which is seeded on this machine with `npm run admin:password` — a stronger path than an
-emailed reset link for an account that can see every user.
+**Member passwords shipped on 2026-10-18**, so the old line here — "ordinary accounts have
+no password" — is no longer true. An account can now be created with an email address and a
+password (`POST /auth/register`), signed into with it (`POST /auth/password`), and recovered
+with an emailed code (`POST /auth/password/forgot` + `/auth/password/reset`). Consequences
+worth knowing before touching this area:
+
+* **`EMAIL_FROM` now matters for everyone, not just sign-in.** A reset code is mail, so with
+  no verified Resend domain, password recovery works only for `martinssqeel@gmail.com`.
+  Registration itself still succeeds and the account is usable — the person can sign in with
+  the password they chose — but the confirmation code needs a working sender.
+* **A password is not proof of the mailbox.** A new account can sign in immediately and is
+  refused the installer (`403 email_unverified`) until it redeems one emailed code. The
+  dashboard says so with a resend action. `public.users.email_verified_at` records it.
+* **The administrator password path is unchanged** and still seeded locally with
+  `npm run admin:password`; `/auth/password` now serves members too, and returns `admin`
+  from the database instead of the constant it used to return.
 
 ## [x] 6. Website: the deployed site is configured and serving
 
@@ -401,7 +413,7 @@ Automated part — safe, read-only, survives a deploy:
 npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
-npm run verify:auth -- --with-write           # 30 checks; creates + deletes temp accounts
+npm run verify:auth -- --with-write           # 44 checks; creates + deletes temp accounts
 npm run verify:admin                          # 15 checks; creates + deletes temp accounts
 ```
 

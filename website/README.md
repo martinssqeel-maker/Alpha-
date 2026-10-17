@@ -14,12 +14,19 @@ account page that signs users in, and the authenticated account dashboard at `/a
   every page's footer, and each links to the other. They read the account service's
   actual behaviour from the code rather than describing a generic policy, so keep
   them in step when what the API stores changes.
-- **Account page.** `account.html` + `assets/account.js` offer every sign-in method
-  the deployment actually reports (`/auth/providers`), plus the emailed link/code
-  path, and render the signed-in account's plan and usage. Member accounts are
-  passwordless today; adding an email + password path is specified in
-  `docs/website/premium-rebuild-spec.md`, together with every claim in this site that
-  would become false with it. Signing in *is* signing
+- **Account page.** `account.html` + `assets/account.js` lead with an **email and
+  password bar**: sign in with `POST /auth/password`, create an account with
+  `POST /auth/register`. "Continue with GitHub" and "Continue with Google" follow it
+  (in that order), the emailed code/link path is kept as "Prefer no password?", and
+  "Forgot password?" runs `POST /auth/password/forgot` then `POST /auth/password/reset`.
+  Only the methods the deployment actually reports (`/auth/providers`) are rendered.
+- **The installer is gated on a confirmed address.** A password proves knowledge, not
+  the mailbox: a new account signs in straight away but `GET /downloads/latest` answers
+  `403 email_unverified` until it redeems one emailed code, and the dashboard's
+  Downloads panel says so.
+- **The signed-in dashboard** (`app.html` + `assets/dashboard.js`) has a one-button
+  installer card (version, size, date, SHA-512) and a Password card
+  (`POST /auth/password/change`, which revokes every other session). Signing in *is* signing
   up: the API provisions the account on the first verified sign-in, so
   `/account?mode=signup` only reframes the same card (title, lede and email button)
   instead of pretending there is a second endpoint. Every page links to it —

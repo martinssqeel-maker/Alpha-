@@ -35,7 +35,7 @@ Two deeper live checks need a database connection (`DATABASE_URL`); they create 
 accounts and delete them again, so they are still safe to point at production:
 
 ```bash
-npm run verify:auth -- --with-write   # 30 checks: identity, authorization, gating, replay
+npm run verify:auth -- --with-write   # 44 checks: identity, authorization, gating, replay, passwords
 npm run verify:admin                  # 15 checks: every portal control has a real effect
 ```
 
@@ -188,6 +188,32 @@ lists both. Without them the browser's preflight fails before a handler runs —
 caught in the browser run against the stub and fixed in both places.
 
 The stub is QA-only and holds fixture data; it is never used by the site or a deployment.
+
+## Member passwords (shipped 2026-10-18)
+
+Email + password replaced nothing: the emailed code, Google and GitHub all still work, and
+the desktop app's `alpha://auth/callback` handoff is untouched. What is new is `register`,
+password `sign-in` for members, `forgot`/`reset`, and `change` from the dashboard, plus the
+`public.users.email_verified_at` marker that gates the installer.
+
+| Check | Where it is proven |
+| --- | --- |
+| Validation answers before any database work: bad address, short password, weak phrase, surrounding whitespace, non-numeric code | `tests/memberPasswords.test.ts` (11 tests, no database) |
+| The whole lifecycle against production | `npm run verify:auth -- --with-write` — **44 passed, 0 failed**: sign-up (202, no session), an identical answer for a second address, `email_verified_at` still null, member sign-in with `admin:false`, `403 email_unverified` on the installer, the code confirming the address, the installer then served at `1.0.6`, `change` revoking other sessions, the replaced password refusing, `forgot` answering 202, the reset code setting a password, and that code refusing a replay |
+| An account with no credential cannot sign in with one | the same run (`401`) |
+| The site offers the password path in the promised order and no longer claims to be passwordless | `node scripts/verify-website.mjs` — new guards for `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, GitHub before Google, and the absence of "no password to remember" / "passwordless" claims |
+| A password sign-in is not a mailbox proof | `verificationProblem()` in `platform/api/releases.ts`, asserted in `tests/memberPasswords.test.ts` |
+
+**Not verified here:** that a real person receives the confirmation code. The run mints the
+code row directly, because delivery needs a mailbox — and `EMAIL_FROM` needs a verified
+Resend domain before any address other than the operator's can receive one (see
+`docs/platform/MANUAL-TODO.md` §5). Registration, sign-in and the download gate are all
+proven regardless, because none of them depends on the mail arriving.
+
+**Migration 0005** adds `email_verified_at`, backfilled from `last_sign_in_at` for every
+existing account so nobody lost download access, plus `set_password_credential()` — the
+first server-side write path to `password_credentials`, which 0002 recorded as
+operator-only.
 
 ## Admin dashboard
 

@@ -424,6 +424,11 @@ flips maintenance mode for a few seconds and deletes both accounts again. Run it
 acceptable, then check the `restore:` lines it prints (settings row count, flag removed,
 zero leftover test accounts).
 
+`verify:auth --with-write` **has been run: 30 passed, 0 failed (2026-10-17, after
+deploying `platform/api`)**. Its first run scored 26/4 for one reason — the deployed
+Function was behind `main` — so treat those four lines as the signal that the API needs
+`npm run deploy`, not as a defect.
+
 Manual part, needs a mailbox and credentials:
 
 1. Website `/account` — request a code, follow the magic link.
@@ -437,8 +442,10 @@ Manual part, needs a mailbox and credentials:
    Security lists the browser and, after signing in on the desktop, the app; revoking
    the other session makes that client fail on its next request (`401 session_ended`).
    Rendered locally on 2026-10-17 against `scripts/stub-platform-api.mjs` (fixtures),
-   **not yet exercised against production**; `PATCH`/`DELETE` now pass preflight, which
-   they did not before.
+   **not yet exercised against production** — it needs a real mailbox. What *is* verified
+   against production: `/app` is deployed (`200`), `PATCH`/`DELETE` pass preflight
+   (`GET,POST,PATCH,DELETE,OPTIONS`), `/auth/me` and `/auth/sessions` answer `401` rather
+   than `404`, and a real session reaches `/downloads/latest`.
 
 ---
 

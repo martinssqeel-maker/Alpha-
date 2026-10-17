@@ -156,17 +156,18 @@ Run in the Neon SQL editor (or `psql "$DATABASE_URL_UNPOOLED"`):
   accounts, prove administrator password sign-in, `/admin/*` authorization, the gated
   release, suspension and single-use code replay, then delete them again. It mints its
   sessions through the API's own one-time-code exchange, so it needs no mailbox.
-- **Run 2026-10-17 against production: 26 passed, 4 failed.** Everything the deployed API
-  serves passed, including `a signed-in account gets the release metadata — version=1.0.6`
-  (a real session created through the real exchange, reading the real `/downloads/latest`).
-  The four failures are all the same cause: the **deployed Function is older than `main`**.
-  It answers `404` for `/auth/me` and `/auth/sessions` and its CORS preflight allows only
-  `GET,POST,OPTIONS`, so the dashboard's profile and session controls cannot work until
-  `npm run deploy` ships the current `platform/api`. The fourth — `an administrator cannot
-  remove its own admin rights` answered `403 forbidden` instead of `409
-  cannot_remove_own_admin` — is the same staleness: the message-first mapping in
-  `describeAdminError` (asserted by `tests/adminErrorMap.test.ts`) is not in the deployed
-  build. Re-run this after deploying; if those four still fail, it is a real defect.
+- **Run 2026-10-17 against production: 30 passed, 0 failed**, after `npm run deploy`.
+  Notable passes: `a signed-in account gets the release metadata — version=1.0.6` (a real
+  session created through the API's own one-time-code exchange, reading the real
+  `/downloads/latest`), `CORS preflight allows PATCH and DELETE`, `an administrator cannot
+  remove its own admin rights — 409 cannot_remove_own_admin`.
+- **The same script run before that deploy scored 26 passed, 4 failed**, and all four were
+  one cause: the Function was older than `main`. It answered `404` for `/auth/me` and
+  `/auth/sessions`, its preflight allowed only `GET,POST,OPTIONS`, and it lacked the
+  message-first mapping in `describeAdminError` (asserted by `tests/adminErrorMap.test.ts`),
+  so a self-demotion answered `403 forbidden` instead of `409`. Nothing was wrong with the
+  code — it had never been shipped. Re-run this script after any deploy to `platform/api`;
+  these four lines are exactly what "the backend is behind" looks like.
 
 ### Account dashboard (`/app`)
 

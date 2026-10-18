@@ -30,7 +30,9 @@ account page that signs users in, and the authenticated account dashboard at `/a
   `403 email_unverified` until it redeems one emailed code, and the dashboard's
   Downloads panel says so.
 - **The signed-in dashboard** (`app.html` + `assets/dashboard.js`) has a one-button
-  installer card (version, size, date, SHA-512) and a Password card
+  installer card (version, size, date, SHA-512), a **Profile** card that edits the name and
+  phone number sign-up collected (`PATCH /auth/me`, which writes only the fields it is sent
+  and marks the field a refusal names) and a Password card
   (`POST /auth/password/change`, which revokes every other session). A first verified sign-in
   still provisions the account, so the emailed-code and provider paths remain a way to sign
   up; `/account?mode=signup` reframes the same card (title, lede, submit label) and adds the

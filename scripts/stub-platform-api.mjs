@@ -59,6 +59,7 @@ const MY_ACCOUNT = {
   id: '99999999-9999-9999-9999-999999999999',
   email: 'qa@example.com',
   fullName: 'QA Tester',
+  phone: '+15550102030',
   status: 'active',
   createdAt: daysAgo(45),
   lastSignInAt: daysAgo(0),
@@ -68,7 +69,12 @@ const MY_ACCOUNT = {
 }
 
 const MY_CONFIG = {
-  account: { email: MY_ACCOUNT.email, fullName: MY_ACCOUNT.fullName, status: 'active' },
+  account: {
+    email: MY_ACCOUNT.email,
+    fullName: MY_ACCOUNT.fullName,
+    phone: MY_ACCOUNT.phone,
+    status: 'active'
+  },
   plan: { id: 'plan-free', code: 'free', name: 'Free', interval: 'month', isTrial: false },
   subscription: null,
   features: {},
@@ -606,8 +612,36 @@ createServer((req, res) => {
   }
   if (path === '/auth/me' && req.method === 'PATCH') {
     return readBody(req).then((body) => {
-      MY_ACCOUNT.fullName = typeof body.fullName === 'string' ? body.fullName : MY_ACCOUNT.fullName
+      // The real route holds both fields to the sign-up rules before writing
+      // anything, so the stub refuses the same two ways: it is the refusal the
+      // profile card has to place, and a stub that always says yes cannot prove
+      // that placement.
+      if (typeof body.fullName === 'string') {
+        const name = String(body.fullName).trim()
+        if (name.length < 2) {
+          return json(res, 400, {
+            ok: false,
+            error: { code: 'invalid_name', message: 'Enter your full name.' }
+          })
+        }
+        MY_ACCOUNT.fullName = name
+      }
+      if (typeof body.phone === 'string') {
+        const raw = body.phone.trim()
+        const digits = raw.replace(/\D/g, '')
+        if (raw && (digits.length < 7 || digits.length > 15)) {
+          return json(res, 400, {
+            ok: false,
+            error: {
+              code: 'invalid_phone',
+              message: 'Enter a phone number with at least 7 digits, including the country code.'
+            }
+          })
+        }
+        MY_ACCOUNT.phone = raw ? `${raw.startsWith('+') ? '+' : ''}${digits}` : null
+      }
       MY_CONFIG.account.fullName = MY_ACCOUNT.fullName
+      MY_CONFIG.account.phone = MY_ACCOUNT.phone
       json(res, 200, { ok: true, account: MY_ACCOUNT })
     })
   }

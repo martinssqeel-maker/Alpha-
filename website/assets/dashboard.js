@@ -616,17 +616,83 @@ function viewAccount() {
     return panel('Profile', null, emptyState('Your profile is unavailable', 'The account API did not answer. Reload the page.'))
   }
 
+  // The same failure shape the sign-up card uses: the message goes under the
+  // field it belongs to, the input is marked invalid, and the caret lands there.
+  function fieldError(input, id) {
+    const el = h('p', { class: 'field-error', id, hidden: true })
+    input.addEventListener('input', () => {
+      el.textContent = ''
+      el.hidden = true
+      input.removeAttribute('aria-invalid')
+    })
+    return {
+      el,
+      show(text) {
+        el.textContent = text
+        el.hidden = false
+        input.setAttribute('aria-invalid', 'true')
+        input.focus()
+      }
+    }
+  }
+
   const nameField = h('input', {
     id: 'profile-name',
     type: 'text',
     name: 'fullName',
     maxlength: '80',
     autocomplete: 'name',
-    placeholder: 'Add your name',
-    value: account.fullName || ''
+    placeholder: 'Ada Lovelace',
+    value: account.fullName || '',
+    'aria-describedby': 'profile-name-hint profile-name-error'
   })
+  const nameError = fieldError(nameField, 'profile-name-error')
+
+  const phoneField = h('input', {
+    id: 'profile-phone',
+    type: 'tel',
+    name: 'phone',
+    inputmode: 'tel',
+    autocomplete: 'tel',
+    placeholder: '+1 555 010 2030',
+    value: account.phone || '',
+    'aria-describedby': 'profile-phone-hint profile-phone-error'
+  })
+  const phoneError = fieldError(phoneField, 'profile-phone-error')
+
+  // The hint says what the number will be stored as, because the API reduces it
+  // to a leading `+` and its digits — and says so before the save, not after.
+  const phoneHint = h(
+    'p',
+    { class: 'hint', id: 'profile-phone-hint' },
+    'Contact details for support. No SMS is sent; leave it empty to remove it.'
+  )
+  function renderPhoneHint() {
+    const raw = phoneField.value.trim()
+    const digits = raw.replace(/\D/g, '')
+    if (!raw) {
+      phoneHint.textContent = 'Contact details for support. No SMS is sent; leave it empty to remove it.'
+    } else if (digits.length >= 7 && digits.length <= 15) {
+      phoneHint.textContent = `Saved as ${raw.startsWith('+') ? '+' : ''}${digits}.`
+    } else {
+      phoneHint.textContent = 'Include the country code — 7 to 15 digits.'
+    }
+  }
+  phoneField.addEventListener('input', renderPhoneHint)
+
   const formStatus = h('p', { class: 'status-line', role: 'status', 'aria-live': 'polite' })
-  const saveButton = h('button', { class: 'btn primary', type: 'submit' }, 'Save name')
+  const saveButton = h('button', { class: 'btn primary', type: 'submit' }, 'Save profile')
+
+  // The record panel below shows the same two values, so it is updated from the
+  // saved account rather than left describing what the account used to say.
+  const recordName = h('dd', {}, account.fullName || 'Not set yet')
+  const recordPhone = h('dd', {}, account.phone || 'Not on file')
+
+  /**
+   * Which field a refusal belongs to, keyed by the code the API returned. The
+   * rules are the server's; this only decides where its answer goes.
+   */
+  const ERROR_FIELD = { invalid_name: nameError, invalid_phone: phoneError }
 
   const form = h(
     'form',
@@ -634,6 +700,8 @@ function viewAccount() {
       class: 'panel',
       onsubmit: async (event) => {
         event.preventDefault()
+        for (const error of [nameError, phoneError]) error.el.hidden = true
+        for (const input of [nameField, phoneField]) input.removeAttribute('aria-invalid')
         saveButton.disabled = true
         formStatus.textContent = 'Saving…'
         formStatus.dataset.kind = ''
@@ -641,19 +709,29 @@ function viewAccount() {
           const res = await api('/auth/me', {
             method: 'PATCH',
             token: state.session.accessToken,
-            body: { fullName: nameField.value }
+            body: { fullName: nameField.value, phone: phoneField.value }
           })
           if (res.status === 401) {
             sessionEnded()
             return
           }
           if (!res.ok) {
-            formStatus.textContent =
-              (res.json && res.json.error && res.json.error.message) || 'That name could not be saved.'
-            formStatus.dataset.kind = 'error'
+            const error = (res.json && res.json.error) || {}
+            const target = ERROR_FIELD[error.code]
+            if (target) {
+              // The field carries the message now, so the status line stops
+              // saying "Saving…" over the top of it.
+              formStatus.textContent = ''
+              target.show(error.message || 'That field could not be saved.')
+            } else {
+              formStatus.textContent = error.message || 'That profile could not be saved.'
+              formStatus.dataset.kind = 'error'
+            }
             return
           }
           state.account = res.json.account
+          recordName.textContent = state.account.fullName || 'Not set yet'
+          recordPhone.textContent = state.account.phone || 'Not on file'
           renderChrome()
           formStatus.textContent = 'Saved.'
           formStatus.dataset.kind = 'ok'
@@ -665,19 +743,40 @@ function viewAccount() {
         }
       }
     },
-    h('div', { class: 'panel-head' }, h('div', {}, h('h2', { class: 'panel-title' }, 'Your name'))),
+    h('div', { class: 'panel-head' }, h('div', {}, h('h2', { class: 'panel-title' }, 'Profile'))),
     h(
       'p',
       { class: 'panel-lede', style: 'margin:-8px 0 16px' },
-      'Used to greet you here. It is not a sign-in method.'
+      'What the account record holds about you. Your email address is your sign-in identity, so changing it is a separate step.'
     ),
     h(
       'div',
-      { class: 'form-row' },
-      h('div', { class: 'field' }, h('label', { for: 'profile-name' }, 'Full name'), nameField),
-      saveButton
+      { class: 'profile-fields' },
+      h(
+        'div',
+        { class: 'field' },
+        h('label', { for: 'profile-name' }, 'Full name'),
+        nameField,
+        h('p', { class: 'hint', id: 'profile-name-hint' }, 'How we address you. It is not a sign-in method.'),
+        nameError.el
+      ),
+      h(
+        'div',
+        { class: 'field' },
+        h('label', { for: 'profile-phone' }, 'Phone number'),
+        phoneField,
+        phoneHint,
+        phoneError.el
+      ),
+      h(
+        'div',
+        { class: 'field' },
+        h('label', { for: 'profile-email' }, 'Email'),
+        h('input', { id: 'profile-email', type: 'email', value: account.email || '', readonly: true }),
+        h('p', { class: 'hint' }, 'Your sign-in address.')
+      )
     ),
-    formStatus
+    h('div', { class: 'profile-actions' }, saveButton, formStatus)
   )
 
   const providers = Array.isArray(account.providers) ? account.providers : []
@@ -707,6 +806,10 @@ function viewAccount() {
         { class: 'kv' },
         h('dt', {}, 'Email'),
         h('dd', {}, account.email || '—'),
+        h('dt', {}, 'Name'),
+        recordName,
+        h('dt', {}, 'Phone'),
+        recordPhone,
         h('dt', {}, 'Status'),
         h('dd', {}, h('span', { class: `badge ${account.status === 'active' ? 'ok' : 'warn'}` }, account.status || 'unknown')),
         h('dt', {}, 'Member since'),

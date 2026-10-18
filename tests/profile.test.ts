@@ -4,7 +4,8 @@ import {
   fullNameProblem,
   normalizeFullName,
   normalizePhone,
-  phoneProblem
+  phoneProblem,
+  readProfileUpdate
 } from '../platform/api/profile'
 
 // These are the rules the sign-up form repeats in its own words; both sides are
@@ -67,5 +68,77 @@ describe('phone number', () => {
 
   it('requires something to be entered', () => {
     expect(phoneProblem('')).toMatch(/phone number/i)
+  })
+})
+
+// `PATCH /auth/me` is read by the same module that gates sign-up, so what an
+// account can be saved with cannot drift from what it can be created with.
+describe('a profile update', () => {
+  it('refuses a body that changes nothing', () => {
+    expect(readProfileUpdate({})).toMatchObject({ ok: false, code: 'invalid_request' })
+    expect(readProfileUpdate(undefined)).toMatchObject({ ok: false, code: 'invalid_request' })
+    // Right shape, wrong types: they are not fields to write.
+    expect(readProfileUpdate({ fullName: 42, phone: null })).toMatchObject({
+      ok: false,
+      code: 'invalid_request'
+    })
+  })
+
+  it('writes only the fields that were sent', () => {
+    const nameOnly = readProfileUpdate({ fullName: 'Ada Lovelace' })
+    expect(nameOnly).toEqual({
+      ok: true,
+      sendsName: true,
+      fullName: 'Ada Lovelace',
+      sendsPhone: false,
+      phone: null
+    })
+
+    const phoneOnly = readProfileUpdate({ phone: '+1 (555) 010-2030' })
+    expect(phoneOnly).toEqual({
+      ok: true,
+      sendsName: false,
+      fullName: null,
+      sendsPhone: true,
+      phone: '+15550102030'
+    })
+  })
+
+  it('holds a saved name to the rule sign-up enforces', () => {
+    expect(readProfileUpdate({ fullName: 'Ada Lovelace' })).toMatchObject({ ok: true })
+    expect(readProfileUpdate({ fullName: 'A' })).toMatchObject({ ok: false, code: 'invalid_name' })
+    expect(readProfileUpdate({ fullName: '  ' })).toMatchObject({ ok: false, code: 'invalid_name' })
+    expect(readProfileUpdate({ fullName: 'a'.repeat(MAX_NAME_LENGTH + 1) })).toMatchObject({
+      ok: false,
+      code: 'invalid_name'
+    })
+  })
+
+  it('refuses a number that cannot be dialled, but accepts clearing one', () => {
+    expect(readProfileUpdate({ phone: '555' })).toMatchObject({ ok: false, code: 'invalid_phone' })
+    expect(readProfileUpdate({ phone: '+1234567890123456' })).toMatchObject({
+      ok: false,
+      code: 'invalid_phone'
+    })
+    // An empty number is how a person removes contact details, not a mistake.
+    expect(readProfileUpdate({ phone: '' })).toEqual({
+      ok: true,
+      sendsName: false,
+      fullName: null,
+      sendsPhone: true,
+      phone: null
+    })
+    expect(readProfileUpdate({ phone: '   ' })).toMatchObject({ ok: true, phone: null })
+  })
+
+  it('refuses a bad field even when the other one is fine', () => {
+    expect(readProfileUpdate({ fullName: 'Ada Lovelace', phone: 'nope' })).toMatchObject({
+      ok: false,
+      code: 'invalid_phone'
+    })
+    expect(readProfileUpdate({ fullName: '', phone: '+15550102030' })).toMatchObject({
+      ok: false,
+      code: 'invalid_name'
+    })
   })
 })

@@ -201,4 +201,16 @@ if (existsSync(appPage)) {
   if (!/noindex/i.test(html)) problems.push('app.html: missing noindex (it shows one account\'s data)')
 }
 
+// The dashboard's profile card keeps the same contract as the sign-up card: the
+// name and number the account was created with can be edited there, and a field
+// the API rejects is marked where it is. `tests/userDashboardParity.test.ts`
+// proves the route exists; this proves the card still asks for both fields.
+const dashboardJs = join(root, 'assets', 'dashboard.js')
+if (existsSync(dashboardJs)) {
+  const js = readFileSync(dashboardJs, 'utf8')
+  for (const needle of ["id: 'profile-name'", "id: 'profile-phone'", 'field-error', 'aria-invalid']) {
+    if (!js.includes(needle)) problems.push(`assets/dashboard.js: profile card lost ${needle}`)
+  }
+}
+
 console.log(`Website OK — ${pages.length} page(s) checked under ${root}`)

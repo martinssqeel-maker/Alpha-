@@ -236,6 +236,19 @@ information, not a second factor: nothing sends SMS, so there is no "verified" f
 would imply a check took place. It is **pending on `production`** — run `npm run db:migrate`
 before deploying the API that writes the column (see `docs/platform/MANUAL-TODO.md` §2).
 
+## Editing what sign-up collected (2026-10-18)
+
+The profile card on `/app` edits the same two fields, through `PATCH /auth/me`. It sends
+both and the route writes only the ones that arrived, so saving a name cannot blank a
+number.
+
+| Check | Where it is proven |
+| --- | --- |
+| The rules are the ones sign-up already enforces | `readProfileUpdate()` in `platform/api/profile.ts`, asserted in `tests/profile.test.ts` (15 tests). One case earned its place: letters in the number field used to normalize to "no digits" and quietly delete the stored number; they are now a refusal |
+| The route writes only what it was sent, and a refusal leaves the row alone | `tests/profileRoutes.test.ts` — the real Hono app against PostgreSQL (PGlite) with every migration applied: sign-up stores `Ada Lovelace` / `+15550102030`, a second sign-up does not rewrite either, `PATCH /auth/me` turns `+44 20 7946 0958` into `+442079460958`, sending only a name leaves the number, `phone: 'nope'` is refused with the row unchanged, an empty number removes it, `GET /auth/me` reads the record back, and no session is a `401` |
+| The card marks the field that was refused | Browser run against `scripts/stub-platform-api.mjs` at `/app#account`: `invalid_phone` and `invalid_name` land under their own field with `aria-invalid` and the caret, typing clears only that field's message, and clearing the number writes `null` and updates the record panel below in place |
+| The card keeps both fields | `node scripts/verify-website.mjs` fails if `assets/dashboard.js` loses `id: 'profile-name'`, `id: 'profile-phone'`, `field-error` or `aria-invalid`; `tests/userDashboardParity.test.ts` keeps `PATCH /auth/me` registered |
+
 ## Admin dashboard
 
 - Sign in with an administrator email and password. Overview shows counts; Users changes

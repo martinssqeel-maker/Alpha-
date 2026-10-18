@@ -58,3 +58,63 @@ export function phoneProblem(phone: string): string | null {
   }
   return null
 }
+
+/** A profile edit the route can write, or the reason it cannot be written. */
+export type ProfileUpdate =
+  | {
+      ok: true
+      sendsName: boolean
+      fullName: string | null
+      sendsPhone: boolean
+      phone: string | null
+    }
+  | { ok: false; code: 'invalid_request' | 'invalid_name' | 'invalid_phone'; message: string }
+
+/**
+ * Read `PATCH /auth/me`.
+ *
+ * Only the fields that were actually sent are written, so saving a name cannot
+ * blank a number that is already on the account. A name is required to be a name
+ * — sign-up will not create an account without one, so saving must not accept
+ * what creating refuses — while an empty number is a deliberate way to remove
+ * contact details an account no longer wants on file.
+ *
+ * Kept out of the route so it can be unit tested without a database, exactly
+ * like the rules it applies.
+ */
+export function readProfileUpdate(body: unknown): ProfileUpdate {
+  const input = (body ?? {}) as { fullName?: unknown; phone?: unknown }
+  const sendsName = typeof input.fullName === 'string'
+  const sendsPhone = typeof input.phone === 'string'
+  if (!sendsName && !sendsPhone) {
+    return {
+      ok: false,
+      code: 'invalid_request',
+      message: 'Send a full name or a phone number to save.'
+    }
+  }
+
+  let fullName: string | null = null
+  if (sendsName) {
+    const normalized = normalizeFullName(input.fullName)
+    const problem = fullNameProblem(normalized)
+    if (problem) return { ok: false, code: 'invalid_name', message: problem }
+    fullName = normalized
+  }
+
+  let phone: string | null = null
+  if (sendsPhone) {
+    const raw = (input.phone as string).trim()
+    // An empty field removes the number. Anything typed has to be a number —
+    // asked of the raw text when no digits survive, so letters are refused as a
+    // mistyped number instead of quietly deleting the one already on file.
+    if (raw) {
+      const normalized = normalizePhone(raw)
+      const problem = phoneProblem(normalized || raw)
+      if (problem) return { ok: false, code: 'invalid_phone', message: problem }
+      phone = normalized
+    }
+  }
+
+  return { ok: true, sendsName, fullName, sendsPhone, phone }
+}

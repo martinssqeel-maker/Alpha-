@@ -349,6 +349,19 @@
 .field input:focus-visible { outline: 2px solid var(--brand-edge); outline-offset: 1px; }
 .field input:read-only { color: var(--steel); background: var(--panel-2); }
 .field .hint { color: var(--faint); font-size: 12.5px; }
+/* A field the member has to fix: the message sits under the input it belongs to,
+   and the input carries the mark, so the problem is visible where it is. */
+.field-error { margin: 0; color: var(--bad); font-size: 12.5px; line-height: 1.45; }
+.field-error[hidden] { display: none; }
+.field input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--bad) 60%, transparent);
+}
+.field input[aria-invalid='true']:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bad) 70%, transparent);
+}
+.profile-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.profile-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.profile-actions .status-line { margin: 0; }
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .form-row .field { flex: 1 1 240px; }
 .status-line { min-height: 18px; margin: 0; font-size: 13px; color: var(--steel); }

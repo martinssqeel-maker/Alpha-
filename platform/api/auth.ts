@@ -9,7 +9,7 @@ import { accessTtlMs, refreshTtlMs, signAccessToken } from './jwt'
 import { requireAuth } from './middleware'
 import { requireLiveSession } from './sessions'
 import { hashPassword, passwordNeedsRehash, passwordProblem, verifyPassword } from './password'
-import { fullNameProblem, normalizeFullName, normalizePhone, phoneProblem } from './profile'
+import { fullNameProblem, normalizeFullName, normalizePhone, phoneProblem, readProfileUpdate } from './profile'
 import {
   appCallbackUrl,
   exchangeGithubCode,
@@ -1388,24 +1388,23 @@ authRoutes.get('/me', requireAuth, requireLiveSession, async (c) => {
 })
 
 authRoutes.patch('/me', requireAuth, requireLiveSession, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { fullName?: unknown }
-  if (typeof body.fullName !== 'string') {
-    return c.json(
-      { ok: false, error: { code: 'invalid_request', message: 'Send a full name to save.' } },
-      400
-    )
-  }
-  const name = normalizeFullName(body.fullName)
-  if (name.length > 80) {
-    return c.json(
-      { ok: false, error: { code: 'invalid_request', message: 'A name can be at most 80 characters.' } },
-      400
-    )
+  // The same module that gates sign-up reads this body, so a name or number the
+  // account could not have been created with cannot be saved onto it either.
+  const update = readProfileUpdate(await c.req.json().catch(() => ({})))
+  if (!update.ok) {
+    return c.json({ ok: false, error: { code: update.code, message: update.message } }, 400)
   }
 
   const userId = c.get('userId')
   await withContext(userId, 'authenticated', async (q) => {
-    await q.query('update public.users set full_name = nullif($2, \'\') where id = $1', [userId, name])
+    // Only the fields that were sent are written.
+    await q.query(
+      `update public.users
+          set full_name = case when $2 then $3 else full_name end,
+              phone = case when $4 then $5 else phone end
+        where id = $1`,
+      [userId, update.sendsName, update.fullName, update.sendsPhone, update.phone]
+    )
   })
   const account = await loadSelfAccount(userId)
   return c.json({ ok: true, account })

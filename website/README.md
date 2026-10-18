@@ -16,7 +16,12 @@ account page that signs users in, and the authenticated account dashboard at `/a
   them in step when what the API stores changes.
 - **Account page.** `account.html` + `assets/account.js` lead with an **email and
   password bar**: sign in with `POST /auth/password`, create an account with
-  `POST /auth/register`. "Continue with GitHub" and "Continue with Google" follow it
+  `POST /auth/register`, which asks for a full name and a phone number as well as
+  credentials (rules in `platform/api/profile.ts`; a request without them is refused
+  before anything is written) and answers `202` with a code to redeem rather than a
+  session. A rejected field is marked where it is, with the API's own sentence beside
+  it and the input flagged `aria-invalid`, and the six-digit well appears directly
+  under the button that sent the code. "Continue with GitHub" and "Continue with Google" follow it
   (in that order), the emailed code/link path is kept as "Prefer no password?", and
   "Forgot password?" runs `POST /auth/password/forgot` then `POST /auth/password/reset`.
   Only the methods the deployment actually reports (`/auth/providers`) are rendered.
@@ -26,10 +31,10 @@ account page that signs users in, and the authenticated account dashboard at `/a
   Downloads panel says so.
 - **The signed-in dashboard** (`app.html` + `assets/dashboard.js`) has a one-button
   installer card (version, size, date, SHA-512) and a Password card
-  (`POST /auth/password/change`, which revokes every other session). Signing in *is* signing
-  up: the API provisions the account on the first verified sign-in, so
-  `/account?mode=signup` only reframes the same card (title, lede and email button)
-  instead of pretending there is a second endpoint. Every page links to it —
+  (`POST /auth/password/change`, which revokes every other session). A first verified sign-in
+  still provisions the account, so the emailed-code and provider paths remain a way to sign
+  up; `/account?mode=signup` reframes the same card (title, lede, submit label) and adds the
+  name and phone fields that `POST /auth/register` requires. Every page links to it —
   `Sign in` and `Sign up` actions in the header (both hidden below 620px, like the
   GitHub link) and `Sign in` / `Sign up` entries in the footer, so both stay
   reachable on phones. Finishing a sign-in hands the browser to `/app`.

@@ -215,6 +215,27 @@ existing account so nobody lost download access, plus `set_password_credential()
 first server-side write path to `password_credentials`, which 0002 recorded as
 operator-only.
 
+## Sign-up collects a name and a phone number (2026-10-18)
+
+The sign-up card asks who the account belongs to before it asks for credentials, and a
+rejected field is marked where it is rather than only in a line at the bottom of the card.
+The rules live in `platform/api/profile.ts` so the API, the card's own copy of them and the
+tests cannot drift apart.
+
+| Check | Where it is proven |
+| --- | --- |
+| A name or number is normalized and its rules stated once | `tests/profile.test.ts` (10 tests, no database): tabs and newlines become spaces, control characters dropped, names in any script, the same 80-character cap the form prints, `+1 (555) 010-2030` → `+15550102030`, 7–15 digits |
+| Sign-up refuses a missing name or an impossible number before any database work | `tests/memberPasswords.test.ts` (`400 invalid_name`, `400 invalid_phone`) |
+| The name and number reach the account row | `npm run verify:auth -- --with-write` gained three checks for this: no name → `400 invalid_name`, `phone: '555'` → `400 invalid_phone`, and `full_name`/`phone` stored on the new row. **Not yet run against production** — the run needs `--with-write` and a live database, and the three new lines are unproven until then |
+| The card keeps a place to mark each field | `node scripts/verify-website.mjs` now fails if the `data-field-error` slot for name, email, phone, password or code is gone, or if the six-digit well moves below the provider buttons |
+| Where a failure appears | Browser run against `scripts/stub-platform-api.mjs` at 1280 and 390 px, in both palettes: an empty submit marks all four fields at once with `aria-invalid`, typing in a field clears its own message, `401 invalid_password` from the server lands under the password field (not in the status line), the `202` reveals the code well directly under the button with the address it was sent to, and a refused code shows the server's own sentence there |
+
+**Migration 0006** adds `public.users.phone`, nullable, because every account that exists
+today arrived by an emailed code or a provider and never filled a form. It is contact
+information, not a second factor: nothing sends SMS, so there is no "verified" flag that
+would imply a check took place. It is **pending on `production`** — run `npm run db:migrate`
+before deploying the API that writes the column (see `docs/platform/MANUAL-TODO.md` §2).
+
 ## Admin dashboard
 
 - Sign in with an administrator email and password. Overview shows counts; Users changes

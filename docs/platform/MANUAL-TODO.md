@@ -79,6 +79,12 @@ select code, active from public.ai_providers;   -- expect openai, anthropic, gro
 
 To re-apply the schema on a fresh branch: `npm run db:migrate`.
 
+Migrations are incremental and recorded in `public.schema_migrations`, so run
+`npm run db:migrate` whenever one is added. **`0006_member_profile.sql` is pending as of
+2026-10-18**: it adds `public.users.phone`, which sign-up now writes, so deploy the API only
+after the column exists or account creation fails on a missing column.
+(`npm run db:migrate -- --check` lists what is pending without writing.)
+
 ## [ ] 3. Provider credentials — required before any cloud chat works
 
 **Nothing is configured yet** (measured 2026-10-16: all six candidate variables are unset,
@@ -413,7 +419,7 @@ Automated part — safe, read-only, survives a deploy:
 npm run deploy -- --check
 npm run smoke
 npm run smoke -- --email you@example.com      # also exercises sign-in (sends mail)
-npm run verify:auth -- --with-write           # 44 checks; creates + deletes temp accounts
+npm run verify:auth -- --with-write           # creates + deletes temp accounts
 npm run verify:admin                          # 15 checks; creates + deletes temp accounts
 ```
 

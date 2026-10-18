@@ -9,6 +9,7 @@ import { accessTtlMs, refreshTtlMs, signAccessToken } from './jwt'
 import { requireAuth } from './middleware'
 import { requireLiveSession } from './sessions'
 import { hashPassword, passwordNeedsRehash, passwordProblem, verifyPassword } from './password'
+import { fullNameProblem, normalizeFullName, normalizePhone, phoneProblem } from './profile'
 import {
   appCallbackUrl,
   exchangeGithubCode,
@@ -501,9 +502,16 @@ authRoutes.post('/verify', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/register', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    email?: string
+    password?: string
+    fullName?: string
+    phone?: string
+  }
   const email = (body.email ?? '').trim().toLowerCase()
   const password = body.password ?? ''
+  const fullName = normalizeFullName(body.fullName)
+  const phone = normalizePhone(body.phone)
 
   if (!EMAIL_RE.test(email)) {
     return c.json(
@@ -516,6 +524,16 @@ authRoutes.post('/register', async (c) => {
   const problem = passwordProblem(password)
   if (problem) {
     return c.json({ ok: false, error: { code: 'weak_password', message: problem } }, 400)
+  }
+  // The form asks for a name and a phone number as well as credentials. Both are
+  // validated before any database work so a typo cannot half-create an account.
+  const nameIssue = fullNameProblem(fullName)
+  if (nameIssue) {
+    return c.json({ ok: false, error: { code: 'invalid_name', message: nameIssue } }, 400)
+  }
+  const phoneIssue = phoneProblem(phone)
+  if (phoneIssue) {
+    return c.json({ ok: false, error: { code: 'invalid_phone', message: phoneIssue } }, 400)
   }
 
   const maintenance = maintenanceProblem(await maintenanceState(), false)
@@ -555,11 +573,28 @@ authRoutes.post('/register', async (c) => {
     const uid = (
       await q.query<{ id: string }>('select public.provision_user($1) as id', [email])
     ).rows[0].id
-    if (existing?.user_id) return { uid, created: false as const }
+    if (existing?.user_id) {
+      // Signing up again from a form fills in what the account is missing, but
+      // never rewrites a name or number its owner already has — including one
+      // that arrived from an OAuth profile.
+      await q.query(
+        `update public.users
+            set full_name = coalesce(full_name, $2),
+                phone = coalesce(phone, $3)
+          where id = $1`,
+        [uid, fullName, phone]
+      )
+      return { uid, created: false as const }
+    }
     await q.query('select public.set_password_credential($1, $2, $3)', [
       uid,
       hashPassword(password),
       'scrypt'
+    ])
+    await q.query('update public.users set full_name = $2, phone = $3 where id = $1', [
+      uid,
+      fullName,
+      phone
     ])
     return { uid, created: true as const }
   })
@@ -1282,6 +1317,7 @@ interface SelfAccount {
   id: string
   email: string
   fullName: string | null
+  phone: string | null
   status: string
   createdAt: string
   lastSignInAt: string | null
@@ -1298,11 +1334,12 @@ async function loadSelfAccount(userId: string): Promise<SelfAccount | null> {
         id: string
         email: string
         full_name: string | null
+        phone: string | null
         status: string
         created_at: string
         last_sign_in_at: string | null
       }>(
-        `select id, email, full_name, status, created_at, last_sign_in_at
+        `select id, email, full_name, phone, status, created_at, last_sign_in_at
            from public.users where id = $1`,
         [userId]
       )
@@ -1328,6 +1365,7 @@ async function loadSelfAccount(userId: string): Promise<SelfAccount | null> {
       id: user.id,
       email: user.email,
       fullName: user.full_name,
+      phone: user.phone,
       status: user.status,
       createdAt: user.created_at,
       lastSignInAt: user.last_sign_in_at,
@@ -1336,11 +1374,6 @@ async function loadSelfAccount(userId: string): Promise<SelfAccount | null> {
       admin: Boolean(admin)
     }
   })
-}
-
-/** Name is free text, but not control characters and not an essay. */
-export function normalizeFullName(input: string): string {
-  return input.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim()
 }
 
 authRoutes.get('/me', requireAuth, requireLiveSession, async (c) => {

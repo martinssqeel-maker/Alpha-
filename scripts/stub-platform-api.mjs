@@ -543,6 +543,55 @@ createServer((req, res) => {
   if (path === '/auth/providers') {
     return json(res, 200, { ok: true, google: true, github: true, password: true, otp: true })
   }
+  // Sign-up answers with the same 202 the real API sends: no session yet, a code
+  // in the inbox. The stub stores nothing.
+  if (path === '/auth/register' && req.method === 'POST') {
+    return json(res, 202, {
+      ok: true,
+      needsVerification: true,
+      delivered: true,
+      message: 'Check your inbox for a six-digit code. Enter it here to finish setting up your account.'
+    })
+  }
+  // The stub holds no credentials, so every password sign-in is refused the way
+  // the real API refuses a wrong one. Useful as-is: it is the shape a visitor
+  // sees after a typo, which is the state the account card has to place well.
+  if (path === '/auth/password' && req.method === 'POST') {
+    return json(res, 401, {
+      ok: false,
+      error: { code: 'invalid_password', message: 'That password is not correct.' }
+    })
+  }
+  // A sign-in link was "sent": the same shape the real API returns for a live
+  // deployment, which is what reveals the code well and its address line.
+  if (path === '/auth/request' && req.method === 'POST') {
+    return json(res, 200, {
+      ok: true,
+      message: 'We sent a sign-in code to that address.',
+      expiresInMinutes: 10,
+      delivered: true,
+      provider: 'stub'
+    })
+  }
+  // No code was ever issued, so a verification is refused exactly as the real
+  // API refuses a wrong one. This is the state the code field has to report.
+  if (path === '/auth/verify' && req.method === 'POST') {
+    return json(res, 400, {
+      ok: false,
+      error: { code: 'invalid_code', message: 'That code is not correct.' }
+    })
+  }
+  // Password recovery, so the account page's reset well can be exercised locally.
+  // The stub keeps no credentials: posting any code and password succeeds.
+  if (path === '/auth/password/forgot' && req.method === 'POST') {
+    return json(res, 202, {
+      ok: true,
+      message: 'If that address has an account, a reset code is on its way.'
+    })
+  }
+  if (path === '/auth/password/reset' && req.method === 'POST') {
+    return json(res, 200, { ok: true })
+  }
   if (path === '/auth/refresh') {
     return json(res, 200, {
       ok: true,

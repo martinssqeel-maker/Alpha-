@@ -122,6 +122,11 @@ if (existsSync(accountJs)) {
   for (const needle of ['/auth/register', '/auth/password', '/auth/password/forgot', '/auth/password/reset']) {
     if (!js.includes(needle)) problems.push(`assets/account.js: no call to ${needle}`)
   }
+  // A rejected field is marked where it is, and the API's error code decides
+  // which field that is: a message in a line at the bottom points at nothing.
+  for (const needle of ['function setFieldError', "aria-invalid", 'ERROR_FIELD']) {
+    if (!js.includes(needle)) problems.push(`assets/account.js: field errors lost (${needle})`)
+  }
   const github = js.indexOf("key: 'github'")
   const google = js.indexOf("key: 'google'")
   if (github === -1 || google === -1) {
@@ -136,6 +141,24 @@ if (existsSync(accountPage)) {
   const html = readFileSync(accountPage, 'utf8')
   for (const needle of ['data-auth-form', 'id="auth-email"', 'id="auth-password"', 'data-forgot', 'data-reset-form']) {
     if (!html.includes(needle)) problems.push(`account.html: missing the password path (${needle})`)
+  }
+  // Sign-up collects a name and a phone number (the API refuses a request
+  // without them), so both fields have to be on the card.
+  for (const needle of ['id="auth-name"', 'id="auth-phone"']) {
+    if (!html.includes(needle)) problems.push(`account.html: sign-up no longer asks for ${needle}`)
+  }
+  // Every field that can be rejected needs somewhere to say so next to itself.
+  for (const key of ['name', 'email', 'phone', 'password', 'code']) {
+    if (!html.includes(`data-field-error="${key}"`)) {
+      problems.push(`account.html: no place to show a ${key} error beside its field`)
+    }
+  }
+  // The code well belongs under the button that sends the code, before the
+  // provider buttons: it is the next step, not an alternative to the first one.
+  const codeWell = html.indexOf('data-code-form')
+  const providers = html.indexOf('data-providers')
+  if (codeWell === -1 || providers === -1 || codeWell > providers) {
+    problems.push('account.html: the six-digit code well must come before the provider buttons')
   }
 }
 

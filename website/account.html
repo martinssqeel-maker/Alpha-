@@ -6,7 +6,7 @@
     <title>Sign in or create an account · Alpha AI Workspace</title>
     <meta
       name="description"
-      content="Sign in or create an Alpha account with Google, GitHub or an emailed link. One account downloads the Windows app and signs the app in."
+      content="Sign in or create an Alpha account with your email and password, Google, GitHub, or an emailed code. One account downloads the Windows app and signs the app in."
     />
     <meta name="theme-color" content="#0c0f14" />
     <!-- Signed-in state is per-visitor; keep it out of search results. -->
@@ -47,238 +47,323 @@
       </div>
     </header>
 
-    <main class="section" data-account-root>
-      <div class="section-head">
-        <p class="eyebrow">Account</p>
-        <h1 data-page-title>One account, website and app</h1>
-        <p class="sub" data-page-sub>
-          Sign in or create an account here, then use the same login in the Windows app —
-          either way you land on the same Alpha account.
+    <main class="gate" data-account-root data-state="loading">
+      <div class="gate-intro">
+        <h1 data-page-title>One account, from first install to last model.</h1>
+        <p class="gate-sub" data-page-sub>
+          The same email and password open this website and the Windows app. Your plan,
+          usage and cloud models follow you between them.
         </p>
       </div>
 
-      <div class="account-card card">
-        <!-- Shown until the first answer arrives, so the page is never blank. -->
-        <div data-view="loading">
-          <div class="plan-name">Loading sign-in options…</div>
-          <p class="muted">Checking which sign-in methods this deployment offers.</p>
-        </div>
-
-        <div data-view="unconfigured" hidden>
-          <div class="plan-name">Sign-in is unavailable here</div>
-          <p class="muted">
-            This copy of the site was built without an Alpha Cloud API address, so it cannot reach
-            the sign-in service. If you are the operator, set <code>apiBaseUrl</code> in
-            <code>config.js</code> (see the website README).
+      <div class="gate-body">
+        <!-- The left column states what an account actually carries, in the same
+             key/value shape the app uses for account details. -->
+        <section class="gate-story" aria-label="What the account carries">
+          <p class="story-lede">
+            The installer, the plan and the model list are one record. Signing in is how
+            this site knows which record is yours.
           </p>
-        </div>
-
-        <div data-view="signed-out" hidden>
-          <div class="plan-name" data-card-title>Sign in</div>
-
-          <p class="muted" data-card-lede>
-            Sign in with your email and password. New to Alpha?
-            <a data-mode-link href="/account?mode=signup">Create an account</a> — it takes a
-            moment.
+          <dl class="ledger">
+            <div>
+              <dt>Windows installer</dt>
+              <dd>x64</dd>
+            </div>
+            <div>
+              <dt>Plan, usage, models</dt>
+              <dd>Cloud</dd>
+            </div>
+            <div>
+              <dt>This browser</dt>
+              <dd>Session</dd>
+            </div>
+          </dl>
+          <p class="story-note">
+            A session is a token this browser holds. Signing out here, or in the app,
+            revokes it on the server.
           </p>
+        </section>
 
-          <!-- The password bar. Email and password travel together so one submit
-               covers both directions; which endpoint it calls depends on the mode.
-               The server is the authority on the password rules, so the hint below
-               describes them rather than inventing stricter ones here. -->
-          <form class="auth-form" data-auth-form novalidate>
-            <div class="auth-bar">
-              <label class="sr-only" for="auth-email">Email address</label>
-              <input
-                id="auth-email"
-                name="email"
-                type="email"
-                autocomplete="email"
-                inputmode="email"
-                placeholder="you@example.com"
-                aria-describedby="auth-password-hint"
-                required
-              />
-              <div class="auth-secret">
-                <label class="sr-only" for="auth-password">Password</label>
-                <input
-                  id="auth-password"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
-                  placeholder="Your password"
-                  aria-describedby="auth-password-hint"
-                  required
-                />
-                <button
-                  class="reveal"
-                  type="button"
-                  data-password-toggle
-                  aria-label="Show password"
-                  aria-pressed="false"
-                >
-                  Show
-                </button>
-              </div>
-              <button class="btn primary auth-submit" type="submit" data-auth-submit>Sign in</button>
-              <!-- The rule and the recovery link belong to the password, so they sit
-                   under it rather than under the email field. -->
-              <p class="auth-hint" id="auth-password-hint">
-                12+ characters. <button class="linkish" type="button" data-forgot>Forgot password?</button>
+        <section class="gate-panel" aria-label="Account">
+          <span class="panel-edge" aria-hidden="true"></span>
+
+          <div class="panel-loading" data-view="loading">
+            <span class="pulse" aria-hidden="true"></span>
+            Checking sign-in options…
+          </div>
+
+          <div data-view="unconfigured" hidden>
+            <h2 class="panel-title">Sign-in is unavailable here</h2>
+            <p class="panel-lede">
+              This copy of the site was built without an Alpha Cloud API address, so it
+              cannot reach the sign-in service. If you are the operator, set
+              <code>apiBaseUrl</code> in <code>config.js</code> (see the website README).
+            </p>
+          </div>
+
+          <div data-view="signed-out" hidden>
+            <div class="panel-head">
+              <h2 class="panel-title" data-card-title>Sign in</h2>
+              <p class="panel-lede" data-card-lede>
+                Use your email and password. New to Alpha?
+                <a data-mode-link href="/account?mode=signup">Create an account</a>.
               </p>
             </div>
-          </form>
 
-          <div class="auth-divider" data-provider-divider hidden><span>or continue with</span></div>
-          <div class="provider-list" data-providers hidden></div>
-
-          <p class="auth-alt">
-            Prefer no password?
-            <button class="linkish" type="button" data-email-link>Email me a sign-in link</button>
-          </p>
-
-          <!-- Password recovery: request a code, then set a new password with it. -->
-          <form class="auth-form reset-form" data-reset-form hidden novalidate>
-            <div class="plan-name">Reset your password</div>
-            <p class="muted" data-reset-lede>
-              We sent a six-digit code to your email. Enter it with a new password.
-            </p>
-            <div class="auth-bar">
-              <label class="sr-only" for="reset-code">Six-digit code</label>
-              <input
-                id="reset-code"
-                name="code"
-                type="text"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                maxlength="6"
-                placeholder="000000"
-              />
-              <div class="auth-secret">
-                <label class="sr-only" for="reset-password">New password</label>
+            <!-- One submit covers both directions; the endpoint depends on the mode.
+                 The server owns the password rules, so the hint describes them
+                 rather than inventing stricter ones here. -->
+            <form class="auth-form" data-auth-form novalidate>
+              <!-- Sign-up asks who the account belongs to before it asks for
+                   credentials; sign-in keeps the two fields it needs. -->
+              <div class="field" data-signup-only hidden>
+                <label class="field-label" for="auth-name">Full name</label>
                 <input
-                  id="reset-password"
-                  name="password"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder="New password"
+                  id="auth-name"
+                  name="name"
+                  type="text"
+                  autocomplete="name"
+                  placeholder="Ada Lovelace"
+                  maxlength="80"
+                  aria-describedby="auth-name-error"
+                />
+                <p class="field-error" id="auth-name-error" data-field-error="name" hidden></p>
+              </div>
+
+              <div class="field">
+                <label class="field-label" for="auth-email">Email</label>
+                <input
+                  id="auth-email"
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  inputmode="email"
+                  placeholder="you@example.com"
+                  aria-describedby="auth-email-error"
+                  required
+                />
+                <p class="field-error" id="auth-email-error" data-field-error="email" hidden></p>
+              </div>
+
+              <div class="field" data-signup-only hidden>
+                <label class="field-label" for="auth-phone">Phone number</label>
+                <input
+                  id="auth-phone"
+                  name="phone"
+                  type="tel"
+                  autocomplete="tel"
+                  inputmode="tel"
+                  placeholder="+1 555 010 2030"
+                  aria-describedby="auth-phone-hint auth-phone-error"
+                />
+                <p class="field-hint" id="auth-phone-hint">
+                  Include the country code. Used for your account record and support — Alpha
+                  does not send SMS codes.
+                </p>
+                <p class="field-error" id="auth-phone-error" data-field-error="phone" hidden></p>
+              </div>
+
+              <div class="field">
+                <div class="field-head">
+                  <label class="field-label" for="auth-password">Password</label>
+                  <button class="linkish field-link" type="button" data-forgot>
+                    Forgot password?
+                  </button>
+                </div>
+                <div class="auth-secret">
+                  <input
+                    id="auth-password"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="12+ characters"
+                    aria-describedby="auth-password-hint auth-password-error"
+                    required
+                  />
+                  <button
+                    class="reveal"
+                    type="button"
+                    data-password-toggle
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    Show
+                  </button>
+                </div>
+                <div class="auth-hint" id="auth-password-hint">
+                  <span>12+ characters</span>
+                  <span class="strength" data-strength hidden>
+                    <span class="strength-track" aria-hidden="true"
+                      ><i></i><i></i><i></i><i></i
+                    ></span>
+                    <span class="strength-label" data-strength-label></span>
+                  </span>
+                </div>
+                <p class="field-error" id="auth-password-error" data-field-error="password" hidden></p>
+              </div>
+
+              <button class="btn primary auth-submit" type="submit" data-auth-submit>
+                Sign in
+              </button>
+            </form>
+
+            <!-- Only ever revealed after a code was actually sent, and it sits
+                 directly under the button that sent it, so the next step is the
+                 one underneath the thing that was just pressed. -->
+            <form class="email-form code-well" data-code-form hidden novalidate>
+              <label class="field-label" for="account-code">Six-digit code</label>
+              <div class="field-row">
+                <input
+                  id="account-code"
+                  name="code"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  maxlength="6"
+                  placeholder="000000"
+                  aria-describedby="account-code-error account-code-hint"
+                />
+                <button class="btn" type="submit" data-code-submit>Verify code</button>
+              </div>
+              <p class="field-hint" id="account-code-hint" data-code-hint hidden></p>
+              <p class="field-error" id="account-code-error" data-field-error="code" hidden></p>
+            </form>
+
+            <!-- Recovery replaces the bar's job, so it gets its own well. -->
+            <form class="reset-form" data-reset-form hidden novalidate>
+              <h3 class="reset-title">Reset your password</h3>
+              <p class="panel-lede" data-reset-lede>
+                We sent a six-digit code to your email. Enter it with a new password.
+              </p>
+              <div class="field">
+                <label class="field-label" for="reset-code">Six-digit code</label>
+                <input
+                  id="reset-code"
+                  name="code"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  maxlength="6"
+                  placeholder="000000"
                 />
               </div>
-              <button class="btn primary" type="submit" data-reset-submit>Set password</button>
-            </div>
-          </form>
-
-          <!-- Revealed once a code has been requested, so signing in never depends
-               on the mailbox handing the link to a browser. -->
-          <form class="email-form" data-code-form hidden novalidate>
-            <label for="account-code">Six-digit code</label>
-            <div class="field-row">
-              <input
-                id="account-code"
-                name="code"
-                type="text"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                maxlength="6"
-                placeholder="000000"
-              />
-              <button class="btn" type="submit" data-code-submit>Verify code</button>
-            </div>
-          </form>
-
-          <p class="micro">
-            Signing in with GitHub only shares your identity — it never grants access to your
-            repositories. Connect repositories separately inside the app.
-          </p>
-        </div>
-
-        <div data-view="signed-in" hidden>
-          <div class="dl-block">
-            <div>
-              <div class="plan-name" data-account-email>Signed in</div>
-              <div class="muted" data-account-plan></div>
-            </div>
-            <div class="actions">
-              <a class="btn primary" href="/app">Open dashboard</a>
-              <button class="btn" type="button" data-signout>Sign out</button>
-            </div>
-          </div>
-
-          <div data-account-usage hidden>
-            <table>
-              <thead>
-                <tr><th>Usage</th><th>Used</th><th>Limit</th></tr>
-              </thead>
-              <tbody data-usage-rows></tbody>
-            </table>
-          </div>
-
-          <p class="muted" data-account-models></p>
-
-          <!-- Downloads are fetched from the authenticated API with the session
-               token, so the release link is only ever handed to a signed-in account. -->
-          <section class="account-section" id="download" aria-labelledby="downloads-title">
-            <h2 class="plan-name section-title" id="downloads-title">Downloads</h2>
-            <p class="muted">Windows installer for your Alpha account.</p>
-
-            <div data-download-view="loading" class="muted">Checking the current release…</div>
-
-            <div data-download-view="unavailable" hidden>
-              <p class="muted" data-download-message></p>
-            </div>
-
-            <div data-download-view="ready" hidden>
-              <div class="dl-block">
-                <div>
-                  <div class="plan-name">
-                    Alpha AI Workspace <span data-download-version></span>
-                  </div>
-                  <div class="muted" data-download-meta>Windows installer</div>
+              <div class="field">
+                <label class="field-label" for="reset-password">New password</label>
+                <div class="auth-secret">
+                  <input
+                    id="reset-password"
+                    name="password"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="12+ characters"
+                  />
                 </div>
-                <a
-                  class="btn primary"
-                  data-download-link
-                  href="#"
-                  target="_blank"
-                  rel="noopener"
-                >Download installer</a>
               </div>
-              <p class="muted" data-download-notes hidden></p>
-              <p class="micro mono" data-download-checksum hidden></p>
+              <button class="btn primary" type="submit" data-reset-submit>Set password</button>
+            </form>
+
+            <div class="auth-divider" data-provider-divider hidden>
+              <span>or continue with</span>
             </div>
-          </section>
+            <div class="provider-list" data-providers hidden></div>
 
-          <section class="account-section" aria-labelledby="install-title">
-            <h2 class="plan-name section-title" id="install-title">Install it</h2>
-            <ol class="install-steps">
-              <li>Download the installer above (it is free and unsigned — if SmartScreen warns, choose <em>More info → Run anyway</em>).</li>
-              <li>Install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> if you want to run models locally.</li>
-              <li>Open Alpha, sign in with this same account, and install a model from the <strong>Models</strong> page.</li>
-            </ol>
-          </section>
+            <p class="auth-alt">
+              Prefer no password?
+              <button class="linkish" type="button" data-email-link>
+                Email me a sign-in link
+              </button>
+            </p>
 
-          <section class="account-section" aria-labelledby="requirements-title">
-            <h2 class="plan-name section-title" id="requirements-title">System requirements</h2>
-            <ul class="req-list">
-              <li>Windows 10 or 11 (x64)</li>
-              <li>Per-user install — no administrator rights required</li>
-              <li>Roughly 400 MB of disk after install</li>
-              <li>Ollama for local models, or an API key for a cloud provider</li>
-            </ul>
-          </section>
+            <p class="panel-note">
+              Signing in with GitHub shares your identity, not your repositories. Connect
+              repositories separately inside the app.
+            </p>
+          </div>
 
-          <p class="micro">
-            Your account details and installer link stay behind the server's own session check —
-            this page never receives a provider token.
-          </p>
-        </div>
+          <div data-view="signed-in" hidden>
+            <div class="account-summary">
+              <div>
+                <h2 class="panel-title" data-account-email>Signed in</h2>
+                <p class="account-plan" data-account-plan></p>
+              </div>
+              <div class="account-actions">
+                <a class="btn primary" href="/app">Open dashboard</a>
+                <button class="btn" type="button" data-signout>Sign out</button>
+              </div>
+            </div>
 
-        <p class="status" data-status role="status" aria-live="polite"></p>
+            <div class="usage" data-account-usage hidden>
+              <table>
+                <thead>
+                  <tr><th>Usage</th><th>Used</th><th>Limit</th></tr>
+                </thead>
+                <tbody data-usage-rows></tbody>
+              </table>
+            </div>
+
+            <p class="panel-note" data-account-models></p>
+
+            <!-- Downloads are fetched from the authenticated API with the session
+                 token, so the release link is only ever handed to a signed-in account. -->
+            <section class="account-section" id="download" aria-labelledby="downloads-title">
+              <h2 class="section-title" id="downloads-title">Downloads</h2>
+              <p class="muted">Windows installer for your Alpha account.</p>
+
+              <div data-download-view="loading" class="muted">Checking the current release…</div>
+
+              <div data-download-view="unavailable" hidden>
+                <p class="muted" data-download-message></p>
+              </div>
+
+              <div data-download-view="ready" hidden>
+                <div class="dl-block">
+                  <div>
+                    <div class="dl-name">
+                      Alpha AI Workspace <span data-download-version></span>
+                    </div>
+                    <div class="muted" data-download-meta>Windows installer</div>
+                  </div>
+                  <a
+                    class="btn primary"
+                    data-download-link
+                    href="#"
+                    target="_blank"
+                    rel="noopener"
+                  >Download installer</a>
+                </div>
+                <p class="muted" data-download-notes hidden></p>
+                <p class="micro mono" data-download-checksum hidden></p>
+              </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="install-title">
+              <h2 class="section-title" id="install-title">Install it</h2>
+              <ol class="install-steps">
+                <li>Download the installer above (it is free and unsigned — if SmartScreen warns, choose <em>More info → Run anyway</em>).</li>
+                <li>Install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> if you want to run models locally.</li>
+                <li>Open Alpha, sign in with this same account, and install a model from the <strong>Models</strong> page.</li>
+              </ol>
+            </section>
+
+            <section class="account-section" aria-labelledby="requirements-title">
+              <h2 class="section-title" id="requirements-title">System requirements</h2>
+              <ul class="req-list">
+                <li>Windows 10 or 11 (x64)</li>
+                <li>Per-user install — no administrator rights required</li>
+                <li>Roughly 400 MB of disk after install</li>
+                <li>Ollama for local models, or an API key for a cloud provider</li>
+              </ul>
+            </section>
+
+            <p class="panel-note">
+              Your account details and installer link stay behind the server's own session
+              check — this page never receives a provider token.
+            </p>
+          </div>
+
+          <p class="status" data-status role="status" aria-live="polite"></p>
+        </section>
       </div>
-
-      <p class="micro">
-        Need the app? It is in the Downloads section of this account area once you are signed in.
-      </p>
     </main>
 
     <footer class="footer">

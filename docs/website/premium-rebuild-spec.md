@@ -190,7 +190,7 @@ rate-limit helpers, `mintSession`). Proposed surface:
 
 | Route | Body | Success | Failure |
 | --- | --- | --- | --- |
-| `POST /auth/register` | `{ email, password }` | `201` `{ ok, accessToken, refreshToken, admin: false }` | `400 invalid_request` (bad email / weak password, message from `passwordProblem`), `429 too_many_attempts` |
+| `POST /auth/register` | `{ email, password, fullName, phone }` | `202` `{ ok, needsVerification: true, delivered, message }` — the address is unproved, so no session yet | `400 invalid_email`, `400 weak_password` (message from `passwordProblem`), `400 invalid_name` / `400 invalid_phone` (message from `platform/api/profile.ts`), `429 too_many_attempts` |
 | `POST /auth/password/forgot` | `{ email }` | `202` `{ ok: true }` **always** | `429` |
 | `POST /auth/password/reset` | `{ email, code, password }` | `200` `{ ok: true }` (then sign in) | `400 invalid_code`, `400 invalid_request`, `429` |
 | `POST /auth/password` (existing) | `{ email, password }` | `200` session, `admin` computed | unchanged `401 invalid_credentials` |

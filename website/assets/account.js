@@ -15,6 +15,7 @@ const REFRESH_MARGIN_MS = 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 
 const els = {
+  root: document.querySelector('[data-account-root]'),
   cardTitle: document.querySelector('[data-card-title]'),
   cardLede: document.querySelector('[data-card-lede]'),
   loading: document.querySelector('[data-view="loading"]'),
@@ -24,8 +25,11 @@ const els = {
   providers: document.querySelector('[data-providers]'),
   providerDivider: document.querySelector('[data-provider-divider]'),
   authForm: document.querySelector('[data-auth-form]'),
+  authName: document.querySelector('#auth-name'),
+  authPhone: document.querySelector('#auth-phone'),
   authEmail: document.querySelector('#auth-email'),
   authPassword: document.querySelector('#auth-password'),
+  signupFields: document.querySelectorAll('[data-signup-only]'),
   authSubmit: document.querySelector('[data-auth-submit]'),
   passwordToggle: document.querySelector('[data-password-toggle]'),
   forgot: document.querySelector('[data-forgot]'),
@@ -35,7 +39,10 @@ const els = {
   resetCode: document.querySelector('#reset-code'),
   resetPassword: document.querySelector('#reset-password'),
   resetSubmit: document.querySelector('[data-reset-submit]'),
+  strength: document.querySelector('[data-strength]'),
+  strengthLabel: document.querySelector('[data-strength-label]'),
   codeForm: document.querySelector('[data-code-form]'),
+  codeHint: document.querySelector('[data-code-hint]'),
   codeInput: document.querySelector('#account-code'),
   codeSubmit: document.querySelector('[data-code-submit]'),
   status: document.querySelector('[data-status]'),
@@ -68,11 +75,13 @@ if (MODE === 'signup') {
   if (els.cardTitle) els.cardTitle.textContent = 'Create your account'
   if (els.cardLede) {
     els.cardLede.innerHTML =
-      'Choose an email address and a password. Already have an account? ' +
+      'Your name, phone number, email and a password. Already have an account? ' +
       '<a href="/account">Sign in</a> instead.'
   }
   if (els.authSubmit) els.authSubmit.textContent = 'Create account'
   if (els.authPassword) els.authPassword.autocomplete = 'new-password'
+  // Name and phone exist only on this card; sign-in stays two fields.
+  for (const field of els.signupFields) field.hidden = false
   // Recovery is meaningless before there is anything to recover.
   if (els.forgot) els.forgot.hidden = true
 }
@@ -105,6 +114,19 @@ if (new URLSearchParams(window.location.search).get('next') === 'download') {
   }
 }
 
+// The heading belongs to the signed-out gate. Signing in swaps it for the
+// account record, and signing out puts this wording back verbatim — including
+// the `?next=` variants set just above.
+const GATE_INTRO = {
+  title: els.pageTitle ? els.pageTitle.textContent : '',
+  sub: els.pageSub ? els.pageSub.textContent : ''
+}
+
+function setIntro(title, sub) {
+  if (els.pageTitle) els.pageTitle.textContent = title
+  if (els.pageSub) els.pageSub.textContent = sub
+}
+
 /**
  * Where a just-authenticated visitor continues.
  *
@@ -131,10 +153,124 @@ function setStatus(message, kind) {
   els.status.dataset.kind = kind || ''
 }
 
+// ---------------------------------------------------------------------------
+// Field errors
+//
+// A failure belongs next to the input that caused it: the message goes under
+// the field, the field itself is marked invalid, and the caret lands on it.
+// The card keeps one status line for news about no single field — a code was
+// sent, the service is unreachable — and these helpers cover the rest.
+// ---------------------------------------------------------------------------
+
+/** Every field the card can mark, keyed by the name in `data-field-error`. */
+const fieldErrors = new Map()
+for (const el of document.querySelectorAll('[data-field-error]')) {
+  fieldErrors.set(el.dataset.fieldError, el)
+}
+
+/** The input a field error belongs to, found from the error's own position. */
+function fieldInput(key) {
+  const el = fieldErrors.get(key)
+  if (!el) return null
+  const scope = el.closest('.field') || el.closest('form')
+  return scope ? scope.querySelector('input') : null
+}
+
+/** Mark the field itself, not just the bottom of the card. */
+function setFieldError(key, message) {
+  const el = fieldErrors.get(key)
+  if (!el) return false
+  el.textContent = message
+  el.hidden = false
+  const input = fieldInput(key)
+  if (input) input.setAttribute('aria-invalid', 'true')
+  return true
+}
+
+function clearFieldError(key) {
+  const el = fieldErrors.get(key)
+  if (!el) return
+  el.hidden = true
+  el.textContent = ''
+  const input = fieldInput(key)
+  if (input) input.removeAttribute('aria-invalid')
+}
+
+function clearFieldErrors() {
+  for (const key of fieldErrors.keys()) clearFieldError(key)
+}
+
+/** Clear a field's error as soon as its owner starts fixing it. */
+function bindFieldErrors() {
+  for (const key of fieldErrors.keys()) {
+    const input = fieldInput(key)
+    if (!input) continue
+    const clear = () => clearFieldError(key)
+    input.addEventListener('input', clear)
+    input.addEventListener('change', clear)
+  }
+}
+
+/**
+ * Which field the API is talking about, keyed by the code it returned. Anything
+ * absent here belongs to no single field and stays in the status line.
+ */
+const ERROR_FIELD = {
+  invalid_name: 'name',
+  invalid_phone: 'phone',
+  invalid_email: 'email',
+  weak_password: 'password',
+  invalid_password: 'password',
+  current_required: 'password',
+  invalid_code: 'code',
+  expired: 'code'
+}
+
+/**
+ * Show a failed response where it belongs: under the field the API named when it
+ * named one, otherwise in the status line.
+ */
+function showFailure(code, message) {
+  const key = code ? ERROR_FIELD[code] : null
+  // Next to a field, the server's own sentence is the right one: it names the
+  // rule it just enforced, which is more precise than the card's one-liner for
+  // the whole code. ERROR_TEXT stays the wording for failures that belong to no
+  // single input, where a bare status line needs all the context it can get.
+  if (key && setFieldError(key, message || errorText(code))) {
+    // The message is at the field now, so the "Signing you in…" that was there
+    // while the request was in flight stops contradicting it.
+    setStatus('', '')
+    const input = fieldInput(key)
+    if (input) input.focus()
+    return
+  }
+  setStatus(errorText(code, message), 'error')
+}
+
+/**
+ * One line under the code field saying which address was written to. A code
+ * field with no address near it is the part of this card people get wrong.
+ */
+function setCodeHint(email) {
+  if (!els.codeHint) return
+  if (email) {
+    els.codeHint.textContent = `Sent to ${email}. The emailed link signs you in too.`
+    els.codeHint.hidden = false
+  } else {
+    els.codeHint.hidden = true
+    els.codeHint.textContent = ''
+  }
+}
+
 function show(view) {
   for (const key of ['loading', 'unconfigured', 'signedOut', 'signedIn']) {
     const el = els[key]
     if (el) el.hidden = key !== view
+  }
+  // The layout is part of the state: signed out it is a two-column gate,
+  // signed in the record takes the full width.
+  if (els.root) {
+    els.root.dataset.state = view === 'signedIn' ? 'in' : view === 'signedOut' ? 'out' : 'loading'
   }
 }
 
@@ -162,6 +298,8 @@ const ERROR_TEXT = {
   github_not_configured: 'GitHub sign-in is not enabled on this deployment yet.',
   maintenance: 'Alpha is in maintenance mode right now. Please try again shortly.',
   invalid_email: 'That email address does not look right.',
+  invalid_name: 'Enter your full name.',
+  invalid_phone: 'Enter a phone number with 7 to 15 digits, including the country code.',
   invalid_password: 'That password is not correct.',
   current_required: 'Enter your current password to replace it.',
   email_unverified:
@@ -177,6 +315,40 @@ function errorText(code, fallback) {
   if (code && ERROR_TEXT[code]) return ERROR_TEXT[code]
   if (fallback) return fallback
   return 'Something went wrong while signing in. Please try again.'
+}
+
+/**
+ * Password strength, described rather than enforced: the server owns the rule,
+ * and this only tells someone what their typing looks like as they go.
+ */
+function passwordScore(value) {
+  if (!value) return 0
+  let score = 0
+  if (value.length >= 12) score += 1
+  if (value.length >= 16) score += 1
+  if (/[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)) score += 1
+  if (/[^A-Za-z0-9]/.test(value)) score += 1
+  return Math.min(4, Math.max(1, score))
+}
+
+const STRENGTH_TEXT = ['', 'Short', 'Fair', 'Good', 'Strong']
+
+function renderStrength() {
+  if (!els.strength || !els.authPassword) return
+  const value = els.authPassword.value
+  if (!value) {
+    els.strength.hidden = true
+    return
+  }
+  const level = passwordScore(value)
+  els.strength.hidden = false
+  els.strength.dataset.level = String(level)
+  if (els.strengthLabel) els.strengthLabel.textContent = STRENGTH_TEXT[level]
+}
+
+function bindStrength() {
+  if (!els.authPassword) return
+  els.authPassword.addEventListener('input', renderStrength)
 }
 
 /** One fetch helper with a timeout, so a hanging API never freezes the page. */
@@ -281,6 +453,8 @@ function renderUsage(usage) {
 function renderSignedIn(session, config) {
   const account = config && config.account ? config.account : null
   const plan = config && config.plan ? config.plan : null
+
+  setIntro('Your account', 'Everything tied to this address: plan, usage, the Windows installer and cloud models.')
 
   if (els.accountEmail) {
     els.accountEmail.textContent = (account && account.email) || session.email || 'Signed in'
@@ -528,21 +702,55 @@ function bindAuthForm() {
     event.preventDefault()
     const email = emailValue()
     const password = els.authPassword && els.authPassword.value ? els.authPassword.value : ''
-    if (!email || !password) {
-      setStatus(
-        MODE === 'signup' ? 'Enter an email address and a password.' : 'Enter your email address and password.',
-        'error'
+    const name = els.authName && els.authName.value ? els.authName.value.trim() : ''
+    const phone = els.authPhone && els.authPhone.value ? els.authPhone.value.trim() : ''
+
+    // Everything the card can check by itself, in the words it already uses,
+    // before a round trip. Every field is inspected rather than stopping at the
+    // first problem, so one submit does not reveal one mistake at a time.
+    clearFieldErrors()
+    let firstBad = null
+    const reject = (key, message, input) => {
+      setFieldError(key, message)
+      if (!firstBad) firstBad = input
+    }
+    if (MODE === 'signup') {
+      if (name.length < 2) reject('name', 'Enter your full name.', els.authName)
+      const digits = phone.replace(/\D/g, '')
+      if (digits.length < 7 || digits.length > 15) {
+        reject('phone', 'Include the country code — 7 to 15 digits.', els.authPhone)
+      }
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      reject(
+        'email',
+        MODE === 'signup' ? 'Enter an email address you can read mail at.' : 'Enter your email address.',
+        els.authEmail
       )
+    }
+    if (!password) {
+      reject('password', 'Enter your password.', els.authPassword)
+    } else if (MODE === 'signup' && password.length < 12) {
+      // The same floor the hint above prints and the server enforces.
+      reject('password', 'Use at least 12 characters.', els.authPassword)
+    }
+    if (firstBad) {
+      setStatus('Fix the highlighted field and try again.', 'error')
+      firstBad.focus()
       return
     }
     setBusy(els.authSubmit, true)
     setStatus(MODE === 'signup' ? 'Creating your account…' : 'Signing you in…', '')
     try {
       if (MODE === 'signup') {
-        const res = await api('/auth/register', { method: 'POST', body: { email, password } })
+        const res = await api('/auth/register', {
+          method: 'POST',
+          body: { email, password, fullName: name, phone }
+        })
         if (res.status === 202 && res.ok) {
           const data = res.json || {}
           if (els.codeForm) els.codeForm.hidden = false
+          setCodeHint(email)
           setStatus(
             data.message || `Check ${email} for a six-digit code to finish setting up.`,
             data.delivered === false ? 'error' : 'ok'
@@ -552,7 +760,8 @@ function bindAuthForm() {
         }
         const code = res.json && res.json.error ? res.json.error.code : null
         const message = res.json && res.json.error ? res.json.error.message : null
-        setStatus(errorText(code, message), 'error')
+        // The server owns the rules, and it names the field it rejected.
+        showFailure(code, message)
         return
       }
 
@@ -565,7 +774,7 @@ function bindAuthForm() {
       }
       const code = res.json && res.json.error ? res.json.error.code : null
       const message = res.json && res.json.error ? res.json.error.message : null
-      setStatus(errorText(code, message), 'error')
+      showFailure(code, message)
     } catch (error) {
       setStatus(
         error && error.message === 'not_configured'
@@ -678,9 +887,11 @@ function bindEmailLink() {
           )
         } else if (data.alreadySent) {
           if (els.codeForm) els.codeForm.hidden = false
+          setCodeHint(email)
           setStatus(data.message || `A sign-in code was already sent to ${email}.`, 'ok')
         } else {
           if (els.codeForm) els.codeForm.hidden = false
+          setCodeHint(email)
           setStatus(
             `Check ${email} — we sent a sign-in link and a six-digit code. They expire in ${minutes} minutes.`,
             'ok'
@@ -710,8 +921,16 @@ function bindCodeForm() {
     event.preventDefault()
     const email = emailValue()
     const code = (els.codeInput && els.codeInput.value ? els.codeInput.value : '').trim()
-    if (!email || !code) {
-      setStatus('Enter the email address and the six-digit code.', 'error')
+    if (!code) {
+      setFieldError('code', 'Enter the six-digit code from the email.')
+      if (els.codeInput) els.codeInput.focus()
+      return
+    }
+    if (!email) {
+      // Reachable only when the email field was emptied after a code was sent,
+      // since the code well is revealed next to the address it belongs to.
+      setStatus('Enter your email address again, then the code.', 'error')
+      if (els.authEmail) els.authEmail.focus()
       return
     }
     if (els.codeSubmit) els.codeSubmit.disabled = true
@@ -725,7 +944,7 @@ function bindCodeForm() {
       } else {
         const errCode = res.json && res.json.error ? res.json.error.code : null
         const message = res.json && res.json.error ? res.json.error.message : null
-        setStatus(errorText(errCode, message), 'error')
+        showFailure(errCode, message)
       }
     } catch {
       setStatus('Could not reach the sign-in service. Check your connection and try again.', 'error')
@@ -776,11 +995,15 @@ function bindSignOut() {
       if (els.resetForm) els.resetForm.hidden = true
       if (els.authEmail) els.authEmail.value = ''
       if (els.authPassword) els.authPassword.value = ''
+      renderStrength()
       if (els.codeInput) els.codeInput.value = ''
       if (els.resetCode) els.resetCode.value = ''
       if (els.resetPassword) els.resetPassword.value = ''
+      clearFieldErrors()
+      setCodeHint(null)
       await renderProviders()
       show('signedOut')
+      setIntro(GATE_INTRO.title, GATE_INTRO.sub)
       setStatus('Signed out.', 'ok')
     }
   })
@@ -800,6 +1023,8 @@ async function init() {
   const magicEmail = params.get('email')
 
   bindAuthForm()
+  bindStrength()
+  bindFieldErrors()
   bindEmailLink()
   bindForgot()
   bindResetForm()

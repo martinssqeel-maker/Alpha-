@@ -60,6 +60,29 @@ describe('POST /auth/register', () => {
     expect((await res.json()).error.code).toBe('weak_password')
   })
 
+  it('asks for a name before it will create an account', async () => {
+    const res = await post('/auth/register', {
+      email: 'someone@example.invalid',
+      password: GOOD_PASSWORD,
+      phone: '+15550102030'
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe('invalid_name')
+  })
+
+  it('refuses a phone number that cannot be a phone number', async () => {
+    const res = await post('/auth/register', {
+      email: 'someone@example.invalid',
+      password: GOOD_PASSWORD,
+      fullName: 'Ada Lovelace',
+      phone: '555'
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error.code).toBe('invalid_phone')
+    expect(body.error.message).toMatch(/at least 7 digits/i)
+  })
+
   it('refuses surrounding whitespace, so a pasted password cannot surprise its owner', async () => {
     const res = await post('/auth/register', {
       email: 'someone@example.invalid',

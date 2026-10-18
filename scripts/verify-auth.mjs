@@ -504,6 +504,8 @@ async function writeChecks() {
     const newEmail = `verify-pw-${pwStamp}@example.invalid`
     const secondEmail = `verify-pw2-${pwStamp}@example.invalid`
     const firstPassword = `Harbour-Basalt-${pwStamp}-Tide`
+    const memberName = 'Verification Member'
+    const memberPhone = `+1555${String(pwStamp).slice(-7)}`
     const secondPassword = `Lantern-Meadow-${pwStamp}-Ridge`
     const thirdPassword = `Copper-Lantern-${pwStamp}-Harbour`
 
@@ -522,9 +524,31 @@ async function writeChecks() {
 
     // 13. Sign-up accepts a password without claiming a session, and answers a
     //     second address identically — the response is not an account oracle.
+    // The form asks for a name and a phone number as well as credentials; both
+    // are refused before any account is written when they are unusable.
+    const missingName = await call('/auth/register', {
+      method: 'POST',
+      body: { email: `verify-noname-${pwStamp}@example.invalid`, password: firstPassword, phone: memberPhone }
+    })
+    if (missingName.status === 400 && missingName.json?.error?.code === 'invalid_name') {
+      record('PASS', 'sign-up refuses a request with no name', '400 invalid_name')
+    } else {
+      record('FAIL', 'sign-up refuses a request with no name', `status=${missingName.status}`)
+    }
+
+    const badPhone = await call('/auth/register', {
+      method: 'POST',
+      body: { email: `verify-badphone-${pwStamp}@example.invalid`, password: firstPassword, fullName: memberName, phone: '555' }
+    })
+    if (badPhone.status === 400 && badPhone.json?.error?.code === 'invalid_phone') {
+      record('PASS', 'sign-up refuses a phone number that is too short', '400 invalid_phone')
+    } else {
+      record('FAIL', 'sign-up refuses a phone number that is too short', `status=${badPhone.status}`)
+    }
+
     const registered = await call('/auth/register', {
       method: 'POST',
-      body: { email: newEmail, password: firstPassword }
+      body: { email: newEmail, password: firstPassword, fullName: memberName, phone: memberPhone }
     })
     if (registered.status === 202 && registered.json?.ok && registered.json?.needsVerification === true) {
       record('PASS', 'sign-up takes an email and password without claiming a session', '202 needsVerification')
@@ -534,7 +558,7 @@ async function writeChecks() {
 
     const secondSignUp = await call('/auth/register', {
       method: 'POST',
-      body: { email: secondEmail, password: firstPassword }
+      body: { email: secondEmail, password: firstPassword, fullName: memberName, phone: memberPhone }
     })
     if (secondSignUp.status === registered.status) {
       record('PASS', 'sign-up answers a second address the same way', `status=${secondSignUp.status}`)
@@ -543,9 +567,10 @@ async function writeChecks() {
     }
 
     const newRows = (
-      await client.query('select id, email, email_verified_at from public.users where lower(email) = any($1::text[])', [
-        [newEmail, secondEmail]
-      ])
+      await client.query(
+        'select id, email, email_verified_at, full_name, phone from public.users where lower(email) = any($1::text[])',
+        [[newEmail, secondEmail]]
+      )
     ).rows
     for (const row of newRows) ids.push(row.id)
     const newRow = newRows.find((row) => row.email.toLowerCase() === newEmail)
@@ -554,6 +579,18 @@ async function writeChecks() {
       record('PASS', 'a password sign-up has not proved the mailbox yet', 'email_verified_at is null')
     } else {
       record('FAIL', 'a password sign-up has not proved the mailbox yet', newRow ? 'already verified' : 'no account row')
+    }
+
+    // The name and number the form collected are on the account row, normalized
+    // to the shape the API promises rather than left as typed.
+    if (newRow && newRow.full_name === memberName && newRow.phone === memberPhone) {
+      record('PASS', 'the name and phone number are stored on the account', `phone=${newRow.phone}`)
+    } else {
+      record(
+        'FAIL',
+        'the name and phone number are stored on the account',
+        newRow ? `name=${newRow.full_name ?? 'null'} phone=${newRow.phone ?? 'null'}` : 'no account row'
+      )
     }
 
     // 14. The password they chose signs them in.

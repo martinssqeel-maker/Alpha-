@@ -458,151 +458,283 @@ main { position: relative; z-index: 1; }
 }
 
 /* ============================================================================
-   Download page surface
+   Account surface: the sign-in gate and the record behind it
    ========================================================================== */
 
-.account-card { max-width: 620px; margin: 0 auto; padding: 28px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--lift-1); }
-.account-card h2 { font-family: var(--plate); }
 .muted { color: var(--steel); font-size: 13px; }
 /* Inline links inside body copy, like the sign-in/sign-up toggle on the account
    page: the base reset strips every anchor's colour and underline. */
 .muted a { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 3px; }
 
-.status { margin-top: 16px; font-size: 13px; min-height: 18px; color: var(--steel); }
+.status { margin-top: 16px; font-size: 12.5px; min-height: 18px; color: var(--steel); }
 .status[data-kind='ok'] { color: var(--ok); }
 .status[data-kind='error'] { color: var(--bad); }
 
-/* --- download surface --- */
-.dl-block {
+/* Two columns: what the account carries on the left, the way in on the right.
+   The panel is the only elevated surface on the page, so it reads as the thing
+   to act on rather than one card among many. */
+.gate {
+  position: relative;
+  z-index: 1;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 72px 22px 84px;
+}
+
+.gate-intro { max-width: 760px; }
+.gate h1 {
+  margin: 0;
+  max-width: 21ch;
+  font-family: var(--plate);
+  font-size: clamp(34px, 5.2vw, 58px);
+  font-weight: 600;
+  line-height: 1.03;
+  letter-spacing: -0.03em;
+}
+.gate-sub {
+  margin: 18px 0 0;
+  max-width: 58ch;
+  color: var(--steel);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.gate-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 468px);
+  gap: 64px;
+  align-items: start;
+  margin-top: 52px;
+}
+
+/* --- the ledger column ----------------------------------------------------- */
+.gate-story { max-width: 46ch; padding-top: 2px; }
+.story-lede {
+  margin: 0 0 28px;
+  color: var(--chalk);
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+/* Key/value rows, the same shape the console uses for account details. */
+.ledger { margin: 0; border-top: 1px solid var(--line); }
+.ledger > div {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
 }
-.dl-block .plan-name { font-family: var(--data); font-size: 18px; }
-.dl-block .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.mono { font-family: var(--data); font-variant-numeric: tabular-nums; word-break: break-all; }
-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
-th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
-th { color: var(--steel); font-size: 12px; font-weight: 600; }
-td { font-variant-numeric: tabular-nums; }
-
-/* --- account surface --- */
-.provider-list { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
-/* Must beat the flex display above, or an empty list still reserves space. */
-.provider-list[hidden] { display: none; }
-.provider-btn { width: 100%; }
-
-.email-form { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
-.email-form[hidden] { display: none; }
-.email-form label {
-  display: block;
-  margin: 0 0 8px;
-  color: var(--steel);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-.field-row { display: flex; gap: 10px; flex-wrap: wrap; }
-.field-row input {
-  flex: 1 1 240px;
-  min-width: 0;
-  padding: 11px 13px;
+.ledger dt { color: var(--steel); font-size: 13.5px; }
+.ledger dd {
+  margin: 0;
   color: var(--chalk);
-  background: var(--ink);
+  font-family: var(--data);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.story-note {
+  margin: 20px 0 0;
+  max-width: 40ch;
+  color: var(--faint);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* --- the panel ------------------------------------------------------------- */
+.gate-panel {
+  position: relative;
+  padding: 26px 26px 22px;
   border: 1px solid var(--line-2);
-  border-radius: var(--r-sm);
-  font: inherit;
-  font-size: 14px;
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-2) 92%, transparent),
+    var(--panel) 68%
+  );
+  box-shadow: 0 32px 80px -48px rgba(0, 0, 0, 0.95), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  animation: panel-in 320ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
 }
-.field-row input:focus-visible { outline: 2px solid var(--brand-edge); outline-offset: 1px; }
-.email-form .muted { margin: 10px 0 0; }
-#account-code { font-family: var(--data); letter-spacing: 0.28em; }
-
-/* --- password bar: the primary way in -------------------------------------- */
-
-/* Visually hidden but announced: the bar uses placeholders as labels visually,
-   so each field needs a real label for screen readers. */
-.sr-only {
+/* The one loud edge on the page: brand light across the top of the panel. */
+.panel-edge {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+  inset: -1px -1px auto;
+  height: 2px;
+  border-radius: 18px 18px 0 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand-edge) 18%,
+    var(--brand-hi) 50%,
+    transparent 82%
+  );
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
-.auth-form { margin-top: 18px; }
+.panel-title {
+  margin: 0;
+  font-family: var(--plate);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+.panel-lede {
+  margin: 6px 0 0;
+  color: var(--steel);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.panel-lede a { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 3px; }
+.panel-head { margin-bottom: 4px; }
+.panel-note {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.panel-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--steel);
+  font-size: 13.5px;
+}
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 4px var(--brand-tint);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% { opacity: 0.45; }
+}
+
+/* --- fields ---------------------------------------------------------------- */
+.auth-form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
 .auth-form[hidden] { display: none; }
 
-/* The bar: email, password, submit. One row while there is room, stacked when
-   the card narrows — never a three-across layout squeezed into a phone. */
-.auth-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: stretch;
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field-label { color: var(--steel); font-size: 12.5px; font-weight: 600; }
+.field-hint { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.45; }
+.field-link { color: var(--faint); font-size: 12.5px; font-weight: 500; text-decoration: none; }
+.field-link:hover { color: var(--brand-ink); text-decoration: underline; }
+
+/* A field the visitor has to fix: the message sits under the input it belongs
+   to, and the input itself carries the mark, so nothing depends on reading a
+   line at the bottom of the card. */
+.field-error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.field-hint[hidden],
+.field-error[hidden] { display: none; }
+.field input[aria-invalid='true'],
+.auth-secret input[aria-invalid='true'],
+.field-row input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--bad) 60%, transparent);
+}
+.field input[aria-invalid='true']:focus-visible,
+.auth-secret input[aria-invalid='true']:focus-visible,
+.field-row input[aria-invalid='true']:focus-visible {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent);
 }
 
-.auth-bar input {
+.field input,
+.auth-secret input,
+.field-row input {
+  width: 100%;
   min-width: 0;
-  padding: 12px 14px;
+  height: 44px;
+  padding: 0 13px;
   color: var(--chalk);
   background: var(--ink);
   border: 1px solid var(--line-2);
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   font: inherit;
-  font-size: 14px;
-  transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+  font-size: 14.5px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
-.auth-bar input::placeholder { color: var(--faint); }
-.auth-bar input:focus-visible {
+.field input::placeholder,
+.auth-secret input::placeholder,
+.field-row input::placeholder { color: var(--faint); }
+.field input:hover,
+.auth-secret input:hover,
+.field-row input:hover { border-color: var(--steel); }
+.field input:focus-visible,
+.auth-secret input:focus-visible,
+.field-row input:focus-visible {
   outline: none;
   border-color: var(--brand-edge);
   box-shadow: 0 0 0 3px var(--brand-tint);
+  background: var(--panel);
 }
 
 .auth-secret { position: relative; display: flex; }
-.auth-secret input { width: 100%; padding-right: 62px; }
+.auth-secret input { padding-right: 66px; }
 .reveal {
   position: absolute;
   top: 50%;
-  right: 8px;
+  right: 6px;
   transform: translateY(-50%);
-  padding: 4px 8px;
+  padding: 5px 9px;
   color: var(--steel);
   background: transparent;
   border: 0;
-  border-radius: var(--r-xs);
+  border-radius: 7px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
 }
 .reveal:hover { color: var(--chalk); background: var(--panel-2); }
 .reveal:focus-visible { outline: 2px solid var(--brand-edge); outline-offset: 1px; }
+.reveal[aria-pressed='true'] { color: var(--brand-ink); }
 
-.auth-submit { white-space: nowrap; }
+.auth-submit { width: 100%; height: 46px; margin-top: 2px; font-size: 15px; }
 
-/* Row two of the bar, aligned under the password column it describes. */
+/* The rule, and a strength readout that answers what is being typed. */
 .auth-hint {
-  grid-column: 2 / -1;
-  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 16px;
   color: var(--faint);
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 12px;
 }
+.strength { display: inline-flex; align-items: center; gap: 8px; }
+.strength[hidden] { display: none; }
+.strength-track { display: inline-flex; gap: 3px; }
+.strength-track i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-2);
+  transition: background 160ms ease;
+}
+.strength-label { font-size: 11.5px; }
+.strength[data-level='1'] .strength-track i:nth-child(1) { background: var(--bad); }
+.strength[data-level='1'] .strength-label { color: var(--bad); }
+.strength[data-level='2'] .strength-track i:nth-child(-n + 2) { background: var(--warn); }
+.strength[data-level='2'] .strength-label { color: var(--warn); }
+.strength[data-level='3'] .strength-track i:nth-child(-n + 3) { background: var(--ok); }
+.strength[data-level='3'] .strength-label { color: var(--ok); }
+.strength[data-level='4'] .strength-track i { background: var(--ok); }
+.strength[data-level='4'] .strength-label { color: var(--ok); }
 
 /* A link that is really a button: it performs an action, not navigation. */
 .linkish {
@@ -625,9 +757,7 @@ td { font-variant-numeric: tabular-nums; }
   gap: 12px;
   margin: 22px 0 0;
   color: var(--faint);
-  font-size: 11.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 .auth-divider::before,
 .auth-divider::after {
@@ -638,31 +768,118 @@ td { font-variant-numeric: tabular-nums; }
 }
 .auth-divider[hidden] { display: none; }
 
-.auth-alt {
-  margin: 20px 0 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-  color: var(--steel);
-  font-size: 13px;
-}
+.provider-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+/* Must beat the grid display above, or an empty list still reserves space. */
+.provider-list[hidden] { display: none; }
+.provider-btn { width: 100%; height: 44px; padding: 0 12px; font-size: 13px; }
+.provider-btn .i { width: 16px; height: 16px; flex: none; fill: currentColor; }
 
-/* Recovery sits in its own welled panel: it replaces the bar's job, and mixing
-   the two in one visual block reads as a single confusing form. */
+.auth-alt { margin: 18px 0 0; color: var(--faint); font-size: 12.5px; }
+.auth-alt .linkish { font-size: 12.5px; }
+
+/* --- recovery, and the emailed-code fallback ------------------------------- */
 .reset-form {
-  margin-top: 20px;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 18px;
   border: 1px solid var(--line-2);
-  border-radius: var(--r);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.reset-form[hidden] { display: none; }
+.reset-title { margin: 0; font-family: var(--plate); font-size: 16px; font-weight: 600; }
+.reset-form .panel-lede { margin: 0; }
+.reset-form .btn { height: 42px; }
+
+.email-form { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.email-form[hidden] { display: none; }
+/* The step that follows the button that sent it: it reads as its own well, so
+   nobody scrolls past it hunting for where the code goes. */
+.code-well {
+  gap: 10px;
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.field-row { display: flex; gap: 8px; align-items: stretch; }
+.field-row input { flex: 1 1 auto; }
+.field-row .btn { height: 44px; }
+#reset-code,
+#account-code { font-family: var(--data); letter-spacing: 0.24em; }
+
+/* --- signed in: one wide record -------------------------------------------- */
+.account-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.account-summary .panel-title { font-size: 22px; word-break: break-word; }
+.account-plan { margin: 4px 0 0; color: var(--steel); font-size: 13px; }
+.account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.usage { margin-top: 22px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { color: var(--steel); font-size: 11.5px; font-weight: 600; }
+td { font-variant-numeric: tabular-nums; }
+
+.dl-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
   background: var(--panel-2);
 }
-.reset-form .plan-name { margin-bottom: 4px; }
-.reset-form[hidden] { display: none; }
-.reset-form .auth-bar { margin-top: 12px; }
+.dl-name { font-family: var(--data); font-size: 15px; }
+.dl-block .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.mono { font-family: var(--data); font-variant-numeric: tabular-nums; word-break: break-all; }
+
+/* Signed in, the page drops the pitch and gives the record the full width. */
+.gate[data-state='in'] .gate-story { display: none; }
+.gate[data-state='in'] .gate-intro { max-width: 780px; margin: 0 auto; }
+.gate[data-state='in'] .gate-body {
+  grid-template-columns: minmax(0, 780px);
+  justify-content: center;
+  margin-top: 32px;
+}
+.gate[data-state='in'] .gate-panel { padding: 28px 30px; }
+
+/* The panel can run long once recovery or the download record opens; the ledger
+   stays alongside it instead of scrolling away into empty space. */
+@media (min-width: 981px) {
+  .gate-story { position: sticky; top: 96px; }
+}
+
+@media (max-width: 980px) {
+  .gate { padding-top: 56px; }
+  .gate-body { grid-template-columns: minmax(0, 1fr); gap: 36px; margin-top: 40px; }
+  /* The form comes first on a phone: the story is context, not the task. */
+  .gate-story { order: 2; max-width: 60ch; }
+  .gate-panel { order: 1; width: 100%; max-width: 520px; }
+  .gate[data-state='in'] .gate-body { grid-template-columns: minmax(0, 1fr); }
+  .gate[data-state='in'] .gate-panel { max-width: none; }
+  .gate[data-state='in'] .gate-intro { max-width: none; }
+}
 
 @media (max-width: 620px) {
-  .auth-bar { grid-template-columns: 1fr; }
-  .auth-hint { grid-column: 1 / -1; }
-  .auth-submit { width: 100%; }
+  .gate { padding: 44px 18px 64px; }
+  .gate h1 { font-size: clamp(30px, 8vw, 40px); }
+  .gate-body { gap: 30px; margin-top: 32px; }
+  .gate-panel { padding: 22px 18px 18px; border-radius: 16px; }
+  .panel-edge { border-radius: 16px 16px 0 0; }
+  .provider-list { grid-template-columns: 1fr; }
 }
 
 /* --- authenticated account area: downloads, install steps, requirements ---- */

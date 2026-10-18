@@ -62,7 +62,7 @@
       <ul>
         <li>The desktop app runs locally. Your files, prompts and conversation history stay on your computer.</li>
         <li>An Alpha Cloud account is optional. It exists so the Windows installer and its checksum can be handed to signed-in accounts, and so the same account works on the website and in the app.</li>
-        <li>If you sign in, we store your email address, the sign-in method you used, and session metadata (a hashed refresh token, your IP address and user agent, and timestamps).</li>
+        <li>If you sign in, we store your email address, the sign-in method you used, and session metadata (a hashed refresh token, your IP address and user agent, and timestamps). Accounts created from the sign-up form also carry the full name and phone number typed there.</li>
         <li>There is <strong>no analytics, no advertising, and no telemetry</strong> in the application or on this website.</li>
         <li>Your prompts and files go to a third party <strong>only</strong> when you deliberately configure a cloud model provider. Local Ollama stays local.</li>
       </ul>
@@ -113,6 +113,13 @@
         <li>
           <strong>Account.</strong> Your email address, account status, and the time of your last
           sign-in.
+        </li>
+        <li>
+          <strong>Name and phone number.</strong> The sign-up form asks for both. The name labels
+          the account for you, and the number is contact information for support — Alpha does not
+          send SMS and the number is <strong>not</strong> used as a second factor. Both are stored
+          as typed (the number normalized to a leading <code>+</code> and digits), neither is
+          shared with a model provider, and neither is required to use the desktop app.
         </li>
         <li>
           <strong>Passwords.</strong> If you sign up with an email address and a password, we store

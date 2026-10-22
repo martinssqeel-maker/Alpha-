@@ -113,8 +113,39 @@ function artifactName(v) {
   return `${PRODUCT_NAME}-Setup-${v}.exe`
 }
 
-function installerUrl(v) {
-  return `https://github.com/${GITHUB_REPO}/releases/download/v${v}/${artifactName(v).replace(/ /g, '-')}`
+/**
+ * The asset name as published, for the two ways this repository has produced it.
+ *
+ * `ensure-release.mjs` uploads `${productName}` with spaces replaced by dashes,
+ * while electron-builder's own upload collapses them to dots — v1.0.7 landed as
+ * `Alpha.AI.Workspace-Setup-1.0.7.exe` even though this script assumed dashes,
+ * so the URL it built answered 404 and registration could only have succeeded
+ * with `--no-verify`, storing a dead link. Both spellings are tried, and the
+ * GitHub API is asked first so the real name always wins.
+ */
+function assetNameCandidates(v) {
+  const base = artifactName(v)
+  return [...new Set([base.replace(/ /g, '.'), base.replace(/ /g, '-'), base])]
+}
+
+async function installerUrl(v) {
+  const explicit = flagValue('--url')
+  if (explicit) return explicit
+  try {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/tags/v${v}`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'alpha-release-register' }
+    })
+    if (response.ok) {
+      const release = await response.json()
+      const asset = (release.assets ?? []).find(
+        (candidate) => /\.exe$/i.test(candidate.name) && !/blockmap/i.test(candidate.name)
+      )
+      if (asset?.browser_download_url) return asset.browser_download_url
+    }
+  } catch {
+    /* offline or rate-limited: fall back to the known spellings below */
+  }
+  return `https://github.com/${GITHUB_REPO}/releases/download/v${v}/${assetNameCandidates(v)[0]}`
 }
 
 /**
@@ -161,7 +192,7 @@ function localArtifact() {
 async function main() {
   const minimum = (flagValue('--minimum') ?? version).trim()
   const notes = flagValue('--notes') ?? null
-  const url = flagValue('--url') ?? installerUrl(version)
+  const url = await installerUrl(version)
   const local = localArtifact()
 
   console.log(`version ${version} — release/${artifactName(version)} (${local.size} bytes)`)

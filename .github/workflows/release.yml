@@ -85,11 +85,25 @@ jobs:
 
       # --publish never: this step only has to prove the installer builds. If it
       # fails, the failure is a build failure, not an auth failure.
+      #
+      # Retried because the NSIS/winCodeSign toolchain is fetched from GitHub
+      # release assets on first use, and that download can drop. The loop keeps
+      # the first real error: only the last attempt overwrites build.log.
       - name: Build the NSIS installer
         shell: bash
         run: |
           set -o pipefail
-          npx electron-builder --win nsis --publish never 2>&1 | tee build.log
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if npx electron-builder --win nsis --publish never 2>&1 | tee "build-$attempt.log"; then
+              cp "build-$attempt.log" build.log
+              exit 0
+            fi
+            echo "attempt $attempt failed"
+            sleep 10
+          done
+          cp "build-3.log" build.log
+          exit 1
 
       # A release missing latest.yml installs fine by hand and silently breaks
       # auto-update for everyone, so fail here rather than ship that.
@@ -157,10 +171,14 @@ jobs:
           if-no-files-found: warn
 
       # The runner's log archive is not reachable from every environment, so the
-      # failure context is copied where the API can always read it.
+      # failure context is copied where the API can always read it: the summary
+      # (usual case) and a throwaway DRAFT release, since a draft never becomes
+      # `latest` and the updater never sees it. Delete it after reading.
       - name: Summarise failure
         if: failure()
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           {
             echo '### Release failed'
@@ -174,3 +192,7 @@ jobs:
             tail -n 60 publish.log 2>/dev/null || echo 'no publish.log'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          body=$(tail -n 250 build.log 2>/dev/null || echo 'no build.log')
+          gh release create "diag-${{ github.run_id }}" --draft \
+            --title "CI diagnostic ${{ github.run_id }}" \
+            --notes "$body" || echo "could not create diagnostic release"

@@ -3273,3 +3273,252 @@ html[data-animated-gradients="true"] .btn.primary { background-size: 180% 180%; 
   font-size: 12px;
   padding: 4px 8px;
 }
+
+/* ── Live background shaders ──────────────────────────────────────────────
+   The canvas is a decorative backplate: it must never intercept a click, and
+   it sits behind the shell content so translucent surfaces keep working. */
+.live-background {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 420ms var(--ease-out, ease-out);
+}
+
+/* Fade rather than pop when a shader mounts or the Eco-Saver pauses it. */
+html[data-eco="true"] .live-background {
+  opacity: 0.34;
+}
+
+.app-shell > *:not(.live-background) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Solar Eco-Saver ──────────────────────────────────────────────────────
+   `data-eco="true"` on <html> is the single switch. Battery-backed machines
+   should not spend their charge on infinite keyframes or large blurred glows:
+   animate-opacity on a small dot is cheap, a 40px pulsing box-shadow is not. */
+html[data-eco="true"] *,
+html[data-eco="true"] *::before,
+html[data-eco="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  animation-delay: 0ms !important;
+  transition-duration: 60ms !important;
+}
+
+html[data-eco="true"] .run-pulse,
+html[data-eco="true"] .activity-card.running,
+html[data-eco="true"] .studio-active-glow,
+html[data-eco="true"] .msg.assistant.live::after {
+  animation: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* Progress must still look alive: a frozen spinner reads as a hung agent, which
+   is worse than the milliwatts it saves. These stay animated, just cheaper. */
+html[data-eco="true"] .spin,
+html[data-eco="true"] .titlebar-provider-state.checking svg {
+  animation: spin 1.6s linear infinite !important;
+}
+
+/* Static glass fallback: keeps depth without gradients that repaint. */
+html[data-eco="true"] .activity-card,
+html[data-eco="true"] .msg.assistant.live {
+  background: var(--surface-glass, var(--surface-1));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Hidden unless Eco mode swaps it in; the spinner is its animated counterpart. */
+.eco-static-indicator { display: none; }
+html[data-eco="true"] .activity-spinner { display: none; }
+
+/* A flat accent dot replaces the animated spinner under Eco mode. */
+html[data-eco="true"] .eco-static-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+/* Respect the OS "reduce motion" preference even outside Eco mode. */
+@media (prefers-reduced-motion: reduce) {
+  .live-background { display: none; }
+  .run-pulse,
+  .activity-card.running,
+  .msg.assistant.live::after { animation: none !important; }
+}
+
+/* ── Agent working aura ───────────────────────────────────────────────────
+   Breathing accent-tinted halo around a response while the agent is running.
+   Implemented as an ::after glow (not a border) so it cannot shift layout when
+   it appears or disappears. */
+.msg.assistant.live {
+  position: relative;
+  isolation: isolate;
+}
+
+.msg.assistant.live::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  /* `.msg` has no radius of its own, so `inherit` would render a hard rectangle. */
+  border-radius: var(--radius-lg, 14px);
+  pointer-events: none;
+  animation: agent-aura 3.4s ease-in-out infinite;
+}
+
+@keyframes agent-aura {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+                0 0 22px -6px color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+                0 0 34px -4px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+}
+
+/* Shader chip on each preset card, so "Matrix Core" visibly promises code rain. */
+.theme-preview-shader {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-0) 74%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.theme-preview-shader em {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.theme-preview-shader[data-shader="matrix"] em {
+  animation: shader-blink 1.6s steps(2, end) infinite;
+}
+
+@keyframes shader-blink {
+  50% { opacity: 0.25; }
+}
+
+html[data-eco="true"] .theme-preview-shader em {
+  animation: none !important;
+}
+
+/* ── Activity status: spinner, or a static dot when the Eco-Saver is on ──── */
+.activity-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+
+.activity-spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+}
+
+/* ── Diff output inside a tool card ──────────────────────────────────────── */
+.activity-diff {
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, var(--radius-control));
+  overflow: hidden;
+  background: var(--terminal-bg, var(--surface-1));
+}
+
+.activity-diff-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.activity-diff-plus { color: var(--success, #34d399); font-weight: 600; }
+.activity-diff-minus { color: var(--danger, #f87171); font-weight: 600; }
+.activity-diff-note {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.activity-diff-body {
+  margin: 0;
+  padding: var(--space-1) 0;
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.diff-line {
+  display: flex;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  white-space: pre;
+}
+
+/* Colour plus a left rule: colour alone fails for red/green colour-blind users. */
+.diff-line.added {
+  background: color-mix(in srgb, var(--success, #34d399) 11%, transparent);
+  box-shadow: inset 2px 0 var(--success, #34d399);
+  color: color-mix(in srgb, var(--success, #34d399) 62%, var(--text-primary));
+}
+
+.diff-line.removed {
+  background: color-mix(in srgb, var(--danger, #f87171) 11%, transparent);
+  box-shadow: inset 2px 0 var(--danger, #f87171);
+  color: color-mix(in srgb, var(--danger, #f87171) 62%, var(--text-primary));
+}
+
+.diff-line.hunk {
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-3) 48%, transparent);
+}
+
+.diff-line.meta { color: var(--text-tertiary); }
+.diff-line.context { color: var(--text-secondary); }
+
+.diff-sign {
+  flex: 0 0 8px;
+  text-align: center;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.diff-text { flex: 1 1 auto; }

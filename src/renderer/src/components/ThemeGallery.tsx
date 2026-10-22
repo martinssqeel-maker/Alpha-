@@ -10,6 +10,7 @@ import {
   type AppearanceSettings,
   type ThemePreference
 } from '@shared/theme'
+import { SHADER_LABELS, themeConfig } from '../themes/themeEngine'
 
 const ACCENTS = [
   { id: 'gold', label: 'Solar gold', color: '#ffd166' },
@@ -88,6 +89,8 @@ export default function ThemeGallery({
                   const theme = option.id as (typeof RESOLVED_THEME_OPTIONS)[number]
                   const palette = THEME_TOKENS[theme]
                   const selected = value !== 'system' && activeTheme === option.id
+                  const config = themeConfig(theme)
+                  const shaderLabel = config && config.shader !== 'none' ? SHADER_LABELS[config.shader] : null
                   return (
                     <button
                       key={option.id}
@@ -119,6 +122,12 @@ export default function ThemeGallery({
                           </span>
                         </span>
                         <span className="theme-preview-light" style={{ background: palette['--ambient-light'] }} />
+                        {shaderLabel && (
+                          <span className="theme-preview-shader" data-shader={config?.shader} aria-hidden="true">
+                            <em style={{ background: palette['--accent'] }} />
+                            {shaderLabel}
+                          </span>
+                        )}
                         {selected && <span className="studio-selected-mark"><Check size={11} /> ACTIVE</span>}
                       </span>
                       <span className="theme-card-meta">
@@ -183,7 +192,27 @@ export default function ThemeGallery({
               <StudioToggle title="Ambient lighting" description="Add a soft theme-tinted light wash behind the workspace." checked={current.ambientLighting} onChange={(ambientLighting) => update({ ambientLighting })} />
               <StudioToggle title="Animated gradients" description="Add slow movement to signature accents and elevated surfaces." checked={current.animatedGradients} onChange={(animatedGradients) => update({ animatedGradients })} />
               <StudioToggle title="Interface transitions" description="Animate selection and panel state changes." checked={current.animations} onChange={(animations) => update({ animations })} />
-              <div className="studio-performance-note"><span className="studio-performance-pulse" /> <span>Effects are layered only on elevated surfaces to keep the canvas clear and responsive.</span></div>
+              <div className="studio-effect-divider" />
+              <div className="studio-section-heading"><div><h4>Live background & power</h4><p>Choose whether the workspace paints a living backdrop, and how it behaves on battery.</p></div></div>
+              <StudioToggle
+                title="Live background"
+                description="Animated galaxy, code-rain or solar field behind the workspace. Off means a static wash."
+                checked={current.liveBackground}
+                onChange={(liveBackground) => update({ liveBackground })}
+              />
+              <StudioToggle
+                title="Solar Eco-Saver"
+                description="Pauses the backdrop and removes neon glows. For inverter or battery-backed machines."
+                checked={current.ecoMode}
+                onChange={(ecoMode) => update({ ecoMode })}
+              />
+              <StudioToggle
+                title="Engage Eco-Saver on battery"
+                description="Turn the saver on automatically below 25% charge while unplugged."
+                checked={current.ecoAuto}
+                onChange={(ecoAuto) => update({ ecoAuto })}
+              />
+              <div className="studio-performance-note"><span className="studio-performance-pulse" /> <span>Eco-Saver swaps pulsing keyframes for a static indicator, so long runs cost no extra watts.</span></div>
             </div>
           )}
         </div>

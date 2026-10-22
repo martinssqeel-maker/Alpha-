@@ -15,6 +15,8 @@ import ProjectsPage from './pages/ProjectsPage'
 import GitHubPage from './pages/GitHubPage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
+import LiveBackgroundCanvas from './components/LiveBackgroundCanvas'
+import { useLiveBackground } from './themes/useLiveBackground'
 import HomePage from './pages/HomePage'
 import SkillsPage from './pages/SkillsPage'
 
@@ -36,6 +38,8 @@ export default function App() {
   const inspectorWidth = useApp((s) => s.inspectorWidth)
   const setInspectorWidth = useApp((s) => s.setInspectorWidth)
   const settingsTheme = useApp((s) => s.settings?.theme)
+  const appearance = useApp((s) => s.settings?.appearance)
+  const live = useLiveBackground(settingsTheme, appearance)
   const [startupError, setStartupError] = useState<string | null>(null)
   const [splashPhase, setSplashPhase] = useState<'show' | 'leaving' | 'done'>('show')
   const dragging = useRef(false)
@@ -135,6 +139,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <LiveBackgroundCanvas
+        shader={live.paintShader}
+        accent={live.accent}
+        secondary={live.secondary}
+        paused={live.paused}
+      />
       <TitleBar />
       <UpdateBanner />
       <div className="workspace">

@@ -84,6 +84,23 @@ const MIGRATIONS: string[] = [
   ALTER TABLE conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'manual';
   ALTER TABLE conversations ADD COLUMN archived_at INTEGER;
   UPDATE conversations SET title_source = 'auto' WHERE title = 'New chat';
+  `,
+  // v3 — persistent semantic memory (local embeddings, brute-force recall).
+  `
+  CREATE TABLE IF NOT EXISTS memory_chunks (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    meta TEXT,
+    vector BLOB NOT NULL,
+    dim INTEGER NOT NULL,
+    hash TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_kind ON memory_chunks(kind);
+  CREATE INDEX IF NOT EXISTS idx_memory_hash ON memory_chunks(hash);
   `
 ]
 

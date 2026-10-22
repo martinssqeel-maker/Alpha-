@@ -28,6 +28,11 @@ import {
 } from './services/store'
 import { TerminalService } from './services/terminal'
 import { SkillsService } from './services/skills'
+import { DvrService } from './services/dvrService'
+import { MacroService } from './services/macroService'
+import { MemoryGraph } from './services/memoryGraph'
+import { VoiceService } from './services/voiceService'
+import { WatcherService } from './services/watcherService'
 import { UpdateService } from './services/updater'
 import { EVENTS } from '@shared/channels'
 
@@ -60,6 +65,10 @@ export interface AppPaths {
   screenshotsDir: string
   /** User-authored skills, including ones saved from a completed workflow. */
   skillsDir: string
+  /** Replayable `.alpha` macros saved from a successful tool run. */
+  macrosDir: string
+  /** Declarative background watchers (JSON). */
+  watchersFile: string
 }
 
 export interface AppContext {
@@ -90,6 +99,16 @@ export interface AppContext {
   chat: ChatService
   updates: UpdateService
   platform: PlatformService
+  /** Semantic memory over past solutions and preferences (local only). */
+  memory: MemoryGraph
+  /** Saved natural-language macros. */
+  macros: MacroService
+  /** Bounded in-memory replay buffer for the current session. */
+  dvr: DvrService
+  /** Background/scheduled triggers that start agent runs. */
+  watchers: WatcherService
+  /** Local whisper.cpp transcription backend. */
+  voice: VoiceService
   emit: (channel: string, data: unknown) => void
 }
 
@@ -104,7 +123,9 @@ export async function buildContext(
     checkpointsDir: path.join(userData, 'checkpoints'),
     logsDir: path.join(userData, 'logs'),
     screenshotsDir: path.join(userData, 'screenshots'),
-    skillsDir: path.join(userData, 'skills')
+    skillsDir: path.join(userData, 'skills'),
+    macrosDir: path.join(userData, 'macros'),
+    watchersFile: path.join(userData, 'watchers.json')
   }
   const logger = initLogger(paths.logsDir)
   const db = await Db.open(paths.dbPath)
@@ -176,6 +197,43 @@ export async function buildContext(
 
   registry.ensureLocalOllama(current.ollamaUrl)
 
+  // --- Autonomous agent services -------------------------------------------
+  // Memory embeds through the configured local Ollama host when one is present,
+  // and falls back to the deterministic hashed embedding when it is not, so
+  // recall never depends on a model being pulled and no text leaves the machine.
+  const embeddingModel = process.env.ALPHA_EMBEDDING_MODEL ?? 'nomic-embed-text'
+  const memory = new MemoryGraph({
+    db,
+    embedder: {
+      embed: async (texts: string[]) => {
+        const local = registry.list().find((p) => p.kind === 'ollama' && p.enabled)
+        if (!local) throw new Error('no local embedding provider')
+        const base = local.baseUrl.replace(/\/$/, '')
+        const vectors: number[][] = []
+        for (const text of texts) {
+          const response = await fetch(`${base}/api/embeddings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: embeddingModel, prompt: text }),
+            signal: AbortSignal.timeout(8_000)
+          })
+          if (!response.ok) throw new Error(`embedding HTTP ${response.status}`)
+          const data = (await response.json()) as { embedding?: number[] }
+          if (!Array.isArray(data.embedding) || data.embedding.length === 0) {
+            throw new Error('empty embedding')
+          }
+          vectors.push(data.embedding)
+        }
+        return vectors
+      }
+    }
+  })
+  try {
+    memory.prune()
+  } catch (error) {
+    logger.warn('memory', `prune failed: ${(error as Error).message}`)
+  }
+
   const chat = new ChatService({
     providers: registry,
     conversations,
@@ -191,6 +249,9 @@ export async function buildContext(
     desktop,
     computer,
     browser: browserPreview,
+    // Recall is wired here rather than inside ChatService so the service keeps
+    // depending on an interface, not on the memory implementation.
+    memory,
     emit: (event) => emit('evt:chat', event)
   })
 
@@ -233,6 +294,46 @@ export async function buildContext(
     emit: (progress) => emit('evt:ollama', progress)
   })
 
+  const macros = new MacroService({ dir: paths.macrosDir })
+  const dvr = new DvrService()
+
+  // Local voice: paths come from the environment rather than a cloud setting, so
+  // the offline path can never be silently swapped for a remote provider.
+  const voice = new VoiceService({
+    config: () => ({
+      binaryPath: process.env.ALPHA_WHISPER_BIN ?? null,
+      modelPath: process.env.ALPHA_WHISPER_MODEL ?? null,
+      ffmpegPath: process.env.ALPHA_FFMPEG ?? null,
+      language: settings.get().voice?.language
+    })
+  })
+
+  // Watchers reuse the normal chat path, so a scheduled run is subject to the
+  // same permissions as a typed one. A watcher without a target conversation,
+  // provider and model is skipped rather than guessing: starting a run against
+  // the wrong model is worse than not starting.
+  const watchers = new WatcherService({
+    file: paths.watchersFile,
+    log: (message) => logger.warn('watchers', message),
+    run: async (watcher) => {
+      if (!watcher.conversationId || !watcher.providerId || !watcher.modelId) {
+        logger.warn(
+          'watchers',
+          `watcher ${watcher.id} skipped: needs conversationId, providerId and modelId`
+        )
+        return
+      }
+      chat.send({
+        conversationId: watcher.conversationId,
+        providerId: watcher.providerId,
+        modelId: watcher.modelId,
+        mode: 'agent',
+        text: watcher.prompt
+      })
+    }
+  })
+  watchers.arm()
+
   return {
     paths,
     logger,
@@ -261,6 +362,11 @@ export async function buildContext(
     chat,
     updates,
     platform,
+    memory,
+    macros,
+    dvr,
+    watchers,
+    voice,
     emit
   }
 }

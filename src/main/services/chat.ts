@@ -48,6 +48,8 @@ export interface ChatDeps {
   desktop: DesktopService
   computer: ComputerUseService
   browser: BrowserPreviewService
+  /** Optional semantic memory; injected after the loop is constructed. */
+  memory?: { contextBlock(query: string, budgetChars?: number): Promise<string> }
   emit: (event: ChatEvent) => void
 }
 
@@ -294,9 +296,21 @@ export class ChatService {
       const provider = providers.get(input.providerId)
       if (!provider) throw new ProviderError('Provider not found', 'not_found')
 
+      // Semantic recall from earlier sessions. Failure (provider down, empty
+      // table) must never block a turn, and the block is character-bounded so it
+      // cannot crowd out the actual request inside the history budget.
+      let memoryBlock = ''
+      if (this.deps.memory) {
+        try {
+          memoryBlock = await this.deps.memory.contextBlock(input.text, 1_200)
+        } catch (error) {
+          getLogger().warn('chat', `memory recall skipped: ${(error as Error).message}`)
+        }
+      }
+
       const history = conversations.messages(input.conversationId).slice(0, -1)
       const messages: ProviderMessage[] = [
-        { role: 'system', content: this.systemPrompt(input, providers, projects) },
+        { role: 'system', content: this.systemPrompt(input, providers, projects, memoryBlock) },
         ...selectHistory(history).map(toProviderMessage),
         { role: 'user', content: userContent }
       ]
@@ -757,7 +771,8 @@ export class ChatService {
   private systemPrompt(
     input: SendInput,
     providers: ProviderRegistry,
-    projects: ProjectService
+    projects: ProjectService,
+    memoryBlock = ''
   ): string {
     const provider = providers.get(input.providerId)
     const lines = [
@@ -832,6 +847,7 @@ export class ChatService {
     if (provider) lines.push(`Provider: ${provider.name} (${provider.isLocal ? 'local' : 'cloud'}).`)
     const skillContext = this.deps.skills.promptContext()
     if (skillContext) lines.push(skillContext)
+    if (memoryBlock) lines.push('', memoryBlock)
     return lines.join('\n')
   }
 }

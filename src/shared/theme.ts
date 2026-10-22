@@ -48,6 +48,18 @@ export interface AppearanceSettings {
   ambientLighting: boolean
   animations: boolean
   animatedGradients: boolean
+  /** Draw the theme's live background (starfield / code rain / plasma). */
+  liveBackground: boolean
+  /**
+   * Solar Eco-Saver. Stops every continuous animation and structural glow so the
+   * app stays usable on an inverter battery during an outage.
+   */
+  ecoMode: boolean
+  /**
+   * Turn Eco-Saver on by itself when the machine drops to battery. Off means the
+   * user owns the switch entirely.
+   */
+  ecoAuto: boolean
 }
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
@@ -60,7 +72,10 @@ export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   glowIntensity: 42,
   ambientLighting: true,
   animations: true,
-  animatedGradients: false
+  animatedGradients: false,
+  liveBackground: true,
+  ecoMode: false,
+  ecoAuto: true
 }
 
 export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
@@ -81,7 +96,10 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
     glowIntensity: clamp(input.glowIntensity, DEFAULT_APPEARANCE_SETTINGS.glowIntensity),
     ambientLighting: typeof input.ambientLighting === 'boolean' ? input.ambientLighting : DEFAULT_APPEARANCE_SETTINGS.ambientLighting,
     animations: typeof input.animations === 'boolean' ? input.animations : DEFAULT_APPEARANCE_SETTINGS.animations,
-    animatedGradients: typeof input.animatedGradients === 'boolean' ? input.animatedGradients : DEFAULT_APPEARANCE_SETTINGS.animatedGradients
+    animatedGradients: typeof input.animatedGradients === 'boolean' ? input.animatedGradients : DEFAULT_APPEARANCE_SETTINGS.animatedGradients,
+    liveBackground: typeof input.liveBackground === 'boolean' ? input.liveBackground : DEFAULT_APPEARANCE_SETTINGS.liveBackground,
+    ecoMode: typeof input.ecoMode === 'boolean' ? input.ecoMode : DEFAULT_APPEARANCE_SETTINGS.ecoMode,
+    ecoAuto: typeof input.ecoAuto === 'boolean' ? input.ecoAuto : DEFAULT_APPEARANCE_SETTINGS.ecoAuto
   }
 }
 type LegacyTheme =
@@ -356,6 +374,59 @@ export function isLightTheme(theme: ResolvedTheme): boolean {
 const ACCENT_COLORS: Record<Exclude<AccentChoice, 'theme' | 'custom'>, string> = {
   gold: '#ffd166', amber: '#ff9f43', cyan: '#52e6e8', blue: '#5b9dff',
   violet: '#a98aff', magenta: '#ed72dc', emerald: '#50dc98', rose: '#ff7f9e'
+}
+
+function hexChannels(color: string): [number, number, number] | null {
+  const value = /^#([\da-f]{6})$/i.exec(color.trim())
+  if (!value) return null
+  const raw = value[1]
+  return [
+    Number.parseInt(raw.slice(0, 2), 16),
+    Number.parseInt(raw.slice(2, 4), 16),
+    Number.parseInt(raw.slice(4, 6), 16)
+  ]
+}
+
+/** `color-mix(in srgb, a weight, b)` arithmetic, so canvas matches CSS exactly. */
+function mixHex(a: string, b: string, weightA: number): string {
+  const first = hexChannels(a)
+  const second = hexChannels(b)
+  if (!first || !second) return a
+  const w = Math.min(Math.max(weightA, 0), 1)
+  const channel = (index: number): string =>
+    Math.round(first[index] * w + second[index] * (1 - w))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${channel(0)}${channel(1)}${channel(2)}`
+}
+
+/**
+ * The theme's accent colours as plain hex.
+ *
+ * Canvas `fillStyle` cannot parse `color-mix()`, and `createThemeTokens` emits
+ * `color-mix()` for `--accent-secondary` whenever a custom accent is chosen. The
+ * live background therefore reads the underlying hex values instead of the
+ * computed CSS variables — otherwise the shader silently paints black.
+ *
+ * The secondary is mixed here with the same 48% weight the token uses, so the
+ * shader belongs to the chosen accent instead of drifting back to the palette's.
+ */
+export function resolveAccentHex(
+  theme: ResolvedTheme,
+  appearance: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS
+): { accent: string; secondary: string } {
+  const settings = normalizeAppearanceSettings(appearance)
+  const base = THEME_TOKENS[theme] ?? THEME_TOKENS.obsidian
+  const themeAccent = base['--accent']
+  const themeSecondary = base['--accent-secondary']
+  let accent: string | null = null
+  if (settings.accent === 'custom') {
+    if (/^#[\da-f]{6}$/i.test(settings.customAccent)) accent = settings.customAccent
+  } else if (settings.accent !== 'theme') {
+    accent = ACCENT_COLORS[settings.accent] ?? null
+  }
+  if (!accent) return { accent: themeAccent, secondary: themeSecondary }
+  return { accent, secondary: mixHex(accent, themeSecondary, 0.48) }
 }
 
 function readableAccentText(hex: string): string {

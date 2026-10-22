@@ -40,3 +40,27 @@ describe('SettingsRepo', () => {
     }
   })
 })
+describe('SettingsRepo appearance persistence', () => {
+  it('round-trips the Phase 11 live-background and Eco-Saver fields', async () => {
+    const db = await Db.open(path.join(tmpRoot, 'appearance.db'))
+    try {
+      const repo = new SettingsRepo(db)
+      // The renderer sends a *partial* appearance patch; deepMerge has to keep the
+      // untouched fields, or toggling Eco would reset the user's glass intensity.
+      repo.set({ appearance: { ecoMode: true, liveBackground: false, ecoAuto: false } })
+      const out = repo.get()
+      expect(out.appearance.ecoMode).toBe(true)
+      expect(out.appearance.liveBackground).toBe(false)
+      expect(out.appearance.ecoAuto).toBe(false)
+      expect(out.appearance.glassIntensity).toBe(DEFAULT_SETTINGS.appearance.glassIntensity)
+      expect(out.appearance.accent).toBe(DEFAULT_SETTINGS.appearance.accent)
+
+      // A second patch must not resurrect a previous value.
+      repo.set({ appearance: { ecoMode: false } })
+      expect(repo.get().appearance.ecoMode).toBe(false)
+      expect(repo.get().appearance.liveBackground).toBe(false)
+    } finally {
+      db.close()
+    }
+  })
+})

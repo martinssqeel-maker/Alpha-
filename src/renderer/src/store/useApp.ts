@@ -343,9 +343,17 @@ export const useApp = create<State>((set, get) => ({
     root.style.setProperty('--studio-motion-duration', appearance.animations ? '160ms' : '0.01ms')
     root.style.setProperty('--duration-fast', appearance.animations ? '120ms' : '0.01ms')
     root.style.setProperty('--duration-standard', appearance.animations ? '160ms' : '0.01ms')
-    for (const [token, value] of Object.entries(createThemeTokens(theme, appearance, prefersDark))) {
+    const tokens = createThemeTokens(theme, appearance, prefersDark)
+    for (const [token, value] of Object.entries(tokens)) {
       root.style.setProperty(token, value)
     }
+    // Short aliases, derived — never a second palette. Expose the four names the
+    // design brief specifies so new CSS can use either vocabulary and both stay
+    // in sync with the single source of truth above.
+    root.style.setProperty('--bg-primary', tokens['--surface-0'])
+    root.style.setProperty('--bg-secondary', tokens['--surface-1'])
+    root.style.setProperty('--accent-color', tokens['--accent'])
+    root.style.setProperty('--glow-color', tokens['--accent-glow'])
     void api.setTheme(theme, appearance.mode)
   },
 

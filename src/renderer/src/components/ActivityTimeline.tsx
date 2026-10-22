@@ -20,6 +20,7 @@ import { redactSensitiveText, redactSensitiveValue } from '@shared/redactSensiti
 import { api } from '../lib/api'
 import { useApp } from '../store/useApp'
 import { buildMacroDraft, suggestMacroName } from '@shared/macroDraft'
+import { diffStats, looksLikeUnifiedDiff, parseDiffLines } from '@shared/diffText'
 
 export interface RunStatus {
   label: string
@@ -200,6 +201,12 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
         <span className="activity-icon" aria-hidden="true">
           <Icon size={14} />
         </span>
+        {activity.state === 'running' && (
+          <span className="activity-status" aria-hidden="true">
+            <span className="activity-spinner spin" />
+            <span className="eco-static-indicator" />
+          </span>
+        )}
         <span className="activity-title mono">{activity.title}</span>
         <span className={`activity-pill ${activity.state}`}>{STATE_LABEL[activity.state]}</span>
         {activity.verification && (
@@ -225,7 +232,7 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
       </button>
       {open && (
         <div className="activity-body">
-          {detail && <pre className="activity-pre">{redactSensitiveText(detail)}</pre>}
+          {detail && <ActivityOutput text={redactSensitiveText(detail)} />}
           {activity.verification && (
             <p
               className="activity-verification"
@@ -245,11 +252,47 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
           {activity.result !== undefined && (
             <details open>
               <summary className="activity-summary">Result</summary>
-              <pre className="activity-pre block">{formatActivityValue(activity.result)}</pre>
+              <ActivityOutput text={formatActivityValue(activity.result)} />
             </details>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Render tool output, promoting a real unified diff to a highlighted block.
+ *
+ * Anything that is not a diff stays a plain `<pre>`: guessing would turn ordinary
+ * log output into fake additions, and a mislabelled change is worse than none.
+ */
+function ActivityOutput({ text }: { text: string }) {
+  const isDiff = looksLikeUnifiedDiff(text)
+  const parsed = isDiff ? parseDiffLines(text) : null
+
+  if (!parsed) {
+    return <pre className="activity-pre block">{text}</pre>
+  }
+
+  const stats = diffStats(parsed.lines)
+  return (
+    <div className="activity-diff">
+      <div className="activity-diff-head">
+        <span className="activity-diff-plus mono">+{stats.added}</span>
+        <span className="activity-diff-minus mono">&minus;{stats.removed}</span>
+        {parsed.truncated && <span className="activity-diff-note">truncated</span>}
+      </div>
+      <pre className="activity-diff-body">
+        {parsed.lines.map((line, index) => (
+          <span key={index} className={`diff-line ${line.kind}`}>
+            <span className="diff-sign" aria-hidden="true">
+              {line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : line.kind === 'context' ? ' ' : ''}
+            </span>
+            <span className="diff-text">{line.text || ' '}</span>
+          </span>
+        ))}
+      </pre>
     </div>
   )
 }

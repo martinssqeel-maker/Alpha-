@@ -234,6 +234,8 @@ export async function buildContext(
     logger.warn('memory', `prune failed: ${(error as Error).message}`)
   }
 
+  const dvr = new DvrService()
+
   const chat = new ChatService({
     providers: registry,
     conversations,
@@ -252,6 +254,8 @@ export async function buildContext(
     // Recall is wired here rather than inside ChatService so the service keeps
     // depending on an interface, not on the memory implementation.
     memory,
+    // The replay buffer records finished activities for the DVR scrubber.
+    dvr,
     emit: (event) => emit('evt:chat', event)
   })
 
@@ -295,7 +299,6 @@ export async function buildContext(
   })
 
   const macros = new MacroService({ dir: paths.macrosDir })
-  const dvr = new DvrService()
 
   // Local voice: paths come from the environment rather than a cloud setting, so
   // the offline path can never be silently swapped for a remote provider.

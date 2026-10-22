@@ -8,7 +8,6 @@ import type {
   PermissionMode
 } from '@shared/types'
 import { createConversationTitle } from '@shared/conversationTitle'
-import { toolNeedsApproval } from '@shared/permissions'
 import { getLogger } from './logger'
 import { PathError } from './pathGuard'
 import type { ApprovalBroker, PermissionService } from './permissionService'
@@ -17,6 +16,7 @@ import type { ChatToolCall, ProviderMessage } from './providers/types'
 import { ProviderError } from './providers/types'
 import type { ProjectService } from './projectService'
 import type { ConversationsRepo, SettingsRepo } from './store'
+import type { DvrService } from './dvrService'
 import { AGENT_ONLY_TOOLS, executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './tools'
 import type { EditService } from './editService'
 import type { GitService } from './git'
@@ -50,6 +50,8 @@ export interface ChatDeps {
   browser: BrowserPreviewService
   /** Optional semantic memory; injected after the loop is constructed. */
   memory?: { contextBlock(query: string, budgetChars?: number): Promise<string> }
+  /** Optional replay buffer; every finished activity is recorded for the DVR. */
+  dvr?: DvrService
   emit: (event: ChatEvent) => void
 }
 
@@ -224,6 +226,9 @@ export class ChatService {
     this.active.set(requestId, controller)
     void this.run(requestId, controller, input).finally(() => {
       this.active.delete(requestId)
+      // A grant is scoped to its turn by design, so leaving one behind after the
+      // turn ends would be a standing permission the user never gave.
+      this.deps.permissions.revokeTurnGrants(requestId)
     })
     return { requestId }
   }
@@ -244,14 +249,150 @@ export class ChatService {
     for (const [id, controller] of this.active) {
       controller.abort()
       this.active.delete(id)
+      // The emergency stop must not leave an auto-approval armed.
+      this.deps.permissions.revokeTurnGrants(id)
       cancelled++
     }
+    this.deps.permissions.revokeAllGrants()
     return cancelled
   }
 
   /** Number of turns currently running (HUD + tests). */
   get activeCount(): number {
     return this.active.size
+  }
+
+  /**
+   * Wrap an emitter so every activity that reaches a terminal state lands in the
+   * replay buffer. Recording here — rather than inside each tool — means the
+   * timeline cannot drift from the Activity panel: it is the same events.
+   */
+  private withReplay(emit: (event: ChatEvent) => void): (event: ChatEvent) => void {
+    const dvr = this.deps.dvr
+    if (!dvr) return emit
+    return (event) => {
+      if (event.type === 'activity') {
+        const { activity } = event
+        if (activity.state === 'completed' || activity.state === 'failed' || activity.state === 'cancelled') {
+          dvr.push({
+            kind: 'tool',
+            label: activity.title,
+            // The verification note is the useful part for a replay: it says
+            // whether the step actually proved anything.
+            text: [
+              activity.detail,
+              activity.error ? `error: ${activity.error}` : '',
+              activity.verification?.verified === false ? `unverified: ${activity.verification.note ?? ''}` : ''
+            ]
+              .filter(Boolean)
+              .join('\n'),
+            detail: {
+              tool: activity.toolName,
+              state: activity.state,
+              stepId: activity.id,
+              autoApproved: activity.autoApproved === true
+            },
+            at: activity.endedAt ?? Date.now()
+          })
+        }
+      }
+      emit(event)
+    }
+  }
+
+  /** The single place a tool context is assembled, shared with macro runs. */
+  private toolContext(projectId: string | null): ToolContext {
+    return {
+      projectId,
+      projects: this.deps.projects,
+      edits: this.deps.edits,
+      git: this.deps.git,
+      terminal: this.deps.terminal,
+      permissions: this.deps.permissions,
+      roots: this.deps.roots,
+      desktop: this.deps.desktop,
+      computer: this.deps.computer,
+      browser: this.deps.browser
+    }
+  }
+
+  /**
+   * Run a saved macro: a fixed list of tool calls, no model in the loop.
+   *
+   * This is deliberately *not* a second execution path. The steps go through
+   * `runTools`, so permissions, the approval broker, activity events, session
+   * grants and verification behave exactly as they do for a model-issued call.
+   * A macro cannot do anything a model could not, it only skips the guesswork.
+   */
+  runMacro(input: {
+    conversationId: string
+    projectId: string | null
+    mode: PermissionMode
+    macroName: string
+    steps: Array<{ tool: string; args: Record<string, unknown> }>
+  }): { requestId: string } {
+    const requestId = randomUUID()
+    const controller = new AbortController()
+    this.active.set(requestId, controller)
+    void this.executeMacro(requestId, controller, input).finally(() => {
+      this.active.delete(requestId)
+      this.deps.permissions.revokeTurnGrants(requestId)
+    })
+    return { requestId }
+  }
+
+  private async executeMacro(
+    requestId: string,
+    controller: AbortController,
+    input: {
+      conversationId: string
+      projectId: string | null
+      mode: PermissionMode
+      macroName: string
+      steps: Array<{ tool: string; args: Record<string, unknown> }>
+    }
+  ): Promise<void> {
+    const emitEvent = (event: ChatEvent): void =>
+      this.deps.emit({ ...event, conversationId: input.conversationId })
+    const log = getLogger()
+    const activities: ActivityItem[] = []
+    try {
+      this.deps.permissions.setMode(input.mode)
+      const calls: ChatToolCall[] = input.steps.map((step, index) => ({
+        id: `macro_${index}_${randomUUID()}`,
+        name: step.tool,
+        arguments: step.args
+      }))
+      log.info('chat', `macro "${input.macroName}" starting ${calls.length} step(s)`)
+      await this.runTools(
+        requestId,
+        calls,
+        this.toolContext(input.projectId),
+        activities,
+        this.withReplay(emitEvent),
+        controller,
+        new Map<string, number>()
+      )
+      // Report the outcome as an activity item rather than a new event type: the
+      // Activity panel already renders these, and a macro run is exactly that.
+      const failed = activities.filter((item) => item.state === 'failed').length
+      const summary: ActivityItem = {
+        id: randomUUID(),
+        kind: 'status',
+        title: `Macro "${input.macroName}"`,
+        detail: `${activities.length - failed} of ${activities.length} step(s) completed${
+          failed ? `, ${failed} failed` : ''
+        }`,
+        state: failed ? 'failed' : 'completed',
+        startedAt: Date.now(),
+        endedAt: Date.now()
+      }
+      emitEvent({ type: 'activity', requestId, activity: summary })
+    } catch (e) {
+      const err = e as Error
+      log.error('chat', `macro "${input.macroName}" failed: ${err.message}`)
+      emitEvent({ type: 'error', requestId, error: `Macro "${input.macroName}" failed: ${err.message}` })
+    }
   }
 
   private async run(
@@ -261,6 +402,7 @@ export class ChatService {
   ): Promise<void> {
     const { conversations, providers, projects, permissions } = this.deps
     const emitEvent = (event: ChatEvent): void => this.deps.emit({ ...event, conversationId: input.conversationId })
+    const emitRecorded = this.withReplay(emitEvent)
     const log = getLogger()
     let assistantText = ''
     const activities: ActivityItem[] = []
@@ -474,25 +616,14 @@ export class ChatService {
           toolCalls: toolCalls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments }))
         })
 
-        const toolContext: ToolContext = {
-          projectId: input.projectId ?? null,
-          projects,
-          edits: this.deps.edits,
-          git: this.deps.git,
-          terminal: this.deps.terminal,
-          permissions,
-          roots: this.deps.roots,
-          desktop: this.deps.desktop,
-          computer: this.deps.computer,
-          browser: this.deps.browser
-        }
+        const toolContext = this.toolContext(input.projectId ?? null)
 
         const toolResults = await this.runTools(
           requestId,
           toolCalls,
           toolContext,
           activities,
-          emitEvent,
+          emitRecorded,
           controller,
           failures
         )
@@ -700,16 +831,41 @@ export class ChatService {
 
     const permissionKey = def.permissionKey
     if (permissionKey !== 'read') {
-      // `toolNeedsApproval` keeps the promise a tool makes when it declares
-      // `requiresApproval: true`: an allowed capability does not silently waive
-      // the prompt a destructive tool asked for.
-      const { decision } = toolNeedsApproval(ctx.permissions.get(), permissionKey, def.requiresApproval)
+      // What this exact call would touch, so a session grant can be matched
+      // narrowly: one command string, or the specific file being patched.
+      const callArgs = (call.arguments ?? {}) as Record<string, unknown>
+      const proposalPath =
+        call.name === 'apply_approved_patch'
+          ? ctx.edits.describeProposal(String(callArgs.proposalId ?? ''))?.path
+          : undefined
+      const commandArg = call.name === 'run_approved_command' ? String(callArgs.command ?? '') : undefined
+
+      // `gateTool` keeps the promise a tool makes when it declares
+      // `requiresApproval: true` — an allowed capability does not silently waive
+      // the prompt a destructive tool asked for — while honouring a session grant
+      // the user already approved for this same target inside this turn.
+      const gate = ctx.permissions.gateTool({
+        turnId: requestId,
+        toolName: call.name,
+        permissionKey,
+        requiresApproval: def.requiresApproval,
+        ...(commandArg !== undefined ? { command: commandArg } : {}),
+        ...(proposalPath ? { paths: [proposalPath] } : {})
+      })
+      const decision = gate.decision
       if (decision === 'deny') {
         activity.state = 'failed'
         activity.error = 'Denied by current permission settings.'
         activity.endedAt = Date.now()
         emit({ type: 'activity', requestId, activity: { ...activity } })
         return { content: JSON.stringify({ error: activity.error }), activity }
+      }
+      if (decision === 'allow' && gate.autoApproved) {
+        // Silent on purpose, but never invisible: the timeline says why this
+        // skipped the dialog and how many retries remain on the grant.
+        activity.autoApproved = true
+        activity.detail = `${activity.detail ?? ''} — auto-approved by a session grant (${gate.attemptsLeft ?? 0} retries left)`.trim()
+        emit({ type: 'activity', requestId, activity: { ...activity } })
       }
       if (decision === 'ask') {
         const approvalId = randomUUID()
@@ -728,6 +884,16 @@ export class ChatService {
         }
         activity.approvalId = undefined
         activity.state = 'proposed'
+        // The user approved this exact command/file. Remember it for at most
+        // MAX_GRANT_ATTEMPTS automated retries in this turn, so a repair loop
+        // does not re-prompt for the same thing — while a different command or
+        // a different file still reaches the dialog.
+        ctx.permissions.grantAfterApproval({
+          turnId: requestId,
+          toolName: call.name,
+          command: commandArg ?? null,
+          paths: proposalPath ? [proposalPath] : undefined
+        })
       }
     }
 

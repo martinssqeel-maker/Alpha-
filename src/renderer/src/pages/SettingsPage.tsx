@@ -1,3 +1,4 @@
+import MacroManager from '../components/MacroManager'
 import { useEffect, useRef, useState } from 'react'
 import { Archive, RotateCcw, Trash2 } from 'lucide-react'
 import type {
@@ -43,6 +44,7 @@ const SETTINGS_SECTIONS = [
   { id: 'settings-permissions', label: 'Permissions & safety' },
   { id: 'settings-agent', label: 'Desktop agent' },
   { id: 'settings-skills', label: 'Agent skills' },
+  { id: 'settings-macros', label: 'Macros' },
   { id: 'settings-project', label: 'Project settings' },
   { id: 'settings-voice', label: 'Voice' },
   { id: 'settings-git', label: 'Git & publishing' },
@@ -133,6 +135,10 @@ export default function SettingsPage() {
           <Row label="Manage skills" hint="Enabled skills apply to new requests and can be changed any time.">
             <button className="btn" onClick={() => useApp.getState().setView('skills')}>Browse agent skills</button>
           </Row>
+        </Section>
+
+        <Section id="settings-macros" title="Macros" note="Saved multi-step scripts run on one click. Steps still pass through the normal permission checks.">
+          <MacroManager />
         </Section>
 
         <Section id="settings-project" title="Project settings" note="Project-scoped instructions and overrides are not available yet.">

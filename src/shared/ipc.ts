@@ -7,6 +7,9 @@ import type {
   BrowserPreviewState,
   ChatMessage,
   Conversation,
+  DvrFrameView,
+  DvrTimeline,
+  MacroSummary,
   DiffFile,
   FileNode,
   GitStatus,
@@ -204,6 +207,24 @@ export interface IpcContract {
   [CH.attachmentsPick]: { req: void; res: { paths: string[]; attachments: AttachmentRef[] } }
 
   [CH.voiceTranscribe]: { req: unknown; res: { text: string; error?: string; provider?: string } }
+
+  [CH.macroList]: { req: void; res: MacroSummary[] }
+  [CH.macroSave]: { req: unknown; res: { ok: boolean; macro?: MacroSummary; error?: string } }
+  [CH.macroRemove]: { req: string; res: { ok: boolean } }
+  [CH.macroRun]: {
+    req: unknown
+    res: { ok: boolean; requestId?: string; missing?: string[]; error?: string }
+  }
+
+  [CH.dvrTimeline]: { req: unknown; res: DvrTimeline }
+  /** One frame including its snapshot payload, loaded only when inspected. */
+  [CH.dvrFrame]: { req: unknown; res: { frame: DvrFrameView; image?: string } | null }
+  /**
+   * Re-positions the inspector at a past step. It never rewrites files — a
+   * "rollback" that silently restored code would be a destructive action
+   * disguised as navigation.
+   */
+  [CH.dvrRollback]: { req: unknown; res: DvrTimeline }
 
   [CH.platformStatus]: { req: void; res: PlatformStatus }
   [CH.platformSignIn]: { req: { email: string }; res: { ok: boolean; message?: string } }

@@ -3132,3 +3132,101 @@ html[data-animated-gradients="true"] .btn.primary { background-size: 180% 180%; 
   padding: 3px 10px;
   font-size: var(--primitive-font-11);
 }
+
+/* --- Macros --------------------------------------------------------------- */
+.macro-card {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+}
+
+/* --- Replay / DVR scrubber ------------------------------------------------ */
+.dvr-scrubber {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dvr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dvr-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dvr-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.dvr-range {
+  width: 100%;
+  accent-color: var(--accent, #60a5fa);
+}
+
+.dvr-frame {
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dvr-frame-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.dvr-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dvr-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  color: var(--muted);
+}
+
+.dvr-badge.bad {
+  color: var(--warning, #fbbf24);
+  border-color: currentColor;
+}
+
+.dvr-text {
+  margin: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+  color: var(--text-secondary, inherit);
+}
+
+.dvr-image {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}

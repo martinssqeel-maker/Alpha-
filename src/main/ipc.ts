@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import type { ZodTypeAny } from 'zod'
-import type { ChatEvent, TerminalEvent } from '@shared/types'
+import type { ChatEvent, PermissionMode, TerminalEvent } from '@shared/types'
 import {
   zAppTheme,
   zApproval,
@@ -44,7 +44,14 @@ import {
   zSkillSave,
   zSettingsSet,
   zTerminalRun,
-  zVoiceTranscribe
+  zVoiceTranscribe,
+  zRevealPath,
+  zMacroSave,
+  zMacroRun,
+  zMacroSlug,
+  zDvrTimeline,
+  zDvrFrame,
+  zDvrRollback
 } from '@shared/schemas'
 import type { DiagnosticsInfo } from '@shared/ipc'
 import { createThemeTokens, DEFAULT_APPEARANCE_SETTINGS, THEME_TOKENS } from '@shared/theme'
@@ -503,9 +510,102 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
     }
   })
 
-  // Open a path in the OS file explorer is a safe, useful helper.
-  ipcMain.handle('shell:showItem', (_e, p: { path: string }) => {
-    if (p?.path) shell.showItemInFolder(p.path)
+  // --- Macros --------------------------------------------------------------
+  // A macro is stored as a `.alpha` file the user can read and edit; the UI only
+  // ever sees a summary, and running one goes through the normal tool pipeline.
+  const macroSummary = (macro: ReturnType<typeof ctx.macros.list>[number]) => ({
+    slug: macro.slug,
+    name: macro.name,
+    description: macro.description,
+    triggers: macro.triggers,
+    params: macro.params,
+    stepCount: macro.steps.length,
+    updatedAt: macro.updatedAt
+  })
+
+  handle(CH.macroList, null, () => ctx.macros.list().map(macroSummary))
+
+  handle(CH.macroSave, zMacroSave, async (p) => {
+    const input = p as Parameters<typeof ctx.macros.save>[0]
+    try {
+      return { ok: true, macro: macroSummary(ctx.macros.save(input)) }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
+  handle(CH.macroRemove, zMacroSlug, async (p) => ({ ok: ctx.macros.remove(p as string) }))
+
+  handle(CH.macroRun, zMacroRun, async (p) => {
+    const input = p as { slug: string; params?: Record<string, string>; mode?: PermissionMode }
+    let rendered: ReturnType<typeof ctx.macros.render>
+    try {
+      rendered = ctx.macros.render(input.slug, input.params ?? {})
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+    if (rendered.missing.length) {
+      return { ok: false, missing: rendered.missing, error: `Missing required parameter(s): ${rendered.missing.join(', ')}` }
+    }
+    const conversationId =
+      ctx.conversations.list()[0]?.id ?? ctx.conversations.create({ title: rendered.macro.name }).id
+    const { requestId } = ctx.chat.runMacro({
+      conversationId,
+      projectId: ctx.projectsRepo.list()[0]?.id ?? null,
+      mode: input.mode ?? ctx.settings.get().permissions.mode,
+      macroName: rendered.macro.name,
+      steps: rendered.steps
+    })
+    return { ok: true, requestId }
+  })
+
+  // --- Replay (DVR) --------------------------------------------------------
+  // Frames are in memory only, and the timeline carries no image payloads; a
+  // snapshot is fetched per frame so scrubbing cannot ship megabytes per tick.
+  const toFrameView = (frame: ReturnType<typeof ctx.dvr.timeline>[number]) => ({
+    id: frame.id,
+    kind: frame.kind,
+    label: frame.label,
+    text: frame.text,
+    detail: frame.detail,
+    hasImage: Boolean(frame.image),
+    at: frame.at
+  })
+  const timelineView = (frames: ReturnType<typeof ctx.dvr.timeline>) => {
+    const size = ctx.dvr.size()
+    return {
+      frames: frames.map(toFrameView),
+      firstId: size.firstId,
+      lastId: size.lastId,
+      total: size.frames,
+      bytes: size.bytes,
+      budget: size.budget
+    }
+  }
+
+  handle(CH.dvrTimeline, zDvrTimeline, async (p) => {
+    const input = (p ?? {}) as { fromId?: number; toId?: number; limit?: number }
+    return timelineView(ctx.dvr.timeline(input))
+  })
+
+  handle(CH.dvrFrame, zDvrFrame, async (p) => {
+    const frame = ctx.dvr.get((p as { id: number }).id)
+    if (!frame) return null
+    return { frame: toFrameView(frame), image: frame.image }
+  })
+
+  // Re-positions the inspector; it deliberately does not touch files.
+  handle(CH.dvrRollback, zDvrRollback, async (p) => {
+    const frameId = (p as { frameId: number }).frameId
+    return timelineView(ctx.dvr.timeline({ toId: frameId, limit: 200 }))
+  })
+
+  // Open a path in the OS file explorer. Registered through `handle` like every
+  // other channel: it was previously wired with a raw `ipcMain.handle('shell:…')`,
+  // so `CH.revealPath` was validated nowhere despite two UI call sites.
+  handle(CH.revealPath, zRevealPath, (p) => {
+    const { path: target } = p as { path: string }
+    shell.showItemInFolder(target)
     return { ok: true }
   })
 

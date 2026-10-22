@@ -111,6 +111,15 @@ export const CH = {
 
   voiceTranscribe: 'voice:transcribe',
 
+  macroList: 'macro:list',
+  macroSave: 'macro:save',
+  macroRun: 'macro:run',
+  macroRemove: 'macro:remove',
+
+  dvrTimeline: 'dvr:getTimeline',
+  dvrFrame: 'dvr:frame',
+  dvrRollback: 'dvr:rollback',
+
   platformStatus: 'platform:status',
   platformSignIn: 'platform:signin',
   platformSignInWith: 'platform:signinWith',

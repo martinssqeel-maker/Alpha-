@@ -8,7 +8,6 @@ import type {
   PermissionMode
 } from '@shared/types'
 import { createConversationTitle } from '@shared/conversationTitle'
-import { toolNeedsApproval } from '@shared/permissions'
 import { getLogger } from './logger'
 import { PathError } from './pathGuard'
 import type { ApprovalBroker, PermissionService } from './permissionService'
@@ -17,7 +16,18 @@ import type { ChatToolCall, ProviderMessage } from './providers/types'
 import { ProviderError } from './providers/types'
 import type { ProjectService } from './projectService'
 import type { ConversationsRepo, SettingsRepo } from './store'
+import type { DvrService } from './dvrService'
 import { AGENT_ONLY_TOOLS, executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './tools'
+import {
+  MAX_GRANT_ATTEMPTS
+} from './sessionGrants'
+import {
+  REPAIR_TOOL_NAMES,
+  SelfHealingLoop,
+  findFailedValidation,
+  type CommandOutcome,
+  type ValidationFailure
+} from './selfHealing'
 import type { EditService } from './editService'
 import type { GitService } from './git'
 import type { TerminalService } from './terminal'
@@ -48,6 +58,10 @@ export interface ChatDeps {
   desktop: DesktopService
   computer: ComputerUseService
   browser: BrowserPreviewService
+  /** Optional semantic memory; injected after the loop is constructed. */
+  memory?: { contextBlock(query: string, budgetChars?: number): Promise<string> }
+  /** Optional replay buffer; every finished activity is recorded for the DVR. */
+  dvr?: DvrService
   emit: (event: ChatEvent) => void
 }
 
@@ -222,6 +236,9 @@ export class ChatService {
     this.active.set(requestId, controller)
     void this.run(requestId, controller, input).finally(() => {
       this.active.delete(requestId)
+      // A grant is scoped to its turn by design, so leaving one behind after the
+      // turn ends would be a standing permission the user never gave.
+      this.deps.permissions.revokeTurnGrants(requestId)
     })
     return { requestId }
   }
@@ -242,14 +259,275 @@ export class ChatService {
     for (const [id, controller] of this.active) {
       controller.abort()
       this.active.delete(id)
+      // The emergency stop must not leave an auto-approval armed.
+      this.deps.permissions.revokeTurnGrants(id)
       cancelled++
     }
+    this.deps.permissions.revokeAllGrants()
     return cancelled
   }
 
   /** Number of turns currently running (HUD + tests). */
   get activeCount(): number {
     return this.active.size
+  }
+
+  /**
+   * Wrap an emitter so every activity that reaches a terminal state lands in the
+   * replay buffer. Recording here — rather than inside each tool — means the
+   * timeline cannot drift from the Activity panel: it is the same events.
+   */
+  private withReplay(emit: (event: ChatEvent) => void): (event: ChatEvent) => void {
+    const dvr = this.deps.dvr
+    if (!dvr) return emit
+    return (event) => {
+      if (event.type === 'activity') {
+        const { activity } = event
+        if (activity.state === 'completed' || activity.state === 'failed' || activity.state === 'cancelled') {
+          dvr.push({
+            kind: 'tool',
+            label: activity.title,
+            // The verification note is the useful part for a replay: it says
+            // whether the step actually proved anything.
+            text: [
+              activity.detail,
+              activity.error ? `error: ${activity.error}` : '',
+              activity.verification?.verified === false ? `unverified: ${activity.verification.note ?? ''}` : ''
+            ]
+              .filter(Boolean)
+              .join('\n'),
+            detail: {
+              tool: activity.toolName,
+              state: activity.state,
+              stepId: activity.id,
+              autoApproved: activity.autoApproved === true
+            },
+            at: activity.endedAt ?? Date.now()
+          })
+        }
+      }
+      emit(event)
+    }
+  }
+
+  /**
+   * Repair a failed validation run in place, bounded by the session grant.
+   *
+   * Why the grant matters: both `run_approved_command` and `apply_approved_patch`
+   * declare `requiresApproval`, so a naive retry re-prompts on every iteration.
+   * The user's approval of the *first* run issued a grant bound to that exact
+   * command, so re-runs proceed silently — but only that command, and only for
+   * `MAX_GRANT_ATTEMPTS`, which is also the loop's ceiling. A patch to a file the
+   * user has not approved still reaches the approval dialog, and nothing here can
+   * lift a `deny`.
+   */
+  private async selfHeal(options: {
+    requestId: string
+    controller: AbortController
+    ctx: ToolContext
+    activities: ActivityItem[]
+    emit: (event: ChatEvent) => void
+    /** The failure this loop is repairing, detected for this round only. */
+    failure: ValidationFailure
+    /** One provider round restricted to the repair tool set. */
+    requestRepairCalls: (prompt: string) => Promise<ChatToolCall[]>
+  }): Promise<{ healed: boolean; attempts: number; reason: string } | null> {
+    const { requestId, controller, ctx, activities, emit, requestRepairCalls } = options
+    const permissions = ctx.permissions
+
+    const runCommand = async (command: string): Promise<CommandOutcome> => {
+      // Ask before spending: if the grant is gone, the alternative is a dialog
+      // nobody is watching, and a promise that never settles.
+      const peek = permissions.gateTool(
+        {
+          turnId: requestId,
+          toolName: 'run_approved_command',
+          permissionKey: 'terminal',
+          requiresApproval: true,
+          command
+        },
+        { consume: false }
+      )
+      if (peek.decision === 'deny') {
+        throw new Error(`Retrying \`${command}\` is denied by your permission settings.`)
+      }
+      if (peek.decision === 'ask') {
+        throw new Error(
+          `Retrying \`${command}\` would need a new approval, so the repair loop stopped. Run it again to retry.`
+        )
+      }
+      const before = activities.length
+      await this.runTools(
+        requestId,
+        [{ id: `heal_${randomUUID()}`, name: 'run_approved_command', arguments: { command, purpose: 'Re-run validation after a repair' } }],
+        ctx,
+        activities,
+        emit,
+        controller,
+        new Map<string, number>()
+      )
+      const activity = activities.slice(before).find((a) => a.toolName === 'run_approved_command')
+      const result = (activity?.result ?? {}) as { exitCode?: unknown; stdout?: unknown; stderr?: unknown }
+      return {
+        code: typeof result.exitCode === 'number' ? result.exitCode : 1,
+        stdout: typeof result.stdout === 'string' ? result.stdout : '',
+        stderr: typeof result.stderr === 'string' ? result.stderr : ''
+      }
+    }
+
+    const fix = async (prompt: string): Promise<string[]> => {
+      const calls = await requestRepairCalls(prompt)
+      if (!calls.length) return []
+      // Resolve proposal targets before they are consumed by the apply call.
+      const changed: string[] = []
+      for (const call of calls) {
+        if (call.name !== 'apply_approved_patch') continue
+        const proposalId = String((call.arguments as Record<string, unknown> | null)?.proposalId ?? '')
+        const described = this.deps.edits.describeProposal(proposalId)
+        if (described?.path) changed.push(described.path)
+      }
+      const before = activities.length
+      await this.runTools(requestId, calls, ctx, activities, emit, controller, new Map<string, number>())
+      for (const activity of activities.slice(before)) {
+        if (activity.state !== 'completed' || activity.toolName === 'run_approved_command') continue
+        const args = (activity.args ?? {}) as Record<string, unknown>
+        if (typeof args.path === 'string') changed.push(args.path)
+      }
+      return [...new Set(changed)]
+    }
+
+    const loop = new SelfHealingLoop({
+      run: runCommand,
+      fix,
+      maxAttempts: MAX_GRANT_ATTEMPTS,
+      emit: (event) => getLogger().info('heal', `${event.type}: ${event.detail}`)
+    })
+
+    const { failure } = options
+    const startedAt = Date.now()
+    const notice: ActivityItem = {
+      id: randomUUID(),
+      kind: 'status',
+      title: `Self-healing \`${failure.command}\``,
+      detail: 'A validation command failed; attempting a bounded repair loop.',
+      state: 'running',
+      toolName: 'self_healing',
+      startedAt
+    }
+    activities.push(notice)
+    emit({ type: 'activity', requestId, activity: { ...notice } })
+
+    let outcome: { healed: boolean; attempts: number; reason: string }
+    try {
+      const result = await loop.heal(failure.command, ctx.projectId ?? '', controller.signal)
+      outcome = { healed: result.healed, attempts: result.attempts, reason: result.reason }
+    } catch (error) {
+      outcome = { healed: false, attempts: 0, reason: (error as Error).message }
+    }
+
+    notice.state = outcome.healed ? 'completed' : 'failed'
+    notice.endedAt = Date.now()
+    notice.detail = outcome.healed
+      ? `Repaired after ${outcome.attempts} attempt(s); \`${failure.command}\` now passes.`
+      : `Could not repair automatically (${outcome.reason}) after ${outcome.attempts} attempt(s).`
+    emit({ type: 'activity', requestId, activity: { ...notice } })
+    getLogger().info('heal', `${failure.command}: ${notice.detail}`)
+    return outcome
+  }
+
+  /** The single place a tool context is assembled, shared with macro runs. */
+  private toolContext(projectId: string | null): ToolContext {
+    return {
+      projectId,
+      projects: this.deps.projects,
+      edits: this.deps.edits,
+      git: this.deps.git,
+      terminal: this.deps.terminal,
+      permissions: this.deps.permissions,
+      roots: this.deps.roots,
+      desktop: this.deps.desktop,
+      computer: this.deps.computer,
+      browser: this.deps.browser
+    }
+  }
+
+  /**
+   * Run a saved macro: a fixed list of tool calls, no model in the loop.
+   *
+   * This is deliberately *not* a second execution path. The steps go through
+   * `runTools`, so permissions, the approval broker, activity events, session
+   * grants and verification behave exactly as they do for a model-issued call.
+   * A macro cannot do anything a model could not, it only skips the guesswork.
+   */
+  runMacro(input: {
+    conversationId: string
+    projectId: string | null
+    mode: PermissionMode
+    macroName: string
+    steps: Array<{ tool: string; args: Record<string, unknown> }>
+  }): { requestId: string } {
+    const requestId = randomUUID()
+    const controller = new AbortController()
+    this.active.set(requestId, controller)
+    void this.executeMacro(requestId, controller, input).finally(() => {
+      this.active.delete(requestId)
+      this.deps.permissions.revokeTurnGrants(requestId)
+    })
+    return { requestId }
+  }
+
+  private async executeMacro(
+    requestId: string,
+    controller: AbortController,
+    input: {
+      conversationId: string
+      projectId: string | null
+      mode: PermissionMode
+      macroName: string
+      steps: Array<{ tool: string; args: Record<string, unknown> }>
+    }
+  ): Promise<void> {
+    const emitEvent = (event: ChatEvent): void =>
+      this.deps.emit({ ...event, conversationId: input.conversationId })
+    const log = getLogger()
+    const activities: ActivityItem[] = []
+    try {
+      this.deps.permissions.setMode(input.mode)
+      const calls: ChatToolCall[] = input.steps.map((step, index) => ({
+        id: `macro_${index}_${randomUUID()}`,
+        name: step.tool,
+        arguments: step.args
+      }))
+      log.info('chat', `macro "${input.macroName}" starting ${calls.length} step(s)`)
+      await this.runTools(
+        requestId,
+        calls,
+        this.toolContext(input.projectId),
+        activities,
+        this.withReplay(emitEvent),
+        controller,
+        new Map<string, number>()
+      )
+      // Report the outcome as an activity item rather than a new event type: the
+      // Activity panel already renders these, and a macro run is exactly that.
+      const failed = activities.filter((item) => item.state === 'failed').length
+      const summary: ActivityItem = {
+        id: randomUUID(),
+        kind: 'status',
+        title: `Macro "${input.macroName}"`,
+        detail: `${activities.length - failed} of ${activities.length} step(s) completed${
+          failed ? `, ${failed} failed` : ''
+        }`,
+        state: failed ? 'failed' : 'completed',
+        startedAt: Date.now(),
+        endedAt: Date.now()
+      }
+      emitEvent({ type: 'activity', requestId, activity: summary })
+    } catch (e) {
+      const err = e as Error
+      log.error('chat', `macro "${input.macroName}" failed: ${err.message}`)
+      emitEvent({ type: 'error', requestId, error: `Macro "${input.macroName}" failed: ${err.message}` })
+    }
   }
 
   private async run(
@@ -259,6 +537,7 @@ export class ChatService {
   ): Promise<void> {
     const { conversations, providers, projects, permissions } = this.deps
     const emitEvent = (event: ChatEvent): void => this.deps.emit({ ...event, conversationId: input.conversationId })
+    const emitRecorded = this.withReplay(emitEvent)
     const log = getLogger()
     let assistantText = ''
     const activities: ActivityItem[] = []
@@ -294,9 +573,21 @@ export class ChatService {
       const provider = providers.get(input.providerId)
       if (!provider) throw new ProviderError('Provider not found', 'not_found')
 
+      // Semantic recall from earlier sessions. Failure (provider down, empty
+      // table) must never block a turn, and the block is character-bounded so it
+      // cannot crowd out the actual request inside the history budget.
+      let memoryBlock = ''
+      if (this.deps.memory) {
+        try {
+          memoryBlock = await this.deps.memory.contextBlock(input.text, 1_200)
+        } catch (error) {
+          getLogger().warn('chat', `memory recall skipped: ${(error as Error).message}`)
+        }
+      }
+
       const history = conversations.messages(input.conversationId).slice(0, -1)
       const messages: ProviderMessage[] = [
-        { role: 'system', content: this.systemPrompt(input, providers, projects) },
+        { role: 'system', content: this.systemPrompt(input, providers, projects, memoryBlock) },
         ...selectHistory(history).map(toProviderMessage),
         { role: 'user', content: userContent }
       ]
@@ -363,6 +654,15 @@ export class ChatService {
       let usage: ChatUsage | undefined
       /** `${name}:${json args}` → consecutive failures. */
       const failures = new Map<string, number>()
+
+      // Self-healing is attempted at most once per turn. More than that would
+      // spend the whole turn repairing, and the second failure almost always
+      // needs a human decision.
+      const repairTools = availableTools.filter((tool) =>
+        (REPAIR_TOOL_NAMES as readonly string[]).includes(tool.name)
+      )
+      const autoHealEnabled = settings.agent?.autoHeal !== false && input.mode !== 'chat'
+      let healAttempted = false
 
       /** Add the JSON protocol to the system message the first time we need it. */
       const enableFallback = (): void => {
@@ -460,25 +760,15 @@ export class ChatService {
           toolCalls: toolCalls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments }))
         })
 
-        const toolContext: ToolContext = {
-          projectId: input.projectId ?? null,
-          projects,
-          edits: this.deps.edits,
-          git: this.deps.git,
-          terminal: this.deps.terminal,
-          permissions,
-          roots: this.deps.roots,
-          desktop: this.deps.desktop,
-          computer: this.deps.computer,
-          browser: this.deps.browser
-        }
+        const toolContext = this.toolContext(input.projectId ?? null)
+        const roundStart = activities.length
 
         const toolResults = await this.runTools(
           requestId,
           toolCalls,
           toolContext,
           activities,
-          emitEvent,
+          emitRecorded,
           controller,
           failures
         )
@@ -496,6 +786,58 @@ export class ChatService {
           0
         )
         if (controller.signal.aborted) break
+
+        // A failing validation command is repaired here rather than bounced back
+        // to the user: the model has the context, and the grant makes the retry
+        // possible without re-approving the same command three times.
+        const roundFailure =
+          autoHealEnabled && !healAttempted ? findFailedValidation(activities.slice(roundStart)) : null
+        if (roundFailure) {
+          healAttempted = true
+          const healResult = await this.selfHeal({
+            failure: roundFailure,
+            requestId,
+            controller,
+            ctx: toolContext,
+            activities,
+            emit: emitRecorded,
+            requestRepairCalls: async (prompt) => {
+              const repairMessages: ProviderMessage[] = [
+                {
+                  role: 'system',
+                  content: `${this.systemPrompt(input, providers, projects, memoryBlock)}\n\nYou are inside an automatic repair loop. Fix the failure using the tools, then stop. Do not restate the error, and do not touch the validation command itself.`
+                },
+                { role: 'user', content: prompt }
+              ]
+              if (fallbackMode) {
+                repairMessages[0] = {
+                  role: 'system',
+                  content: `${repairMessages[0].content}\n\nAvailable tools:\n${repairTools
+                    .map((t) => `- ${t.name}: ${t.description.split('\n')[0]}`)
+                    .join('\n')}\n\n${TOOL_CALL_PROTOCOL}`
+                }
+              }
+              const response = await providers.chat(input.providerId, {
+                model: input.modelId,
+                messages: repairMessages,
+                tools: fallbackMode ? undefined : repairTools,
+                signal: controller.signal
+              })
+              const native = response.toolCalls ?? []
+              return native.length ? native : parseFallbackToolCalls(response.content)
+            }
+          })
+          // Tell the model what happened, so the next round does not assume the
+          // failure is still outstanding and re-run the same command.
+          if (healResult) {
+            messages.push({
+              role: 'system',
+              content: healResult.healed
+                ? `The failing validation command now passes after ${healResult.attempts} automatic repair attempt(s). Summarise what changed for the user.`
+                : `Automatic repair did not succeed (${healResult.reason}) after ${healResult.attempts} attempt(s). Explain what is still failing and stop.`
+            })
+          }
+        }
       }
 
       if (controller.signal.aborted) {
@@ -686,16 +1028,41 @@ export class ChatService {
 
     const permissionKey = def.permissionKey
     if (permissionKey !== 'read') {
-      // `toolNeedsApproval` keeps the promise a tool makes when it declares
-      // `requiresApproval: true`: an allowed capability does not silently waive
-      // the prompt a destructive tool asked for.
-      const { decision } = toolNeedsApproval(ctx.permissions.get(), permissionKey, def.requiresApproval)
+      // What this exact call would touch, so a session grant can be matched
+      // narrowly: one command string, or the specific file being patched.
+      const callArgs = (call.arguments ?? {}) as Record<string, unknown>
+      const proposalPath =
+        call.name === 'apply_approved_patch'
+          ? ctx.edits.describeProposal(String(callArgs.proposalId ?? ''))?.path
+          : undefined
+      const commandArg = call.name === 'run_approved_command' ? String(callArgs.command ?? '') : undefined
+
+      // `gateTool` keeps the promise a tool makes when it declares
+      // `requiresApproval: true` — an allowed capability does not silently waive
+      // the prompt a destructive tool asked for — while honouring a session grant
+      // the user already approved for this same target inside this turn.
+      const gate = ctx.permissions.gateTool({
+        turnId: requestId,
+        toolName: call.name,
+        permissionKey,
+        requiresApproval: def.requiresApproval,
+        ...(commandArg !== undefined ? { command: commandArg } : {}),
+        ...(proposalPath ? { paths: [proposalPath] } : {})
+      })
+      const decision = gate.decision
       if (decision === 'deny') {
         activity.state = 'failed'
         activity.error = 'Denied by current permission settings.'
         activity.endedAt = Date.now()
         emit({ type: 'activity', requestId, activity: { ...activity } })
         return { content: JSON.stringify({ error: activity.error }), activity }
+      }
+      if (decision === 'allow' && gate.autoApproved) {
+        // Silent on purpose, but never invisible: the timeline says why this
+        // skipped the dialog and how many retries remain on the grant.
+        activity.autoApproved = true
+        activity.detail = `${activity.detail ?? ''} — auto-approved by a session grant (${gate.attemptsLeft ?? 0} retries left)`.trim()
+        emit({ type: 'activity', requestId, activity: { ...activity } })
       }
       if (decision === 'ask') {
         const approvalId = randomUUID()
@@ -714,6 +1081,16 @@ export class ChatService {
         }
         activity.approvalId = undefined
         activity.state = 'proposed'
+        // The user approved this exact command/file. Remember it for at most
+        // MAX_GRANT_ATTEMPTS automated retries in this turn, so a repair loop
+        // does not re-prompt for the same thing — while a different command or
+        // a different file still reaches the dialog.
+        ctx.permissions.grantAfterApproval({
+          turnId: requestId,
+          toolName: call.name,
+          command: commandArg ?? null,
+          paths: proposalPath ? [proposalPath] : undefined
+        })
       }
     }
 
@@ -757,7 +1134,8 @@ export class ChatService {
   private systemPrompt(
     input: SendInput,
     providers: ProviderRegistry,
-    projects: ProjectService
+    projects: ProjectService,
+    memoryBlock = ''
   ): string {
     const provider = providers.get(input.providerId)
     const lines = [
@@ -832,6 +1210,7 @@ export class ChatService {
     if (provider) lines.push(`Provider: ${provider.name} (${provider.isLocal ? 'local' : 'cloud'}).`)
     const skillContext = this.deps.skills.promptContext()
     if (skillContext) lines.push(skillContext)
+    if (memoryBlock) lines.push('', memoryBlock)
     return lines.join('\n')
   }
 }

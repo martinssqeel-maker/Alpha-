@@ -57,6 +57,11 @@ export const zOllamaModel = z.object({
 })
 
 /** Only http(s) may be opened in the system browser — never file:, javascript: or a custom scheme. */
+export const zRevealPath = z.object({
+  // Passed to `shell.showItemInFolder`; bounded because it comes from the UI.
+  path: z.string().trim().min(1).max(4000)
+})
+
 export const zOpenExternal = z.object({
   url: z
     .string()
@@ -268,3 +273,51 @@ export const zAppTheme = z.object({
   theme: z.enum(RESOLVED_THEME_OPTIONS),
   mode: z.enum(['system', 'dark', 'light'])
 })
+
+// --- Macros ----------------------------------------------------------------
+
+export const zMacroSave = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(300).optional(),
+  triggers: z.array(z.string().trim().min(1).max(160)).max(20).optional(),
+  params: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(60),
+        description: z.string().max(200).optional(),
+        default: z.string().max(400).optional(),
+        required: z.boolean().optional()
+      })
+    )
+    .max(12)
+    .optional(),
+  // A macro is a replayable tool script, so it is bounded like one: enough steps
+  // to be useful, never enough to be a program of its own.
+  steps: z
+    .array(
+      z.object({
+        tool: z.string().trim().min(1).max(80),
+        args: z.record(z.unknown()).default({})
+      })
+    )
+    .min(1)
+    .max(20)
+})
+
+export const zMacroSlug = z.string().trim().min(1).max(64)
+
+export const zMacroRun = z.object({
+  slug: zMacroSlug,
+  params: z.record(z.string().max(2000)).default({}),
+  mode: zPermissionMode.optional()
+})
+
+export const zDvrTimeline = z.object({
+  fromId: z.number().int().nonnegative().optional(),
+  toId: z.number().int().nonnegative().optional(),
+  limit: z.number().int().min(0).max(500).optional()
+})
+
+export const zDvrFrame = z.object({ id: z.number().int().nonnegative() })
+
+export const zDvrRollback = z.object({ frameId: z.number().int().nonnegative() })

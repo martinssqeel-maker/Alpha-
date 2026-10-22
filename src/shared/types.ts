@@ -216,6 +216,42 @@ export type ActivityState =
   | 'failed'
   | 'cancelled'
 
+/**
+ * A saved `.alpha` macro, flattened for the renderer. `steps` is a count, not the
+ * script: the UI shows what a macro does, and only the main process ever holds
+ * the executable form.
+ */
+export interface MacroSummary {
+  slug: string
+  name: string
+  description: string
+  triggers: string[]
+  params: Array<{ name: string; description?: string; default?: string; required?: boolean }>
+  stepCount: number
+  updatedAt: number
+}
+
+/** One replay frame as the scrubber sees it; image payloads load on demand. */
+export interface DvrFrameView {
+  id: number
+  kind: 'tool' | 'terminal' | 'snapshot' | 'note'
+  label?: string
+  text?: string
+  detail?: Record<string, unknown>
+  /** True when a snapshot is available via `dvr:frame`. */
+  hasImage: boolean
+  at: number
+}
+
+export interface DvrTimeline {
+  frames: DvrFrameView[]
+  firstId: number | null
+  lastId: number | null
+  total: number
+  bytes: number
+  budget: number
+}
+
 export interface ActivityItem {
   id: string
   kind: 'tool' | 'command' | 'edit' | 'git' | 'status' | 'desktop' | 'browser'
@@ -232,6 +268,11 @@ export interface ActivityItem {
   verification?: ToolVerification
   /** Set when this activity was saved as a reusable skill. */
   savedSkillId?: string
+  /**
+   * True when a session grant replaced the approval dialog. Shown in the
+   * timeline so an unattended step is never mistaken for a user decision.
+   */
+  autoApproved?: boolean
   startedAt: number
   endedAt?: number
 }
@@ -305,6 +346,12 @@ export interface AppSettings {
     maxToolIterations: number
     /** Allow the agent to drive the mouse as a last resort. */
     allowMouseFallback: boolean
+    /**
+     * Repair a failing test/typecheck/build run automatically, up to three
+     * attempts. On by default; a user who wants to see every failure first can
+     * turn it off without losing the tools.
+     */
+    autoHeal?: boolean
   }
   platform: {
     enabled: boolean

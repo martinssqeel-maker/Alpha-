@@ -206,6 +206,20 @@ export const api = {
     transcribe: (input: unknown) => invoke(CH.voiceTranscribe, input)
   },
 
+  macros: {
+    list: () => invoke(CH.macroList, undefined),
+    save: (input: unknown) => invoke(CH.macroSave, input),
+    remove: (slug: string) => invoke(CH.macroRemove, slug),
+    run: (input: unknown) => invoke(CH.macroRun, input)
+  },
+
+  dvr: {
+    timeline: (input?: { fromId?: number; toId?: number; limit?: number }) =>
+      invoke(CH.dvrTimeline, input ?? {}),
+    frame: (id: number) => invoke(CH.dvrFrame, { id }),
+    rollback: (frameId: number) => invoke(CH.dvrRollback, { frameId })
+  },
+
   platform: {
     status: () => invoke(CH.platformStatus, undefined),
     signIn: (email: string) => invoke(CH.platformSignIn, { email }),

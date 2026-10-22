@@ -1,0 +1,115 @@
+name: Release
+
+# Tag-driven release: pushing v1.0.7 builds the NSIS installer on a real Windows
+# runner and attaches it to the GitHub release — which is the single source both
+# the website (api.github.com .../releases/latest) and electron-updater
+# (latest.yml) read.
+#
+# Why a separate workflow: `ci.yml` runs on main and deliberately builds
+# `--dir` only, so it never ships an installer it has no credentials for.
+# Building an installer needs the win32 Electron binary, NSIS and winCodeSign,
+# which cannot be fetched in a locked-down Linux container. windows-latest has
+# all three.
+#
+# Publishing is tag-gated on purpose. Nothing here fires on a main push.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build, e.g. v1.0.7'
+        required: true
+
+# Only the release job needs write access, and only to create/update the release.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # A release that fails its own test suite must never reach users, and
+      # electron-updater pushes whatever it finds to every installed client.
+      - name: Gate — typecheck and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm test
+
+      # The tag and package.json must agree: electron-builder names the artifact
+      # from package.json, so a stale version publishes a file the tag does not
+      # describe.
+      - name: Assert tag matches package.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          tag="${tag#v}"
+          echo "package.json=$version tag=$tag"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag v$tag does not match package.json $version"
+            exit 1
+          fi
+          app_version=$(grep -oE "APP_VERSION = '[0-9.]+'" src/shared/types.ts | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+          echo "APP_VERSION=$app_version"
+          if [ "$app_version" != "$version" ]; then
+            echo "::error::APP_VERSION $app_version does not match package.json $version"
+            exit 1
+          fi
+
+      - name: Build and publish the NSIS installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `--publish always` is required: without it electron-builder builds the
+        # installer but uploads nothing, and the release stays empty.
+        run: npx electron-builder --win nsis --publish always
+
+      # A release missing latest.yml installs fine by hand and silently breaks
+      # auto-update for everyone, so fail the job rather than ship that.
+      - name: Assert the updater manifest and installer shipped
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l release
+          test -f release/latest.yml || { echo "::error::latest.yml missing — auto-update would break"; exit 1; }
+          version=$(node -p "require('./package.json').version")
+          grep -q "version: ${version}" release/latest.yml || {
+            echo "::error::latest.yml does not describe ${version}"
+            cat release/latest.yml
+            exit 1
+          }
+          ls release/*Setup*.exe >/dev/null || { echo "::error::no installer produced"; exit 1; }
+          ls release/*.blockmap >/dev/null || { echo "::error::no .blockmap produced — differential updates unavailable"; exit 1; }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-windows-installer
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          retention-days: 14
+          if-no-files-found: error

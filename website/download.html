@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="assets/styles.css" />
     <!-- Applies the stored appearance before first paint, so the palette never flashes. -->
     <script src="assets/theme.js"></script>
+    <!-- Resolves the current release version and the tagged release link. -->
+    <script src="assets/app.js"></script>
   </head>
   <body>
     <div class="glow" aria-hidden="true"></div>
@@ -68,6 +70,7 @@
         </div>
         <p class="micro">
           Already signed in in this browser? You will be taken to your downloads automatically.
+          Current release: <strong data-version>latest</strong>.
         </p>
         <p class="status" data-status role="status" aria-live="polite"></p>
       </div>

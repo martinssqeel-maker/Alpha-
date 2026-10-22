@@ -41,6 +41,7 @@ import {
   zRunId,
   zSearch,
   zSkillEnable,
+  zSkillSave,
   zSettingsSet,
   zTerminalRun,
   zVoiceTranscribe
@@ -150,6 +151,32 @@ export function registerIpc(ctx: AppContext, browserPreview: BrowserPreviewServi
   handle(CH.skillsSetEnabled, zSkillEnable, (p) => {
     const { id, enabled } = p as { id: string; enabled: boolean }
     return ctx.skills.setEnabled(id, enabled)
+  })
+  handle(CH.skillsSave, zSkillSave, (p) =>
+    ctx.skills.save(
+      p as { id: string; name: string; description?: string; category?: string; instructions: string }
+    )
+  )
+  handle(CH.agentLocations, null, () => ctx.roots.list())
+  handle(CH.agentPickLocation, null, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Add a folder the agent may use',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    const picked = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (!picked) return { path: null }
+    const current = ctx.settings.get()
+    const extraPaths = [...(current.agent?.extraPaths ?? []), picked]
+    // Deduplicate case-insensitively: Windows treats C:\Docs and c:\docs alike.
+    const seen = new Set<string>()
+    const deduped = extraPaths.filter((value) => {
+      const key = value.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    ctx.settings.set({ agent: { extraPaths: deduped } })
+    return { path: picked }
   })
 
   handle(CH.providersList, null, () => ctx.registry.list())

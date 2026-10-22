@@ -27,7 +27,11 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve('src/preload/index.ts') }
+        // `hud` is a second, minimal preload for the always-on-top control pill.
+        input: {
+          index: resolve('src/preload/index.ts'),
+          hud: resolve('src/preload/hud.ts')
+        }
       }
     }
   },

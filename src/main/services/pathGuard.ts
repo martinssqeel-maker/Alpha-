@@ -137,3 +137,149 @@ const LANGUAGE_BY_EXT: Record<string, string> = {
 export function detectLanguage(filePath: string): string | undefined {
   return LANGUAGE_BY_EXT[path.extname(filePath).toLowerCase()]
 }
+
+// ---------------------------------------------------------------------------
+// Authorized locations (desktop agent)
+// ---------------------------------------------------------------------------
+//
+// The coding workflow confines everything to one project root. Desktop work
+// needs a few more, but "more roots" must not mean "anywhere": the agent gets a
+// fixed, explicit list, and OS-owned directories stay off-limits even if a user
+// adds one by mistake.
+
+/**
+ * Directories the agent must never read or write, whatever the roots say.
+ *
+ * These are matched on the *resolved absolute* path after normalisation, so
+ * `C:\Windows\..\Windows` and `C:/WINDOWS` trip the same rule on Windows and a
+ * `/etc` prefix trips the POSIX half.
+ */
+const SYSTEM_PATH_PATTERNS: RegExp[] = [
+  /^[a-z]:\/windows(\/|$)/i,
+  /^[a-z]:\/program files( \(x86\))?(\/|$)/i,
+  /^[a-z]:\/programdata(\/|$)/i,
+  /^[a-z]:\/system volume information(\/|$)/i,
+  /^[a-z]:\/\$recycle\.bin(\/|$)/i,
+  /^[a-z]:\/recovery(\/|$)/i,
+  // The app's own encrypted secret store and Electron profile live here.
+  /^[a-z]:\/users\/[^/]+\/appdata(\/|$)/i,
+  /^[a-z]:\/users\/[^/]+\/ntuser\./i,
+  /^\/(etc|usr|bin|sbin|lib|lib64|boot|sys|proc|dev|var)(\/|$)/i,
+  /^\/system(\/|$)/i,
+  /^\/library(\/|$)/i
+]
+
+/**
+ * True when the absolute path points into an OS-owned or credential directory.
+ *
+ * Both the raw argument and its resolved form are tested, with separators
+ * normalised to `/`. Checking only the resolved path would make the Windows
+ * patterns depend on the host OS (`path.resolve` on POSIX just prefixes the
+ * cwd to `C:\Windows`), and a security check that behaves differently in a test
+ * run than in production is not worth having.
+ */
+export function isBlockedSystemPath(absPath: string): boolean {
+  const candidates = new Set<string>()
+  const normalise = (value: string): string => value.replace(/\\/g, '/')
+  candidates.add(normalise(absPath))
+  try {
+    candidates.add(normalise(path.resolve(absPath)))
+  } catch {
+    /* an unresolvable path is judged on its literal form */
+  }
+  for (const candidate of candidates) {
+    if (SYSTEM_PATH_PATTERNS.some((re) => re.test(candidate))) return true
+  }
+  return false
+}
+
+/**
+ * Resolve a user/model supplied path against a list of roots.
+ *
+ * Two accepted shapes, both deliberate:
+ *  - an absolute path that already sits inside an authorized root, and
+ *  - a root-qualified path such as `documents/report.docx`, which is what small
+ *    models actually produce when told "save it to Documents".
+ *
+ * Anything else is rejected rather than guessed at.
+ */
+export function resolveUnderRoots(
+  roots: Array<{ path: string; label?: string; kind?: string }>,
+  input: string
+): { abs: string; root: string; relative: string } {
+  if (typeof input !== 'string' || !input.trim()) {
+    throw new PathError('A file path is required.', 'invalid')
+  }
+  if (input.includes('\0')) throw new PathError('Invalid path', 'invalid')
+
+  const cleaned = input.trim()
+  const isAbsolute = path.isAbsolute(cleaned)
+
+  const candidates: Array<{ root: string; abs: string }> = []
+  if (isAbsolute) {
+    const abs = path.resolve(cleaned)
+    for (const root of roots) {
+      const resolvedRoot = path.resolve(root.path)
+      if (isWithin(resolvedRoot, abs)) candidates.push({ root: resolvedRoot, abs })
+    }
+    if (!candidates.length) {
+      throw new PathError(
+        `That path is outside every authorized location: ${cleaned}. Use one of the roots from list_authorized_locations.`,
+        'escape'
+      )
+    }
+  } else {
+    for (const root of roots) {
+      const resolvedRoot = path.resolve(root.path)
+      let candidate: string
+      try {
+        candidate = safeResolve(resolvedRoot, cleaned)
+      } catch {
+        continue
+      }
+      if (isWithin(resolvedRoot, candidate)) candidates.push({ root: resolvedRoot, abs: candidate })
+    }
+    if (!candidates.length) {
+      // Fall back to the first root so a plain `report.docx` lands somewhere
+      // predictable instead of failing the whole turn.
+      const primary = roots[0]
+      if (!primary) throw new PathError('No authorized locations are configured.', 'no_roots')
+      const resolvedRoot = path.resolve(primary.path)
+      candidates.push({ root: resolvedRoot, abs: safeResolve(resolvedRoot, cleaned) })
+    }
+  }
+
+  const chosen = candidates[0]
+  if (isBlockedSystemPath(chosen.abs)) {
+    throw new PathError(
+      `That location is protected by the operating system: ${chosen.abs}`,
+      'system_path'
+    )
+  }
+  assertInsideRoot(chosen.root, chosen.abs)
+  return { abs: chosen.abs, root: chosen.root, relative: path.relative(chosen.root, chosen.abs) }
+}
+
+/**
+ * Assert that a path is inside at least one root and is not a protected system
+ * location. Kept separate from `resolveUnderRoots` so callers that already hold
+ * an absolute path (screenshots, office documents) can verify it cheaply.
+ */
+export function assertWithinAuthorizedRoots(roots: string[], absPath: string): void {
+  const abs = path.resolve(absPath)
+  if (isBlockedSystemPath(abs)) {
+    throw new PathError(`That location is protected by the operating system: ${abs}`, 'system_path')
+  }
+  for (const root of roots) {
+    const resolvedRoot = path.resolve(root)
+    if (isWithin(resolvedRoot, abs)) {
+      assertInsideRoot(resolvedRoot, abs)
+      return
+    }
+  }
+  throw new PathError(
+    `That path is outside every authorized location: ${abs}`,
+    'escape'
+  )
+}
+

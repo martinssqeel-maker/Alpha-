@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Archive, RotateCcw, Trash2 } from 'lucide-react'
-import type { PermissionLevel, PermissionMode, PermissionSettings, UpdateStatus } from '@shared/types'
+import type {
+  AuthorizedLocation,
+  PermissionLevel,
+  PermissionMode,
+  PermissionSettings,
+  UpdateStatus
+} from '@shared/types'
 import { permissionsForMode } from '@shared/permissions'
 import type { Conversation } from '@shared/types'
 import { THEME_OPTIONS } from '@shared/theme'
@@ -18,7 +24,10 @@ const PERMISSION_ROWS: { key: keyof Omit<PermissionSettings, 'mode'>; label: str
   { key: 'network', label: 'Network access', hint: 'Commands that reach the network' },
   { key: 'gitCommit', label: 'Git commits', hint: 'Stage and commit changes' },
   { key: 'githubPush', label: 'GitHub push', hint: 'Push commits to a remote' },
-  { key: 'sensitiveFiles', label: 'Sensitive files', hint: '.env, keys, credentials — deny by default' }
+  { key: 'sensitiveFiles', label: 'Sensitive files', hint: '.env, keys, credentials — deny by default' },
+  { key: 'appLaunch', label: 'Open applications', hint: 'Launch, focus or close desktop apps' },
+  { key: 'desktopControl', label: 'Control app windows', hint: 'UI Automation, clipboard, keyboard, mouse' },
+  { key: 'browserControl', label: 'Drive the browser', hint: 'Navigate and interact with the Browser panel' }
 ]
 
 const LEVELS: PermissionLevel[] = ['allow', 'ask', 'deny']
@@ -32,6 +41,7 @@ const SETTINGS_SECTIONS = [
   { id: 'settings-appearance', label: 'Appearance' },
   { id: 'settings-models', label: 'Models & providers' },
   { id: 'settings-permissions', label: 'Permissions & safety' },
+  { id: 'settings-agent', label: 'Desktop agent' },
   { id: 'settings-skills', label: 'Agent skills' },
   { id: 'settings-project', label: 'Project settings' },
   { id: 'settings-voice', label: 'Voice' },
@@ -195,6 +205,8 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        <AgentSettings />
+
         <Section id="settings-voice" title="Voice">
           <Row label="Enable voice input" hint="Dictate prompts using your microphone.">
             <Toggle checked={settings.voice.enabled} onChange={(v) => void save({ voice: { enabled: v } })} />
@@ -336,6 +348,142 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Desktop-agent settings.
+ *
+ * Everything here is a *narrowing* control: it can only remove folders or
+ * capabilities the agent would otherwise have. Nothing in this panel can widen
+ * access beyond what `pathGuard` already allows, which is why adding a folder
+ * goes through the OS picker rather than a free-text path field.
+ */
+function AgentSettings() {
+  const settings = useApp((s) => s.settings)
+  const save = useApp((s) => s.saveSettings)
+  const [locations, setLocations] = useState<AuthorizedLocation[]>([])
+  const [error, setError] = useState('')
+
+  const agent = settings?.agent ?? {
+    enabled: true,
+    workspace: { documents: true, desktop: true, downloads: true },
+    extraPaths: [],
+    maxToolIterations: 15,
+    allowMouseFallback: true
+  }
+
+  const refresh = async (): Promise<void> => {
+    try {
+      setLocations(await api.agent.locations())
+      setError('')
+    } catch (cause) {
+      setError((cause as Error).message || 'Could not read the authorized folders.')
+    }
+  }
+  useEffect(() => {
+    void refresh()
+  }, [settings?.agent])
+
+  return (
+    <Section
+      id="settings-agent"
+      title="Desktop agent"
+      note="Lets the assistant work outside a project: user folders, Windows applications and the built-in browser. Everything here narrows what the agent may touch."
+    >
+      <Row label="Enable desktop agent" hint="Off leaves a project-only coding assistant.">
+        <Toggle
+          checked={agent.enabled !== false}
+          onChange={(v) => {
+            void save({ agent: { enabled: v } }).then(() => refresh())
+          }}
+        />
+      </Row>
+
+      <Row label="User folders" hint="The only places outside a project the agent may read or write.">
+        <div className="agent-folder-toggles">
+          {(['documents', 'desktop', 'downloads'] as const).map((folder) => (
+            <label key={folder} className="agent-check">
+              <input
+                type="checkbox"
+                checked={agent.workspace?.[folder] !== false}
+                onChange={(e) => {
+                  void save({ agent: { workspace: { [folder]: e.target.checked } } }).then(() => refresh())
+                }}
+              />
+              {folder[0].toUpperCase() + folder.slice(1)}
+            </label>
+          ))}
+        </div>
+      </Row>
+
+      <Row label="Extra folders" hint="Each one is an additional root, still confined by the path guard.">
+        <div className="agent-extra">
+          <button className="btn" onClick={() => void api.agent.pickLocation().then(() => refresh())}>
+            Add folder…
+          </button>
+          {agent.extraPaths?.length ? (
+            <ul className="agent-paths mono">
+              {agent.extraPaths.map((value) => (
+                <li key={value} title={value}>
+                  {value}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-xs" style={{ color: 'var(--faint)' }}>
+              None added
+            </span>
+          )}
+        </div>
+      </Row>
+
+      <Row label="Resolved locations" hint="Exactly what the model is told it may use.">
+        <ul className="agent-paths mono">
+          {locations.map((location) => (
+            <li key={location.path} title={location.path}>
+              {location.label}
+              {location.exists ? '' : ' (missing)'}
+              {location.writable ? '' : ' — read-only'}
+            </li>
+          ))}
+        </ul>
+      </Row>
+
+      <Row label="Allow mouse control" hint="Last resort for canvas apps that expose no UI Automation controls.">
+        <Toggle
+          checked={agent.allowMouseFallback !== false}
+          onChange={(v) => void save({ agent: { allowMouseFallback: v } })}
+        />
+      </Row>
+
+      <Row label="Tool rounds per turn" hint="Higher lets long desktop workflows finish; the repeat-failure guard still applies.">
+        <input
+          className="input"
+          type="number"
+          min={1}
+          max={40}
+          style={{ width: 90 }}
+          defaultValue={agent.maxToolIterations ?? 15}
+          onBlur={(e) => {
+            const value = Number(e.target.value)
+            if (Number.isFinite(value) && value >= 1) {
+              void save({ agent: { maxToolIterations: Math.min(40, Math.round(value)) } })
+            }
+          }}
+        />
+      </Row>
+
+      <Row label="Emergency stop" hint="Works anywhere in Windows, even while another app has focus.">
+        <span className="mono text-sm">Alt + Shift + Q</span>
+      </Row>
+
+      {error && (
+        <Row label="">
+          <span className="text-xs" style={{ color: 'var(--danger)' }}>{error}</span>
+        </Row>
+      )}
+    </Section>
   )
 }
 

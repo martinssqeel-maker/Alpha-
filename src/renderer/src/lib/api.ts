@@ -33,6 +33,11 @@ export function onUpdate(cb: (event: UpdateEvent) => void): () => void {
   return window.alpha.subscribe(EVENTS.update, cb as (d: unknown) => void)
 }
 
+/** Fire when the global kill-switch (Alt+Shift+Q) stops the agent. */
+export function onAgentStopped(cb: (event: { at: number; cancelled: number }) => void): () => void {
+  return window.alpha.subscribe(EVENTS.agentStopped, cb as (d: unknown) => void)
+}
+
 /** Live progress while a local model downloads, straight from Ollama. */
 export function onOllama(cb: (progress: OllamaPullProgress) => void): () => void {
   return window.alpha.subscribe(EVENTS.ollama, cb as (d: unknown) => void)
@@ -64,7 +69,19 @@ export const api = {
 
   skills: {
     list: () => invoke(CH.skillsList, undefined),
-    setEnabled: (id: string, enabled: boolean) => invoke(CH.skillsSetEnabled, { id, enabled })
+    setEnabled: (id: string, enabled: boolean) => invoke(CH.skillsSetEnabled, { id, enabled }),
+    save: (input: {
+      id: string
+      name: string
+      description?: string
+      category?: string
+      instructions: string
+    }) => invoke(CH.skillsSave, input)
+  },
+
+  agent: {
+    locations: () => invoke(CH.agentLocations, undefined),
+    pickLocation: () => invoke(CH.agentPickLocation, undefined)
   },
 
   providers: {

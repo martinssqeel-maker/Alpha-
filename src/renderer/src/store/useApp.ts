@@ -23,7 +23,7 @@ import type {
   UpdateStatus
 } from '@shared/types'
 import { createThemeTokens, normalizeAppearanceSettings, resolveTheme } from '@shared/theme'
-import { api, onChat, onOllama, onPlatform, onTerminal, onUpdate } from '../lib/api'
+import { api, onAgentStopped, onChat, onOllama, onPlatform, onTerminal, onUpdate } from '../lib/api'
 
 export type View = 'home' | 'chat' | 'models' | 'providers' | 'projects' | 'github' | 'skills' | 'settings' | 'help'
 
@@ -176,6 +176,7 @@ let chatUnsub: (() => void) | null = null
 let termUnsub: (() => void) | null = null
 let updateUnsub: (() => void) | null = null
 let platformUnsub: (() => void) | null = null
+let killSwitchUnsub: (() => void) | null = null
 let ollamaUnsub: (() => void) | null = null
 let themeMediaUnsub: (() => void) | null = null
 let settingsSaveQueue: Promise<void> = Promise.resolve()
@@ -252,6 +253,16 @@ export const useApp = create<State>((set, get) => ({
     if (!updateUnsub) updateUnsub = onUpdate((event) => handleUpdateEvent(event, set, get))
     if (!ollamaUnsub) ollamaUnsub = onOllama((progress) => handleOllamaProgress(progress, set))
     if (!platformUnsub) platformUnsub = onPlatform((status) => handlePlatformEvent(status, set, get))
+    if (!killSwitchUnsub) {
+      killSwitchUnsub = onAgentStopped((event) => {
+        // Clear any half-rendered turn so the UI matches the aborted state.
+        set({ streaming: null, pendingApprovals: [] })
+        get().toast(
+          `Agent stopped by the emergency kill-switch (Alt+Shift+Q). ${event.cancelled} turn(s) aborted.`,
+          'info'
+        )
+      })
+    }
 
     try {
       set({ update: await api.updates.status() })
@@ -1064,7 +1075,17 @@ function handleUpdateEvent(
   set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
   get: () => State
 ): void {
+  const previous = get().update
   set({ update: event })
+  // A periodic re-check re-reports the same release. Toast once per version, not
+  // once per poll, or a user who leaves the app open sees the same notice every
+  // six hours.
+  const isNewVersion = Boolean(event.version) && event.version !== previous?.version
+  if (event.state === 'available' && isNewVersion) {
+    // The banner is the primary affordance; the toast is for people who are
+    // looking at the chat and would not notice a new row above it.
+    get().toast(`Alpha ${event.version ?? 'update'} is available — see the banner to download it.`, 'info')
+  }
   if (event.state === 'downloaded') {
     get().toast('Update downloaded — restart to install.', 'success')
   }

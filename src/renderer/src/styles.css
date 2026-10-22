@@ -3230,3 +3230,46 @@ html[data-animated-gradients="true"] .btn.primary { background-size: 180% 180%; 
   border-radius: 6px;
   border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
+
+/* --- Save-as-macro capture ------------------------------------------------- */
+.activity-capture {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 8px;
+}
+
+.activity-capture > button,
+.activity-capture-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--text-secondary, inherit);
+  cursor: pointer;
+}
+
+.activity-capture > button:hover:not(:disabled),
+.activity-capture-form button:hover:not(:disabled) {
+  border-color: var(--accent, #60a5fa);
+  color: var(--accent, #60a5fa);
+}
+
+.activity-capture-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.activity-capture-form .input {
+  flex: 1 1 180px;
+  min-width: 140px;
+  font-size: 12px;
+  padding: 4px 8px;
+}

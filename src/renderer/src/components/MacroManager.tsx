@@ -16,6 +16,7 @@ import type { MacroSummary } from '@shared/types'
  */
 export default function MacroManager() {
   const toast = useApp((s) => s.toast)
+  const revision = useApp((s) => s.macrosRevision)
   const [macros, setMacros] = useState<MacroSummary[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [values, setValues] = useState<Record<string, Record<string, string>>>({})
@@ -32,7 +33,7 @@ export default function MacroManager() {
 
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, revision])
 
   const setParam = (slug: string, name: string, value: string) =>
     setValues((prev) => ({ ...prev, [slug]: { ...(prev[slug] ?? {}), [name]: value } }))

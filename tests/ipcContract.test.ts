@@ -98,3 +98,54 @@ describe('self-healing approval wiring', () => {
     expect(chat).toContain('const calls: ChatToolCall[]')
   })
 })
+
+describe('self-healing wiring', () => {
+  const chat = read('src/main/services/chat.ts')
+
+  it('detects a failed validation run from the tool result, not the activity state', () => {
+    // `run_approved_command` returns a non-zero exitCode without throwing, so its
+    // activity is `completed`. Keying off state would never heal anything.
+    expect(chat).toContain('findFailedValidation(')
+    expect(chat).toContain('const roundFailure')
+  })
+
+  it('bounds the loop by the grant ceiling and runs it once per turn', () => {
+    expect(chat).toContain('maxAttempts: MAX_GRANT_ATTEMPTS')
+    expect(chat).toContain('healAttempted')
+  })
+
+  it('stops rather than waiting on an approval nobody is watching', () => {
+    expect(chat).toContain('would need a new approval')
+    expect(chat).toContain('consume: false')
+  })
+
+  it('honours the autoHeal setting and never runs in chat mode', () => {
+    expect(chat).toContain('settings.agent?.autoHeal !== false')
+    expect(chat).toContain("input.mode !== 'chat'")
+  })
+
+  it('tells the model the outcome so it does not re-run the broken command', () => {
+    expect(chat).toContain('now passes after')
+  })
+})
+
+describe('save-as-macro capture', () => {
+  const timeline = read('src/renderer/src/components/ActivityTimeline.tsx')
+
+  it('offers the action only for a multi-step run', () => {
+    expect(timeline).toContain('SaveSequenceAsMacro')
+    expect(timeline).toContain('draft.steps.length < 2')
+  })
+
+  it('saves through the existing macro IPC bridge and confirms the result', () => {
+    expect(timeline).toContain('api.macros.save(')
+    expect(timeline).toContain('Macro saved successfully')
+    expect(timeline).toContain('bumpMacros()')
+  })
+
+  it('keeps the capture logic in shared/ so the renderer bundle stays node-free', () => {
+    const shared = read('src/shared/macroDraft.ts')
+    expect(shared).not.toMatch(/from 'node:/)
+    expect(timeline).toContain("from '@shared/macroDraft'")
+  })
+})

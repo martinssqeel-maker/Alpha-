@@ -11,18 +11,10 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { buildMacroDraft, suggestMacroName, type MacroParam, type MacroStep } from '@shared/macroDraft'
 
-export interface MacroParam {
-  name: string
-  description?: string
-  default?: string
-  required?: boolean
-}
-
-export interface MacroStep {
-  tool: string
-  args: Record<string, unknown>
-}
+export type { MacroParam, MacroStep, CapturedActivity, MacroDraftResult } from '@shared/macroDraft'
+export { buildMacroDraft, suggestMacroName } from '@shared/macroDraft'
 
 export interface Macro {
   kind: 'alpha-macro'

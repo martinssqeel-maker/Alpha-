@@ -18,6 +18,16 @@ import type { ProjectService } from './projectService'
 import type { ConversationsRepo, SettingsRepo } from './store'
 import type { DvrService } from './dvrService'
 import { AGENT_ONLY_TOOLS, executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './tools'
+import {
+  MAX_GRANT_ATTEMPTS
+} from './sessionGrants'
+import {
+  REPAIR_TOOL_NAMES,
+  SelfHealingLoop,
+  findFailedValidation,
+  type CommandOutcome,
+  type ValidationFailure
+} from './selfHealing'
 import type { EditService } from './editService'
 import type { GitService } from './git'
 import type { TerminalService } from './terminal'
@@ -300,6 +310,131 @@ export class ChatService {
     }
   }
 
+  /**
+   * Repair a failed validation run in place, bounded by the session grant.
+   *
+   * Why the grant matters: both `run_approved_command` and `apply_approved_patch`
+   * declare `requiresApproval`, so a naive retry re-prompts on every iteration.
+   * The user's approval of the *first* run issued a grant bound to that exact
+   * command, so re-runs proceed silently — but only that command, and only for
+   * `MAX_GRANT_ATTEMPTS`, which is also the loop's ceiling. A patch to a file the
+   * user has not approved still reaches the approval dialog, and nothing here can
+   * lift a `deny`.
+   */
+  private async selfHeal(options: {
+    requestId: string
+    controller: AbortController
+    ctx: ToolContext
+    activities: ActivityItem[]
+    emit: (event: ChatEvent) => void
+    /** The failure this loop is repairing, detected for this round only. */
+    failure: ValidationFailure
+    /** One provider round restricted to the repair tool set. */
+    requestRepairCalls: (prompt: string) => Promise<ChatToolCall[]>
+  }): Promise<{ healed: boolean; attempts: number; reason: string } | null> {
+    const { requestId, controller, ctx, activities, emit, requestRepairCalls } = options
+    const permissions = ctx.permissions
+
+    const runCommand = async (command: string): Promise<CommandOutcome> => {
+      // Ask before spending: if the grant is gone, the alternative is a dialog
+      // nobody is watching, and a promise that never settles.
+      const peek = permissions.gateTool(
+        {
+          turnId: requestId,
+          toolName: 'run_approved_command',
+          permissionKey: 'terminal',
+          requiresApproval: true,
+          command
+        },
+        { consume: false }
+      )
+      if (peek.decision === 'deny') {
+        throw new Error(`Retrying \`${command}\` is denied by your permission settings.`)
+      }
+      if (peek.decision === 'ask') {
+        throw new Error(
+          `Retrying \`${command}\` would need a new approval, so the repair loop stopped. Run it again to retry.`
+        )
+      }
+      const before = activities.length
+      await this.runTools(
+        requestId,
+        [{ id: `heal_${randomUUID()}`, name: 'run_approved_command', arguments: { command, purpose: 'Re-run validation after a repair' } }],
+        ctx,
+        activities,
+        emit,
+        controller,
+        new Map<string, number>()
+      )
+      const activity = activities.slice(before).find((a) => a.toolName === 'run_approved_command')
+      const result = (activity?.result ?? {}) as { exitCode?: unknown; stdout?: unknown; stderr?: unknown }
+      return {
+        code: typeof result.exitCode === 'number' ? result.exitCode : 1,
+        stdout: typeof result.stdout === 'string' ? result.stdout : '',
+        stderr: typeof result.stderr === 'string' ? result.stderr : ''
+      }
+    }
+
+    const fix = async (prompt: string): Promise<string[]> => {
+      const calls = await requestRepairCalls(prompt)
+      if (!calls.length) return []
+      // Resolve proposal targets before they are consumed by the apply call.
+      const changed: string[] = []
+      for (const call of calls) {
+        if (call.name !== 'apply_approved_patch') continue
+        const proposalId = String((call.arguments as Record<string, unknown> | null)?.proposalId ?? '')
+        const described = this.deps.edits.describeProposal(proposalId)
+        if (described?.path) changed.push(described.path)
+      }
+      const before = activities.length
+      await this.runTools(requestId, calls, ctx, activities, emit, controller, new Map<string, number>())
+      for (const activity of activities.slice(before)) {
+        if (activity.state !== 'completed' || activity.toolName === 'run_approved_command') continue
+        const args = (activity.args ?? {}) as Record<string, unknown>
+        if (typeof args.path === 'string') changed.push(args.path)
+      }
+      return [...new Set(changed)]
+    }
+
+    const loop = new SelfHealingLoop({
+      run: runCommand,
+      fix,
+      maxAttempts: MAX_GRANT_ATTEMPTS,
+      emit: (event) => getLogger().info('heal', `${event.type}: ${event.detail}`)
+    })
+
+    const { failure } = options
+    const startedAt = Date.now()
+    const notice: ActivityItem = {
+      id: randomUUID(),
+      kind: 'status',
+      title: `Self-healing \`${failure.command}\``,
+      detail: 'A validation command failed; attempting a bounded repair loop.',
+      state: 'running',
+      toolName: 'self_healing',
+      startedAt
+    }
+    activities.push(notice)
+    emit({ type: 'activity', requestId, activity: { ...notice } })
+
+    let outcome: { healed: boolean; attempts: number; reason: string }
+    try {
+      const result = await loop.heal(failure.command, ctx.projectId ?? '', controller.signal)
+      outcome = { healed: result.healed, attempts: result.attempts, reason: result.reason }
+    } catch (error) {
+      outcome = { healed: false, attempts: 0, reason: (error as Error).message }
+    }
+
+    notice.state = outcome.healed ? 'completed' : 'failed'
+    notice.endedAt = Date.now()
+    notice.detail = outcome.healed
+      ? `Repaired after ${outcome.attempts} attempt(s); \`${failure.command}\` now passes.`
+      : `Could not repair automatically (${outcome.reason}) after ${outcome.attempts} attempt(s).`
+    emit({ type: 'activity', requestId, activity: { ...notice } })
+    getLogger().info('heal', `${failure.command}: ${notice.detail}`)
+    return outcome
+  }
+
   /** The single place a tool context is assembled, shared with macro runs. */
   private toolContext(projectId: string | null): ToolContext {
     return {
@@ -520,6 +655,15 @@ export class ChatService {
       /** `${name}:${json args}` → consecutive failures. */
       const failures = new Map<string, number>()
 
+      // Self-healing is attempted at most once per turn. More than that would
+      // spend the whole turn repairing, and the second failure almost always
+      // needs a human decision.
+      const repairTools = availableTools.filter((tool) =>
+        (REPAIR_TOOL_NAMES as readonly string[]).includes(tool.name)
+      )
+      const autoHealEnabled = settings.agent?.autoHeal !== false && input.mode !== 'chat'
+      let healAttempted = false
+
       /** Add the JSON protocol to the system message the first time we need it. */
       const enableFallback = (): void => {
         fallbackMode = true
@@ -617,6 +761,7 @@ export class ChatService {
         })
 
         const toolContext = this.toolContext(input.projectId ?? null)
+        const roundStart = activities.length
 
         const toolResults = await this.runTools(
           requestId,
@@ -641,6 +786,58 @@ export class ChatService {
           0
         )
         if (controller.signal.aborted) break
+
+        // A failing validation command is repaired here rather than bounced back
+        // to the user: the model has the context, and the grant makes the retry
+        // possible without re-approving the same command three times.
+        const roundFailure =
+          autoHealEnabled && !healAttempted ? findFailedValidation(activities.slice(roundStart)) : null
+        if (roundFailure) {
+          healAttempted = true
+          const healResult = await this.selfHeal({
+            failure: roundFailure,
+            requestId,
+            controller,
+            ctx: toolContext,
+            activities,
+            emit: emitRecorded,
+            requestRepairCalls: async (prompt) => {
+              const repairMessages: ProviderMessage[] = [
+                {
+                  role: 'system',
+                  content: `${this.systemPrompt(input, providers, projects, memoryBlock)}\n\nYou are inside an automatic repair loop. Fix the failure using the tools, then stop. Do not restate the error, and do not touch the validation command itself.`
+                },
+                { role: 'user', content: prompt }
+              ]
+              if (fallbackMode) {
+                repairMessages[0] = {
+                  role: 'system',
+                  content: `${repairMessages[0].content}\n\nAvailable tools:\n${repairTools
+                    .map((t) => `- ${t.name}: ${t.description.split('\n')[0]}`)
+                    .join('\n')}\n\n${TOOL_CALL_PROTOCOL}`
+                }
+              }
+              const response = await providers.chat(input.providerId, {
+                model: input.modelId,
+                messages: repairMessages,
+                tools: fallbackMode ? undefined : repairTools,
+                signal: controller.signal
+              })
+              const native = response.toolCalls ?? []
+              return native.length ? native : parseFallbackToolCalls(response.content)
+            }
+          })
+          // Tell the model what happened, so the next round does not assume the
+          // failure is still outstanding and re-run the same command.
+          if (healResult) {
+            messages.push({
+              role: 'system',
+              content: healResult.healed
+                ? `The failing validation command now passes after ${healResult.attempts} automatic repair attempt(s). Summarise what changed for the user.`
+                : `Automatic repair did not succeed (${healResult.reason}) after ${healResult.attempts} attempt(s). Explain what is still failing and stop.`
+            })
+          }
+        }
       }
 
       if (controller.signal.aborted) {

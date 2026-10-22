@@ -346,6 +346,12 @@ export interface AppSettings {
     maxToolIterations: number
     /** Allow the agent to drive the mouse as a last resort. */
     allowMouseFallback: boolean
+    /**
+     * Repair a failing test/typecheck/build run automatically, up to three
+     * attempts. On by default; a user who wants to see every failure first can
+     * turn it off without losing the tools.
+     */
+    autoHeal?: boolean
   }
   platform: {
     enabled: boolean

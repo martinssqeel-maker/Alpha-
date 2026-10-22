@@ -250,3 +250,83 @@ export class SelfHealingLoop {
     return { healed: false, attempts: this.maxAttempts, report, history, reason: 'exhausted' }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Detection: deciding when a repair loop should start
+// ---------------------------------------------------------------------------
+
+/**
+ * Commands whose failure is worth repairing automatically.
+ *
+ * Deliberately narrow. A failing test suite has a fix; a failing `rm` or a
+ * deploy does not, and burning three model round-trips guessing at one is worse
+ * than reporting it.
+ */
+export const VALIDATION_COMMAND_RE =
+  /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|tests|t|ci|typecheck|type-check|build|lint)\b|\b(?:npx\s+)?(?:vitest|jest|tsc|eslint)\b|\bcargo\s+(?:test|check|clippy)\b|\bgo\s+(?:test|vet)\b|\bpytest\b|\bpython\s+-m\s+(?:pytest|unittest)\b|\bdotnet\s+(?:test|build)\b/i
+
+export function isValidationCommand(command: string): boolean {
+  return VALIDATION_COMMAND_RE.test(command)
+}
+
+/** Shape of the `run_approved_command` result, as `executeTool` returns it. */
+interface CommandResultShape {
+  exitCode?: unknown
+  stdout?: unknown
+  stderr?: unknown
+}
+
+export interface ValidationFailure {
+  command: string
+  outcome: CommandOutcome
+  /** Id of the activity that produced it, for correlation in the timeline. */
+  activityId: string
+}
+
+/**
+ * Find a failed validation run among finished activities.
+ *
+ * Reads the *result*, not `activity.state`: a non-zero exit is a successful tool
+ * call that reports failure, so its activity state is `completed`. Keying off
+ * the state would silently never heal anything.
+ */
+export function findFailedValidation(
+  activities: ReadonlyArray<{
+    id?: string
+    toolName?: string
+    state?: string
+    args?: unknown
+    result?: unknown
+  }>
+): ValidationFailure | null {
+  for (const activity of activities) {
+    if (activity.toolName !== 'run_approved_command') continue
+    if (activity.state === 'cancelled' || activity.state === 'failed') continue
+    const args = (activity.args ?? {}) as Record<string, unknown>
+    const command = typeof args.command === 'string' ? args.command : ''
+    if (!command || !isValidationCommand(command)) continue
+    const result = (activity.result ?? {}) as CommandResultShape
+    const code = typeof result.exitCode === 'number' ? result.exitCode : null
+    if (code === null || code === 0) continue
+    return {
+      command,
+      activityId: activity.id ?? '',
+      outcome: {
+        code,
+        stdout: typeof result.stdout === 'string' ? result.stdout : '',
+        stderr: typeof result.stderr === 'string' ? result.stderr : ''
+      }
+    }
+  }
+  return null
+}
+
+/** Tools a repair attempt may use. Anything outside this list is not offered. */
+export const REPAIR_TOOL_NAMES = [
+  'read_project_file',
+  'list_project_files',
+  'search_project',
+  'propose_file_patch',
+  'apply_approved_patch',
+  'run_approved_command'
+] as const

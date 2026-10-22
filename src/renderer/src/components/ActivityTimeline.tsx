@@ -18,6 +18,8 @@ import {
 import type { ActivityItem } from '@shared/types'
 import { redactSensitiveText, redactSensitiveValue } from '@shared/redactSensitive'
 import { api } from '../lib/api'
+import { useApp } from '../store/useApp'
+import { buildMacroDraft, suggestMacroName } from '@shared/macroDraft'
 
 export interface RunStatus {
   label: string
@@ -92,9 +94,89 @@ export default function ActivityTimeline({ activities }: { activities: ActivityI
   if (!activities.length) return null
   return (
     <div className="activity-list">
+      <SaveSequenceAsMacro activities={activities} />
       {activities.map((a) => (
         <ActivityRow key={a.id} activity={a} />
       ))}
+    </div>
+  )
+}
+
+/**
+ * Capture a finished multi-step run as a replayable `.alpha` macro.
+ *
+ * The offered button only appears when at least two replayable steps completed:
+ * a single tool call is already one click in the composer, and saving it as a
+ * script adds a file without saving any work. Only completed steps are captured,
+ * and the proposal-based tools are skipped because their ids do not outlive the
+ * run — a macro containing them would fail every time.
+ */
+function SaveSequenceAsMacro({ activities }: { activities: ActivityItem[] }) {
+  const toast = useApp((s) => s.toast)
+  const bumpMacros = useApp((s) => s.bumpMacros)
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+
+  const draft = buildMacroDraft(activities)
+  if (draft.steps.length < 2) return null
+
+  const suggested = suggestMacroName(activities)
+
+  async function onSave(): Promise<void> {
+    setStatus('saving')
+    try {
+      const result = await api.macros.save({
+        name: (name.trim() || suggested).slice(0, 80),
+        description: `Captured from ${draft.steps.length} completed step(s).`,
+        triggers: [],
+        params: draft.params,
+        steps: draft.steps
+      })
+      if (!result.ok) {
+        toast(result.error ?? 'Could not save that macro.', 'error')
+        setStatus('idle')
+        return
+      }
+      setStatus('saved')
+      setOpen(false)
+      bumpMacros()
+      toast(`Macro saved successfully: ${result.macro?.name ?? (name.trim() || suggested)}`, 'success')
+    } catch (error) {
+      toast(`Could not save that macro: ${(error as Error).message}`, 'error')
+      setStatus('idle')
+    }
+  }
+
+  return (
+    <div className="activity-capture">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} disabled={status === 'saved'}>
+          <BookmarkPlus size={13} />
+          {status === 'saved' ? 'Saved as Macro' : 'Save as Macro'}
+        </button>
+      ) : (
+        <div className="activity-capture-form">
+          <input
+            className="input"
+            value={name}
+            placeholder={suggested}
+            onChange={(event) => setName(event.target.value)}
+            aria-label="Macro name"
+          />
+          <button type="button" onClick={() => void onSave()} disabled={status === 'saving'}>
+            {status === 'saving' ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={() => setOpen(false)} disabled={status === 'saving'}>
+            Cancel
+          </button>
+          <span className="activity-save-note">
+            {draft.steps.length} step{draft.steps.length === 1 ? '' : 's'}
+            {draft.params.length ? ` · ${draft.params.length} parameter(s)` : ''}
+            {draft.skipped.length ? ` · ${draft.skipped.length} skipped` : ''}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

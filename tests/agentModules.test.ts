@@ -24,13 +24,15 @@ import {
 } from '../src/main/services/memoryGraph'
 import {
   MacroService,
+  buildMacroDraft,
   macroSlug,
   matchMacros,
   parseMacro,
   renderMacro,
   scoreMacro,
   serializeMacro,
-  substituteValue
+  substituteValue,
+  suggestMacroName
 } from '../src/main/services/macroService'
 import { DvrService, MAX_TEXT_CHARS, truncateFrameText } from '../src/main/services/dvrService'
 import {
@@ -837,5 +839,102 @@ describe('voice — whisper.cpp adapter', () => {
       tempDir: () => tmpBase
     })
     await expect(service.transcribe({ audioBase64: 'YQ==' })).rejects.toThrow(/No speech/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Module 3 — capturing a finished run as a macro
+// ---------------------------------------------------------------------------
+
+describe('macros — capture from a completed run', () => {
+  const run = [
+    { toolName: 'read_project_file', state: 'completed', args: { path: 'src/a.ts' } },
+    {
+      toolName: 'run_approved_command',
+      state: 'completed',
+      args: { command: 'npm test', purpose: 'validate' }
+    },
+    { toolName: 'create_or_write_file', state: 'completed', args: { path: 'documents/report.md', content: 'fixed' } }
+  ]
+
+  it('captures completed steps in order', () => {
+    const draft = buildMacroDraft(run)
+    expect(draft.steps.map((s) => s.tool)).toEqual([
+      'read_project_file',
+      'run_approved_command',
+      'create_or_write_file'
+    ])
+  })
+
+  it('turns variable arguments into parameters defaulting to the recorded value', () => {
+    const draft = buildMacroDraft(run)
+    const commandStep = draft.steps[1]
+    expect(commandStep.args.command).toBe('{{command}}')
+    const param = draft.params.find((p) => p.name === 'command')
+    expect(param?.default).toBe('npm test')
+    // Non-variable keys stay literal so the macro keeps its shape.
+    expect(commandStep.args.purpose).toBe('validate')
+  })
+
+  it('names each parameter uniquely when a key repeats', () => {
+    const draft = buildMacroDraft([
+      { toolName: 'create_or_write_file', state: 'completed', args: { path: 'a.txt' } },
+      { toolName: 'create_or_write_file', state: 'completed', args: { path: 'b.txt' } }
+    ])
+    expect(draft.steps[0].args.path).toBe('{{path}}')
+    expect(draft.steps[1].args.path).toBe('{{path_2}}')
+    expect(draft.params.map((p) => p.default)).toEqual(['a.txt', 'b.txt'])
+  })
+
+  it('produces a macro that replays exactly and then renders with new values', () => {
+    const draft = buildMacroDraft(run)
+    const service = new MacroService({ dir: path.join(tmpBase, 'macros-capture') })
+    const saved = service.save({ name: 'Validate and report', steps: draft.steps, params: draft.params })
+    const replay = renderMacro(saved, {})
+    expect(replay.missing).toEqual([])
+    expect(replay.steps[1].args.command).toBe('npm test')
+    const reused = renderMacro(saved, { command: 'npm run build' })
+    expect(reused.steps[1].args.command).toBe('npm run build')
+  })
+
+  it('skips failed steps and says why', () => {
+    const draft = buildMacroDraft([
+      { toolName: 'run_approved_command', state: 'completed', args: { command: 'npm test' } },
+      { toolName: 'create_or_write_file', state: 'failed', args: { path: 'x.txt' } }
+    ])
+    expect(draft.steps).toHaveLength(1)
+    expect(draft.skipped).toEqual([{ tool: 'create_or_write_file', reason: 'did not complete' }])
+  })
+
+  it('refuses to capture the proposal-based tools', () => {
+    const draft = buildMacroDraft([
+      { toolName: 'propose_file_patch', state: 'completed', args: {} },
+      { toolName: 'apply_approved_patch', state: 'completed', args: { proposalId: 'p_1' } },
+      { toolName: 'run_approved_command', state: 'completed', args: { command: 'npm test' } }
+    ])
+    expect(draft.steps.map((s) => s.tool)).toEqual(['run_approved_command'])
+    expect(draft.skipped.every((entry) => entry.reason.includes('proposal id'))).toBe(true)
+  })
+
+  it('caps the captured sequence', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      toolName: 'run_approved_command',
+      state: 'completed',
+      args: { command: `npm test -- ${i}` }
+    }))
+    expect(buildMacroDraft(many).steps).toHaveLength(20)
+    expect(buildMacroDraft(many, { maxSteps: 3 }).steps).toHaveLength(3)
+  })
+
+  it('can capture verbatim when parameterisation is off', () => {
+    const draft = buildMacroDraft(run, { parameterize: false })
+    expect(draft.steps[1].args.command).toBe('npm test')
+    expect(draft.params).toEqual([])
+  })
+
+  it('suggests a readable name', () => {
+    expect(suggestMacroName(run)).toBe('Read file + 2 more')
+    expect(suggestMacroName([{ toolName: 'run_approved_command', state: 'completed' }])).toBe('Run command')
+    expect(suggestMacroName([])).toBe('Saved workflow')
   })
 })

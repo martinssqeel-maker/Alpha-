@@ -73,7 +73,7 @@ export class PermissionService {
    *  2. a matching grant turns `ask` into `allow` and spends one attempt.
    *  3. otherwise the normal matrix applies unchanged.
    */
-  gateTool(input: ToolGateInput): ToolGateResult {
+  gateTool(input: ToolGateInput, options: { consume?: boolean } = {}): ToolGateResult {
     const { decision } = toolNeedsApproval(this.get(), input.permissionKey, input.requiresApproval === true)
     if (decision === 'deny') return { decision, autoApproved: false }
     if (decision !== 'ask') return { decision, autoApproved: false }
@@ -85,6 +85,12 @@ export class PermissionService {
       paths: input.paths
     })
     if (!match.matched) return { decision, autoApproved: false, reason: match.reason }
+
+    // A peek must not spend an attempt: the repair loop asks "will this be
+    // allowed?" before deciding whether to try at all.
+    if (options.consume === false) {
+      return { decision: 'allow', autoApproved: true, grantId: match.grant.id, attemptsLeft: match.attemptsLeft }
+    }
 
     const attemptsLeft = this.grants.consume({
       turnId: input.turnId,

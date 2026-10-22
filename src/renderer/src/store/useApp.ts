@@ -112,6 +112,12 @@ interface State {
 
   update: UpdateStatus | null
 
+  /**
+   * Bumped whenever a macro is saved, so an already-mounted Macro Manager
+   * refetches instead of showing a stale list.
+   */
+  macrosRevision: number
+
   platform: PlatformStatus
   platformAccess: Record<string, boolean>
 
@@ -123,6 +129,7 @@ interface State {
   applyTheme: () => void
   saveSettings: (patch: Record<string, unknown>) => Promise<void>
 
+  bumpMacros: () => void
   toast: (message: string, kind?: Toast['kind']) => void
   dismissToast: (id: string) => void
   setDraft: (text: string) => void
@@ -225,6 +232,7 @@ export const useApp = create<State>((set, get) => ({
   busy: false,
 
   update: null,
+  macrosRevision: 0,
 
   platform: { enabled: false, configured: false, authenticated: false, config: null },
   platformAccess: {},
@@ -350,6 +358,8 @@ export const useApp = create<State>((set, get) => ({
     settingsSaveQueue = operation.then(() => undefined, () => undefined)
     await operation
   },
+
+  bumpMacros: () => set((s) => ({ macrosRevision: s.macrosRevision + 1 })),
 
   toast: (message, kind = 'info') => {
     const id = Math.random().toString(36).slice(2)

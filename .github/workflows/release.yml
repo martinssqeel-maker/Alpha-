@@ -170,7 +170,16 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "$TAG" --draft=false --latest 2>&1 | tee publish.log
-          gh release view "$TAG" --json tagName,isDraft,isLatest --jq '{tagName,isDraft,isLatest}'
+          # `gh release view` has no `isLatest` field; asking for one exits
+          # non-zero *after* a successful publish, which reported v1.0.7 as
+          # failed when it had in fact gone live. Read `latest` from the API.
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease --jq '{tagName,isDraft,isPrerelease}'
+          latest=$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)
+          echo "latest release: $latest"
+          if [ "$latest" != "$TAG" ]; then
+            echo "::error::$TAG published but $latest is still latest"
+            exit 1
+          fi
 
       - name: Upload build artifacts
         if: always()

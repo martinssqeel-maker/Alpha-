@@ -83,6 +83,20 @@ jobs:
             exit 1
           fi
 
+      # electron-builder packages `out/`, and `npm run dist` is
+      # `electron-vite build && electron-builder`. Running electron-builder alone
+      # gives an empty asar and fails with "Application entry file
+      # out\\main\\index.js was not found in this archive" — which is exactly how
+      # the first tag runs died.
+      - name: Compile main, preload, HUD and renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          test -f out/main/index.js || { echo "::error::out/main/index.js missing after build"; exit 1; }
+          test -f out/preload/index.js || { echo "::error::out/preload/index.js missing after build"; exit 1; }
+          test -f out/renderer/index.html || { echo "::error::out/renderer/index.html missing after build"; exit 1; }
+
       # --publish never: this step only has to prove the installer builds. If it
       # fails, the failure is a build failure, not an auth failure.
       #

@@ -369,20 +369,25 @@ describe('release version sync', () => {
     }
   })
 
-  it('resolves the release version and tagged link from GitHub, not from a constant', () => {
+  it('resolves the release version from GitHub, not from a constant', () => {
     const source = read('website/assets/app.js')
     expect(source).toContain('api.github.com/repos/')
     expect(source).toContain('releases/latest')
-    expect(source).toContain('data-release-link')
     expect(source).toContain('data-version')
+    // No public asset URL is ever synthesised: installers are gated behind the
+    // account area, so the script rewrites text and never an href.
+    expect(source).not.toContain('releases/tag/')
   })
 
-  it('points the download page at the release feed with a static fallback', () => {
-    const page = read('website/download.html')
-    expect(page).toContain('data-version')
-    expect(page).toContain('data-release-link')
-    expect(page).toContain('releases/latest')
-    expect(page).toContain('assets/app.js')
+  it('keeps installer links off the public pages', () => {
+    // Mirrors scripts/verify-website.mjs: a `releases/latest` or `.exe` href on
+    // either public page would hand out the installer and bypass sign-in.
+    for (const page of ['website/index.html', 'website/download.html']) {
+      const source = read(page)
+      expect(source, `${page} links a release asset`).not.toMatch(/releases\/latest|\.exe["']/i)
+      expect(source, `${page} cannot show the version`).toContain('data-version')
+    }
+    expect(read('website/download.html')).toContain('assets/app.js')
   })
 
   it('keeps the updater publishing to the repository the app is built from', () => {

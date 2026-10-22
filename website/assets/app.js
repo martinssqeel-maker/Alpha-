@@ -28,15 +28,20 @@ function setText(selector, value) {
  * in place if this lookup fails, which is what an offline or rate-limited
  * visitor sees.
  */
-function setReleaseLinks(tag) {
+/**
+ * Version display only.
+ *
+ * The public pages must never link a release asset: installers are handed out
+ * by the authenticated account area (`/account` -> GET /downloads/latest), and
+ * scripts/verify-website.mjs fails the build if index.html or download.html
+ * carries a `releases/latest` or `.exe` href. So this rewrites text, never an
+ * href — publishing a release updates the number people see and nothing else.
+ */
+function setReleaseVersion(tag) {
   if (!tag) return;
-  const href = `https://github.com/${REPO}/releases/tag/${encodeURIComponent(tag)}`;
-  document.querySelectorAll("[data-release-link]").forEach((el) => {
-    el.setAttribute("href", href);
-    el.setAttribute("rel", "noopener");
-  });
-  document.querySelectorAll("[data-release-tag]").forEach((el) => {
-    el.textContent = `v${String(tag).replace(/^v/i, "")}`;
+  const label = `v${String(tag).replace(/^v/i, "")}`;
+  document.querySelectorAll("[data-version], [data-release-tag]").forEach((el) => {
+    el.textContent = label;
   });
 }
 
@@ -50,7 +55,7 @@ async function resolveReleaseVersion() {
     const tag = String(release.tag_name || "");
     const version = tag.replace(/^v/i, "");
     if (version) setText("[data-version]", version);
-    setReleaseLinks(tag || `v${version}`);
+    setReleaseVersion(tag || `v${version}`);
   } catch (err) {
     console.warn("Could not resolve the current release version:", err && err.message);
   }

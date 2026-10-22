@@ -11,7 +11,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { AuthorizedRoots } from '../src/main/services/authorizedRoots'
 import { ChatService, ToolCallStreamFilter, isParallelSafeTool } from '../src/main/services/chat'
 import { Db } from '../src/main/services/db'
@@ -39,11 +39,26 @@ import {
 } from '../src/shared/permissions'
 import type { ActivityItem, ChatEvent, PermissionSettings } from '../src/shared/types'
 
-const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-desktop-agent-'))
+/**
+ * Fixture root for everything this file touches on disk.
+ *
+ * Deliberately NOT `os.tmpdir()`. On Windows that resolves to
+ * `%LOCALAPPDATA%\Temp`, which `isBlockedSystemPath` refuses on purpose (the
+ * `AppData` rule protects the app's own secret store and the usual
+ * malware-staging ground). Building an authorized root there made the guard look
+ * broken on the Windows runner while it was behaving exactly as designed, and
+ * nothing a user would ever authorize — Documents, Desktop, Downloads — lives
+ * under AppData either. Home is writable on every runner.
+ */
+const tmpBase = fs.mkdtempSync(path.join(os.homedir(), 'alpha-desktop-agent-'))
 const openDbs: Db[] = []
 
 beforeAll(() => {
   initLogger(path.join(tmpBase, 'logs'))
+})
+
+afterAll(() => {
+  fs.rmSync(tmpBase, { recursive: true, force: true })
 })
 
 afterEach(() => {
@@ -254,6 +269,13 @@ describe('AuthorizedRoots', () => {
     expect(isBlockedSystemPath('C:\\Program Files\\App\\app.exe')).toBe(true)
     expect(isBlockedSystemPath('C:\\Users\\me\\AppData\\Roaming\\x')).toBe(true)
     expect(isBlockedSystemPath('/etc/passwd')).toBe(true)
+    // `os.tmpdir()` is `%LOCALAPPDATA%\Temp` on Windows, which is under the
+    // AppData rule — the reason this suite's fixtures live in the home
+    // directory instead. Checked on the literal path so it holds on any host.
+    expect(isBlockedSystemPath('C:\\Users\\me\\AppData\\Local\\Temp\\alpha')).toBe(true)
+    // A home-rooted fixture is legal on Windows — this is what `tmpBase` is now,
+    // and it only guards against the AppData subtree, not the user profile.
+    expect(isBlockedSystemPath('C:\\Users\\me\\alpha-desktop-agent-x\\docs')).toBe(false)
     expect(isBlockedSystemPath(tmpBase)).toBe(false)
   })
 

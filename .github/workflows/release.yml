@@ -1,17 +1,22 @@
 name: Release
 
-# Tag-driven release: pushing v1.0.7 builds the NSIS installer on a real Windows
-# runner and attaches it to the GitHub release — which is the single source both
-# the website (api.github.com .../releases/latest) and electron-updater
-# (latest.yml) read.
+# Tag-driven release: pushes vX.Y.Z builds the NSIS installer on a real Windows
+# runner and attaches it to the GitHub release — the single source both the
+# website (api.github.com .../releases/latest) and electron-updater (latest.yml)
+# read.
 #
 # Why a separate workflow: `ci.yml` runs on main and deliberately builds
 # `--dir` only, so it never ships an installer it has no credentials for.
-# Building an installer needs the win32 Electron binary, NSIS and winCodeSign,
-# which cannot be fetched in a locked-down Linux container. windows-latest has
-# all three.
+# Building one needs the win32 Electron binary, NSIS and winCodeSign, which a
+# locked-down Linux container cannot fetch. windows-latest has all three.
 #
 # Publishing is tag-gated on purpose. Nothing here fires on a main push.
+#
+# Build and publish are separate steps on purpose too: an earlier revision did
+# `--publish always` in one step and failed in ~40s before packaging even began,
+# with no way to read the log in this environment. Splitting them makes the
+# failing phase obvious, and the draft-then-publish dance means electron-updater
+# never sees a release whose assets are still uploading.
 
 on:
   push:
@@ -19,10 +24,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build, e.g. v1.0.7'
+        description: 'Existing tag to build and publish, e.g. v1.0.7'
         required: true
 
-# Only the release job needs write access, and only to create/update the release.
 permissions:
   contents: write
 
@@ -33,6 +37,8 @@ concurrency:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout the tag
         uses: actions/checkout@v4
@@ -60,35 +66,34 @@ jobs:
       # The tag and package.json must agree: electron-builder names the artifact
       # from package.json, so a stale version publishes a file the tag does not
       # describe.
-      - name: Assert tag matches package.json
+      - name: Assert tag matches package.json and APP_VERSION
         shell: bash
         run: |
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
-          tag="${tag#v}"
+          tag="${TAG#v}"
           echo "package.json=$version tag=$tag"
           if [ "$tag" != "$version" ]; then
-            echo "::error::tag v$tag does not match package.json $version"
+            echo "::error::tag $TAG does not match package.json $version"
             exit 1
           fi
           app_version=$(grep -oE "APP_VERSION = '[0-9.]+'" src/shared/types.ts | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
-          echo "APP_VERSION=$app_version"
           if [ "$app_version" != "$version" ]; then
             echo "::error::APP_VERSION $app_version does not match package.json $version"
             exit 1
           fi
 
-      - name: Build and publish the NSIS installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # `--publish always` is required: without it electron-builder builds the
-        # installer but uploads nothing, and the release stays empty.
-        run: npx electron-builder --win nsis --publish always
+      # --publish never: this step only has to prove the installer builds. If it
+      # fails, the failure is a build failure, not an auth failure.
+      - name: Build the NSIS installer
+        shell: bash
+        run: |
+          set -o pipefail
+          npx electron-builder --win nsis --publish never 2>&1 | tee build.log
 
       # A release missing latest.yml installs fine by hand and silently breaks
-      # auto-update for everyone, so fail the job rather than ship that.
-      - name: Assert the updater manifest and installer shipped
+      # auto-update for everyone, so fail here rather than ship that.
+      - name: Assert the installer, blockmap and updater manifest exist
         shell: bash
         run: |
           set -euo pipefail
@@ -101,9 +106,46 @@ jobs:
             exit 1
           }
           ls release/*Setup*.exe >/dev/null || { echo "::error::no installer produced"; exit 1; }
-          ls release/*.blockmap >/dev/null || { echo "::error::no .blockmap produced — differential updates unavailable"; exit 1; }
+          ls release/*.blockmap >/dev/null || { echo "::error::no .blockmap — differential updates unavailable"; exit 1; }
+
+      # Draft first, then publish: the release only becomes visible (and only
+      # becomes `latest`) once every asset is attached, so the updater can never
+      # observe a release that is still uploading.
+      - name: Attach assets to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — uploading assets with --clobber"
+            gh release upload "$TAG" release/*.exe release/*.blockmap release/latest.yml --clobber
+          else
+            gh release create "$TAG" --draft --title "Alpha $TAG" --generate-notes \
+              release/*.exe release/*.blockmap release/latest.yml
+          fi
+
+      - name: Verify the release carries a complete updater payload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets --jq '.assets[].name' | tee assets.txt
+          grep -q 'latest\.yml' assets.txt || { echo "::error::release is missing latest.yml"; exit 1; }
+          grep -qi 'Setup.*\.exe' assets.txt || { echo "::error::release is missing the installer"; exit 1; }
+
+      - name: Publish the release and mark it latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false --latest 2>&1 | tee publish.log
+          gh release view "$TAG" --json tagName,isDraft,isLatest --jq '{tagName,isDraft,isLatest}'
 
       - name: Upload build artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: alpha-windows-installer
@@ -112,4 +154,23 @@ jobs:
             release/*.blockmap
             release/latest.yml
           retention-days: 14
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      # The runner's log archive is not reachable from every environment, so the
+      # failure context is copied where the API can always read it.
+      - name: Summarise failure
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '### Release failed'
+            echo ''
+            echo '**build.log** (tail)'
+            echo '```'
+            tail -n 120 build.log 2>/dev/null || echo 'no build.log'
+            echo '```'
+            echo '**publish.log** (tail)'
+            echo '```'
+            tail -n 60 publish.log 2>/dev/null || echo 'no publish.log'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

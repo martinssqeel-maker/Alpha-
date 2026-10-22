@@ -2,7 +2,11 @@ import path from 'node:path'
 import { app, safeStorage } from 'electron'
 import type { AppSettings } from '@shared/types'
 import { AttachmentService } from './services/attachments'
+import { AuthorizedRoots } from './services/authorizedRoots'
+import { BrowserPreviewService } from './services/browserPreview'
 import { ChatService } from './services/chat'
+import { ComputerUseService } from './services/computerUseService'
+import { DesktopService } from './services/desktopService'
 import { CheckpointService } from './services/checkpoints'
 import { Db } from './services/db'
 import { EditService } from './services/editService'
@@ -25,6 +29,7 @@ import {
 import { TerminalService } from './services/terminal'
 import { SkillsService } from './services/skills'
 import { UpdateService } from './services/updater'
+import { EVENTS } from '@shared/channels'
 
 class SafeStorageCipher implements Cipher {
   available(): boolean {
@@ -51,6 +56,10 @@ export interface AppPaths {
   secretsPath: string
   checkpointsDir: string
   logsDir: string
+  /** Screenshots captured by the desktop agent (window and browser). */
+  screenshotsDir: string
+  /** User-authored skills, including ones saved from a completed workflow. */
+  skillsDir: string
 }
 
 export interface AppContext {
@@ -74,6 +83,10 @@ export interface AppContext {
   permissions: PermissionService
   broker: ApprovalBroker
   attachments: AttachmentService
+  browserPreview: BrowserPreviewService
+  roots: AuthorizedRoots
+  desktop: DesktopService
+  computer: ComputerUseService
   chat: ChatService
   updates: UpdateService
   platform: PlatformService
@@ -89,7 +102,9 @@ export async function buildContext(
     dbPath: path.join(userData, 'alpha.db'),
     secretsPath: path.join(userData, 'secrets.enc'),
     checkpointsDir: path.join(userData, 'checkpoints'),
-    logsDir: path.join(userData, 'logs')
+    logsDir: path.join(userData, 'logs'),
+    screenshotsDir: path.join(userData, 'screenshots'),
+    skillsDir: path.join(userData, 'skills')
   }
   const logger = initLogger(paths.logsDir)
   const db = await Db.open(paths.dbPath)
@@ -121,10 +136,41 @@ export async function buildContext(
   const github = new GithubService(secrets, githubOAuth)
   const permissions = new PermissionService(settings)
   const terminal = new TerminalService(projectService, permissions)
+
+  /**
+   * Authorized folders for the desktop agent.
+   *
+   * Standard user paths come from Electron so they honour a redirected profile
+   * (OneDrive Documents is common), and the current project is resolved lazily
+   * because the user can open one at any time.
+   */
+  const roots = new AuthorizedRoots({
+    standardPaths: {
+      documents: safeUserPath('documents'),
+      desktop: safeUserPath('desktop'),
+      downloads: safeUserPath('downloads')
+    },
+    settings,
+    projectRoot: () => {
+      const id = settings.get().workspace?.activeProjectId
+      if (!id) return null
+      try {
+        return projectService.resolveRoot(id)
+      } catch {
+        return null
+      }
+    }
+  })
+  const desktop = new DesktopService(roots)
+  const computer = new ComputerUseService(desktop, {
+    allowMouseFallback: () => settings.get().agent?.allowMouseFallback !== false,
+    screenshotsDir: () => paths.screenshotsDir
+  })
+  const browserPreview = new BrowserPreviewService((state) => emit(EVENTS.browser, state))
   const skillsDirectory = app.isPackaged
     ? path.join(process.resourcesPath, 'product-skills')
     : path.join(app.getAppPath(), 'product-skills')
-  const skills = new SkillsService(skillsDirectory, settings)
+  const skills = new SkillsService(skillsDirectory, settings, paths.skillsDir)
   const broker = new ApprovalBroker()
   const attachments = new AttachmentService()
 
@@ -141,6 +187,10 @@ export async function buildContext(
     broker,
     settings,
     skills,
+    roots,
+    desktop,
+    computer,
+    browser: browserPreview,
     emit: (event) => emit('evt:chat', event)
   })
 
@@ -204,6 +254,10 @@ export async function buildContext(
     permissions,
     broker,
     attachments,
+    browserPreview,
+    roots,
+    desktop,
+    computer,
     chat,
     updates,
     platform,
@@ -213,4 +267,22 @@ export async function buildContext(
 
 export function applyLogLevel(ctx: AppContext, settings: AppSettings): void {
   ctx.logger.setLevel(settings.privacy.logLevel)
+}
+
+/**
+ * `app.getPath` throws for a folder a hardened or stripped Windows profile has
+ * redirected away. A missing Documents folder must not stop the app from
+ * booting, so fall back to the user's home and let `AuthorizedRoots` mark it
+ * non-existent.
+ */
+function safeUserPath(name: 'documents' | 'desktop' | 'downloads'): string {
+  try {
+    return app.getPath(name)
+  } catch {
+    try {
+      return path.join(app.getPath('home'), name === 'documents' ? 'Documents' : name === 'desktop' ? 'Desktop' : 'Downloads')
+    } catch {
+      return path.join(app.getPath('userData'), name)
+    }
+  }
 }

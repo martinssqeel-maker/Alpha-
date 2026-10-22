@@ -18,6 +18,9 @@ export const CH = {
 
   skillsList: 'skills:list',
   skillsSetEnabled: 'skills:setEnabled',
+  skillsSave: 'skills:save',
+  agentLocations: 'agent:locations',
+  agentPickLocation: 'agent:pickLocation',
 
   providersList: 'providers:list',
   providersSave: 'providers:save',
@@ -115,6 +118,19 @@ export const CH = {
   platformRefresh: 'platform:refresh'
 } as const
 
+/**
+ * Channels used by the always-on-top control pill.
+ *
+ * The HUD is a separate window with its own minimal preload, so its buttons use
+ * one-way `send` rather than the request/response `invoke` surface. Keeping the
+ * names here means there is still exactly one place that lists IPC channels.
+ */
+export const HUD = {
+  decision: 'hud:decision',
+  stop: 'hud:stop',
+  state: 'hud:state'
+} as const
+
 export const EVENTS = {
   chat: 'evt:chat',
   terminal: 'evt:terminal',
@@ -123,7 +139,9 @@ export const EVENTS = {
   project: 'evt:project',
   update: 'evt:update',
   platform: 'evt:platform',
-  ollama: 'evt:ollama'
+  ollama: 'evt:ollama',
+  /** Emergency kill-switch fired; the renderer shows a toast. */
+  agentStopped: 'evt:agent-stopped'
 } as const
 
 export type Channel = (typeof CH)[keyof typeof CH]

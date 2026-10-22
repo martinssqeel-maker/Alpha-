@@ -23,7 +23,10 @@ describe('safeResolve', () => {
     expect(() => safeResolve(root, '../../etc/passwd')).toThrow(PathError)
   })
 
-  it('rejects absolute paths outside the root', () => {
+  // Windows-only: on POSIX `C:/Windows/system32` is not absolute, so it is just
+  // a (legal) relative name under the root. The containment rule itself is the
+  // same either way; the input only means "outside" on Windows.
+  it.runIf(process.platform === 'win32')('rejects absolute paths outside the root', () => {
     expect(() => safeResolve(root, 'C:/Windows/system32')).toThrow(PathError)
   })
 

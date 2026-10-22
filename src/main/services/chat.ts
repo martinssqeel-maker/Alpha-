@@ -8,6 +8,7 @@ import type {
   PermissionMode
 } from '@shared/types'
 import { createConversationTitle } from '@shared/conversationTitle'
+import { toolNeedsApproval } from '@shared/permissions'
 import { getLogger } from './logger'
 import { PathError } from './pathGuard'
 import type { ApprovalBroker, PermissionService } from './permissionService'
@@ -16,11 +17,21 @@ import type { ChatToolCall, ProviderMessage } from './providers/types'
 import { ProviderError } from './providers/types'
 import type { ProjectService } from './projectService'
 import type { ConversationsRepo, SettingsRepo } from './store'
-import { executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './tools'
+import { AGENT_ONLY_TOOLS, executeTool, toolByName, TOOL_DEFINITIONS, type ToolContext } from './tools'
 import type { EditService } from './editService'
 import type { GitService } from './git'
 import type { TerminalService } from './terminal'
 import type { SkillsService } from './skills'
+import type { AuthorizedRoots } from './authorizedRoots'
+import type { DesktopService } from './desktopService'
+import type { ComputerUseService } from './computerUseService'
+import type { BrowserPreviewService } from './browserPreview'
+import {
+  looksLikeToolAttempt,
+  parseFallbackToolCalls,
+  stripFallbackToolCalls,
+  TOOL_CALL_PROTOCOL
+} from './toolCallFallback'
 
 export interface ChatDeps {
   providers: ProviderRegistry
@@ -33,6 +44,10 @@ export interface ChatDeps {
   permissions: PermissionService
   broker: ApprovalBroker
   settings: SettingsRepo
+  roots: AuthorizedRoots
+  desktop: DesktopService
+  computer: ComputerUseService
+  browser: BrowserPreviewService
   emit: (event: ChatEvent) => void
 }
 
@@ -44,9 +59,23 @@ export interface SendInput {
   projectId?: string | null
   text: string
   attachments?: AttachmentRef[]
+  /** Skip native tool calling and use the `<tool_call>` JSON protocol. */
+  forceToolFallback?: boolean
 }
 
-const MAX_TOOL_ITERATIONS = 6
+/**
+ * Ceiling on tool rounds for one turn.
+ *
+ * Six was tuned for "read a file, edit a file". A desktop task — open Word,
+ * write headings, add bullets, save, verify — legitimately takes a dozen
+ * observations and actions. Fifteen leaves room without letting a confused model
+ * spin indefinitely; a hard ceiling plus the repeat-failure detector below are
+ * what keep a bad turn bounded, not a small number.
+ */
+const DEFAULT_MAX_TOOL_ITERATIONS = 15
+const MAX_TOOL_ITERATIONS_CEILING = 40
+/** The same failing call may be retried once, never twice. */
+const MAX_IDENTICAL_FAILURES = 2
 const MAX_HISTORY_MESSAGES = 20
 const MAX_MESSAGE_CHARS = 12000
 /**
@@ -104,7 +133,71 @@ export function isParallelSafeTool(name: string): boolean {
   const definition = toolByName(name)
   if (!definition || definition.requiresApproval) return false
   if (definition.permissionKey !== 'read') return false
+  // `propose_file_patch` is categorised as a write because that is its intent,
+  // but it touches nothing: it computes an in-memory diff against the file's
+  // current hash and returns a proposal id. Proposing three files in one round
+  // is therefore safe and much faster than doing it serially.
+  if (name === 'propose_file_patch') return true
   return definition.category === 'read' || definition.category === 'git'
+}
+
+/**
+ * Stream filter for the JSON tool protocol.
+ *
+ * When the fallback engine is active the model writes `<tool_call>{...}</tool_call>`
+ * into its normal text stream. Piping that straight to the UI would show the
+ * user raw protocol, so the filter holds back anything that might be the start
+ * of a block and discards complete ones. It releases text as soon as it is
+ * provably not part of a call, so normal prose still streams token by token.
+ */
+export class ToolCallStreamFilter {
+  private pending = ''
+
+  constructor(private readonly enabled: boolean) {}
+
+  push(chunk: string): string {
+    if (!this.enabled) return chunk
+    this.pending += chunk
+    let out = ''
+    while (this.pending) {
+      const open = this.pending.toLowerCase().indexOf('<tool_call>')
+      if (open === -1) {
+        // Keep a tail that could still grow into the opening tag.
+        const keep = longestPartialMatch(this.pending, '<tool_call>')
+        out += this.pending.slice(0, this.pending.length - keep)
+        this.pending = this.pending.slice(this.pending.length - keep)
+        break
+      }
+      out += this.pending.slice(0, open)
+      const close = this.pending.toLowerCase().indexOf('</tool_call>', open)
+      if (close === -1) {
+        // Still inside the block: hold everything from the tag onward.
+        this.pending = this.pending.slice(open)
+        break
+      }
+      this.pending = this.pending.slice(close + '</tool_call>'.length)
+    }
+    return out
+  }
+
+  flush(): string {
+    if (!this.enabled) return ''
+    const rest = this.pending
+    this.pending = ''
+    // An unterminated block is a truncated call: drop it rather than print it.
+    return /<tool_call>/i.test(rest) ? '' : rest
+  }
+}
+
+/** Length of the longest suffix of `text` that is a prefix of `tag`. */
+function longestPartialMatch(text: string, tag: string): number {
+  const max = Math.min(text.length, tag.length - 1)
+  const lowerText = text.toLowerCase()
+  const lowerTag = tag.toLowerCase()
+  for (let size = max; size > 0; size--) {
+    if (lowerText.endsWith(lowerTag.slice(0, size))) return size
+  }
+  return 0
 }
 
 /** Identity of a tool call, used to avoid running the exact same read twice. */
@@ -138,6 +231,25 @@ export class ChatService {
     if (!controller) return false
     controller.abort()
     return true
+  }
+
+  /**
+   * Abort every turn in flight. Used by the global emergency kill-switch, which
+   * must not depend on the UI being focused or on a specific request id.
+   */
+  cancelAll(): number {
+    let cancelled = 0
+    for (const [id, controller] of this.active) {
+      controller.abort()
+      this.active.delete(id)
+      cancelled++
+    }
+    return cancelled
+  }
+
+  /** Number of turns currently running (HUD + tests). */
+  get activeCount(): number {
+    return this.active.size
   }
 
   private async run(
@@ -189,8 +301,33 @@ export class ChatService {
         { role: 'user', content: userContent }
       ]
 
-      const toolsEnabled = Boolean(input.projectId) && input.mode !== 'chat'
-      const tools = toolsEnabled ? TOOL_DEFINITIONS : undefined
+      // Tools are available whenever the mode permits them. A coding project is
+      // no longer a precondition: desktop, browser and authorized-folder tools
+      // are the whole point of the general Windows agent, and the project-only
+      // tools state their own requirement when called.
+      const toolsEnabled = input.mode !== 'chat'
+      const settings = this.deps.settings.get()
+      const configured = settings.agent?.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS
+      const maxIterations = Math.min(Math.max(1, configured), MAX_TOOL_ITERATIONS_CEILING)
+
+      // Settings → Agent off means: coding assistant only. The desktop tools are
+      // removed from the model's menu entirely rather than being denied one by
+      // one, so the model cannot plan around a capability it does not have.
+      const agentEnabled = settings.agent?.enabled !== false
+      const availableTools = agentEnabled
+        ? TOOL_DEFINITIONS
+        : TOOL_DEFINITIONS.filter((tool) => !AGENT_ONLY_TOOLS.has(tool.name))
+
+      // Native tool calling first; the JSON protocol is the fallback for models
+      // that reject or ignore it. `forceToolFallback` lets the user pin it.
+      let fallbackMode = input.forceToolFallback === true
+      // Enabled whenever tools are, not only once a fallback is detected: a
+      // model that answers with the protocol on its very first turn would
+      // otherwise leak the raw block into the transcript before we could react.
+      const streamFilter = new ToolCallStreamFilter(toolsEnabled)
+      const toolProtocol = `${TOOL_CALL_PROTOCOL}\n\nAvailable tools:\n${availableTools.map(
+        (t) => `- ${t.name}: ${t.description.split('\n')[0]}`
+      ).join('\n')}`
 
       // Timing is measured from the moment the request was accepted, because that
       // is what the user waits for: the first number here is context assembly, the
@@ -224,22 +361,38 @@ export class ChatService {
       emitEvent({ type: 'start', requestId })
 
       let usage: ChatUsage | undefined
-      let usedTools = false
+      /** `${name}:${json args}` → consecutive failures. */
+      const failures = new Map<string, number>()
 
-      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+      /** Add the JSON protocol to the system message the first time we need it. */
+      const enableFallback = (): void => {
+        fallbackMode = true
+        const system = messages[0]
+        if (system?.role === 'system' && !system.content.includes('<tool_call>')) {
+          system.content = `${system.content}\n\n${toolProtocol}`
+        }
+      }
+
+      if (fallbackMode) enableFallback()
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
         if (controller.signal.aborted) break
+        // Snapshot before the request so the protocol text can be removed
+        // without assuming the adapter returned exactly the concatenated deltas.
+        const assistantBeforeRound = assistantText
         let result
-        try {
-          result = await providers.chat(input.providerId, {
+        const requestOnce = async (withTools: boolean) =>
+          providers.chat(input.providerId, {
             model: input.modelId,
             messages,
-            tools,
+            tools: withTools && !fallbackMode ? availableTools : undefined,
             signal: controller.signal,
             onDelta: (delta) => {
               if (delta.content) {
                 recordOutput()
                 assistantText += delta.content
-                emitEvent({ type: 'delta', requestId, content: delta.content })
+                const visible = streamFilter.push(delta.content)
+                if (visible) emitEvent({ type: 'delta', requestId, content: visible })
               }
               if (delta.thinking) {
                 recordOutput()
@@ -247,36 +400,64 @@ export class ChatService {
               }
             }
           })
+
+        try {
+          result = await requestOnce(toolsEnabled)
         } catch (e) {
           if (e instanceof Error && e.name === 'AbortError') throw e
-          // If the model rejected tools, retry once without them.
-          if (tools && !usedTools && e instanceof ProviderError && /tool/i.test(e.message)) {
-            log.warn('chat', `retrying without tools: ${e.message}`)
-            result = await providers.chat(input.providerId, {
-              model: input.modelId,
-              messages,
-              signal: controller.signal,
-              onDelta: (delta) => {
-                if (delta.content) {
-                  recordOutput()
-                  assistantText += delta.content
-                  emitEvent({ type: 'delta', requestId, content: delta.content })
-                }
-              }
-            })
+          // The model or its template rejected the native tools array. Switch to
+          // the JSON protocol and ask again — this is the case that made small
+          // local models unable to use any tool at all.
+          if (toolsEnabled && !fallbackMode && e instanceof ProviderError && /tool|function/i.test(e.message)) {
+            log.warn('chat', `provider rejected native tools, switching to JSON protocol: ${e.message}`)
+            enableFallback()
+            result = await requestOnce(false)
           } else {
             throw e
           }
         }
 
         if (result.usage) usage = result.usage
-        if (!result.toolCalls.length) break
 
-        usedTools = true
+        // A model can emit the protocol even while native tools are offered, so
+        // parse the text whenever nothing structured came back.
+        let toolCalls = result.toolCalls
+        if (!toolCalls.length && toolsEnabled) {
+          const parsed = parseFallbackToolCalls(result.content)
+          if (parsed.length) {
+            if (!fallbackMode) {
+              // The model chose the protocol on its own; keep using it.
+              enableFallback()
+            }
+            toolCalls = parsed
+            // Replace the raw protocol text with just the prose.
+            const cleaned = stripFallbackToolCalls(result.content)
+            assistantText = assistantBeforeRound + cleaned
+            result = { ...result, content: cleaned }
+          } else if (!fallbackMode && looksLikeToolAttempt(result.content)) {
+            // A malformed attempt: nudge once rather than silently answering.
+            const hint = 'Your last message looked like a tool call but could not be parsed. Emit exactly <tool_call>{"name": "...", "arguments": {...}}</tool_call>, or answer without tools.'
+            if (!messages.some((m) => m.content === hint)) {
+              enableFallback()
+              messages.push({ role: 'system', content: hint })
+              continue
+            }
+          }
+        }
+
+        if (!toolCalls.length) {
+          const tail = streamFilter.flush()
+          if (tail) {
+            assistantText += tail
+            emitEvent({ type: 'delta', requestId, content: tail })
+          }
+          break
+        }
+
         messages.push({
           role: 'assistant',
           content: result.content || '',
-          toolCalls: result.toolCalls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments }))
+          toolCalls: toolCalls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments }))
         })
 
         const toolContext: ToolContext = {
@@ -285,18 +466,23 @@ export class ChatService {
           edits: this.deps.edits,
           git: this.deps.git,
           terminal: this.deps.terminal,
-          permissions
+          permissions,
+          roots: this.deps.roots,
+          desktop: this.deps.desktop,
+          computer: this.deps.computer,
+          browser: this.deps.browser
         }
 
         const toolResults = await this.runTools(
           requestId,
-          result.toolCalls,
+          toolCalls,
           toolContext,
           activities,
           emitEvent,
-          controller
+          controller,
+          failures
         )
-        for (const [index, call] of result.toolCalls.entries()) {
+        for (const [index, call] of toolCalls.entries()) {
           messages.push({
             role: 'tool',
             content: toolResults[index]?.content ?? JSON.stringify({ error: 'Tool did not run.' }),
@@ -384,7 +570,8 @@ export class ChatService {
     ctx: ToolContext,
     activities: ActivityItem[],
     emit: (e: ChatEvent) => void,
-    controller: AbortController
+    controller: AbortController,
+    failures: Map<string, number>
   ): Promise<Array<{ content: string; activity: ActivityItem } | undefined>> {
     const results: Array<{ content: string; activity: ActivityItem } | undefined> = new Array(calls.length)
     const round = new Map<string, Promise<{ content: string; activity: ActivityItem }>>()
@@ -404,7 +591,7 @@ export class ChatService {
               getLogger().debug('chat', `reusing identical ${call.name} call in this round`)
               return existing
             }
-            const run = this.runTool(requestId, call, ctx, activities, emit, controller)
+            const run = this.runTool(requestId, call, ctx, activities, emit, controller, failures)
             round.set(key, run)
             return run
           })
@@ -415,7 +602,7 @@ export class ChatService {
         index = end
         continue
       }
-      results[index] = await this.runTool(requestId, calls[index], ctx, activities, emit, controller)
+      results[index] = await this.runTool(requestId, calls[index], ctx, activities, emit, controller, failures)
       index++
     }
     return results
@@ -427,13 +614,31 @@ export class ChatService {
     ctx: ToolContext,
     activities: ActivityItem[],
     emit: (e: ChatEvent) => void,
-    controller: AbortController
+    controller: AbortController,
+    failures?: Map<string, number>
   ): Promise<{ content: string; activity: ActivityItem }> {
     const def = toolByName(call.name)
     const approvalCopy = describeApproval(call, ctx)
+    const callKey = toolCallKey(call)
+    const priorFailures = failures?.get(callKey) ?? 0
+    const markFailure = (): void => {
+      if (failures) failures.set(callKey, (failures.get(callKey) ?? 0) + 1)
+    }
+    const kind: ActivityItem['kind'] =
+      def?.category === 'execute'
+        ? 'command'
+        : def?.category === 'write'
+          ? 'edit'
+          : def?.category === 'git'
+            ? 'git'
+            : def?.category === 'desktop'
+              ? 'desktop'
+              : def?.category === 'browser'
+                ? 'browser'
+                : 'tool'
     const activity: ActivityItem = {
       id: randomUUID(),
-      kind: def?.category === 'execute' ? 'command' : def?.category === 'write' ? 'edit' : def?.category === 'git' ? 'git' : 'tool',
+      kind,
       title: approvalCopy?.title ?? call.name,
       detail: approvalCopy?.detail ?? describeCall(call),
       state: 'proposed',
@@ -451,7 +656,20 @@ export class ChatService {
       activity.error = `Unknown tool: ${call.name}`
       activity.endedAt = Date.now()
       emit({ type: 'activity', requestId, activity: { ...activity } })
+      markFailure()
       return { content: JSON.stringify({ error: activity.error }), activity }
+    }
+
+    // Repeat-failure detector. A small model that gets the same error twice will
+    // often keep re-issuing the identical call; the ceiling on iterations would
+    // eventually stop it, but only after burning the whole budget. Refusing the
+    // third attempt and naming the reason gets it unstuck on the next turn.
+    if (priorFailures >= MAX_IDENTICAL_FAILURES) {
+      activity.state = 'failed'
+      activity.error = `This exact call has already failed ${priorFailures} times. It will not be retried; change the approach or arguments.`
+      activity.endedAt = Date.now()
+      emit({ type: 'activity', requestId, activity: { ...activity } })
+      return { content: JSON.stringify({ error: activity.error, repeated: true }), activity }
     }
 
     if (
@@ -462,12 +680,16 @@ export class ChatService {
       activity.error = 'The proposed change is unavailable or expired. Review the file and propose it again.'
       activity.endedAt = Date.now()
       emit({ type: 'activity', requestId, activity: { ...activity } })
+      markFailure()
       return { content: JSON.stringify({ error: activity.error }), activity }
     }
 
     const permissionKey = def.permissionKey
     if (permissionKey !== 'read') {
-      const decision = ctx.permissions.resolve(permissionKey)
+      // `toolNeedsApproval` keeps the promise a tool makes when it declares
+      // `requiresApproval: true`: an allowed capability does not silently waive
+      // the prompt a destructive tool asked for.
+      const { decision } = toolNeedsApproval(ctx.permissions.get(), permissionKey, def.requiresApproval)
       if (decision === 'deny') {
         activity.state = 'failed'
         activity.error = 'Denied by current permission settings.'
@@ -487,6 +709,7 @@ export class ChatService {
           activity.error = approved ? 'Cancelled' : 'User denied the action.'
           activity.endedAt = Date.now()
           emit({ type: 'activity', requestId, activity: { ...activity } })
+          if (!approved) markFailure()
           return { content: JSON.stringify({ error: activity.error }), activity }
         }
         activity.approvalId = undefined
@@ -501,15 +724,30 @@ export class ChatService {
       activity.state = 'completed'
       activity.result = exec.result
       activity.detail = exec.summary
+      activity.verification = exec.verification
       activity.endedAt = Date.now()
+      failures?.delete(callKey)
       emit({ type: 'activity', requestId, activity: { ...activity } })
       emit({ type: 'tool-result', requestId, callId: call.id, result: exec.result })
-      return { content: JSON.stringify(exec.result).slice(0, 20000), activity }
+      // The verification travels with the result so the model reads the same
+      // evidence the user sees. A false verification is stated plainly rather
+      // than left for the model to infer from a successful-looking payload.
+      const payload =
+        exec.verification === undefined
+          ? exec.result
+          : { result: exec.result, verification: exec.verification }
+      return { content: JSON.stringify(payload).slice(0, 20000), activity }
     } catch (e) {
       const err = e as Error
       activity.state = 'failed'
       activity.error = err.message
+      activity.verification = {
+        verified: false,
+        note: err.message,
+        check: err instanceof PathError ? err.code : 'execution'
+      }
       activity.endedAt = Date.now()
+      markFailure()
       emit({ type: 'activity', requestId, activity: { ...activity } })
       const payload = err instanceof PathError ? { error: err.message, code: err.code } : { error: err.message }
       return { content: JSON.stringify(payload), activity }
@@ -523,14 +761,60 @@ export class ChatService {
   ): string {
     const provider = providers.get(input.providerId)
     const lines = [
-      'You are Alpha, a coding assistant inside the Alpha AI Workspace desktop app.',
+      'You are Alpha, an agent inside the Alpha AI Workspace desktop app on Windows.',
+      'You can read and edit a coding project, work with files in the user\'s folders, control Windows applications, and drive the built-in browser.',
       'Be concise and precise. Prefer doing over describing.',
-      `Permission mode: ${input.mode}. In chat mode you may not read projects or run tools.`
+      `Permission mode: ${input.mode}.` +
+        (input.mode === 'chat'
+          ? ' Tools are disabled entirely: answer from the conversation only.'
+          : ' Tools that need the user\'s approval will pause until they respond.')
     ]
+
+    // Capability description is only useful when tools are actually on.
+    if (input.mode !== 'chat') {
+      lines.push(
+        [
+          '',
+          '## How to act on a Windows desktop',
+          '',
+          'Follow this order and stop at the first level that works:',
+          '1. **Native / file / COM** — create_or_write_file, create_or_edit_office_document.',
+          '   Fastest and most reliable; use it whenever it can express the task.',
+          '2. **UI Automation** — inspect_window_ui, then interact_with_window_element with',
+          '   the [n] number it returns. This does NOT move the user\'s mouse: prefer it',
+          '   over clicking. Inspect again after the window changes; numbers are reassigned.',
+          '3. **Clipboard + keyboard** — clipboard_bridge with action "paste_text" for long',
+          '   text, then send keys. It restores what the user had copied.',
+          '4. **Mouse** — only for canvas UIs where nothing above can see a control.',
+          '',
+          'Workflow for "open Word and write a report": find_and_launch_app, then',
+          'create_or_edit_office_document with structured blocks (title, heading,',
+          'paragraph, bullet, table). Do not type a whole document key by key.',
+          '',
+          'Before saving anywhere, call list_authorized_locations if you do not already',
+          'know which folders are allowed. Use "documents/report.docx" style paths.',
+          '',
+          '## Proving your work',
+          '',
+          'Every tool returns a `verification` object with `verified` and a note.',
+          '- Never say an action succeeded unless `verified` is true.',
+          '- If `verified` is false, say what the check observed and what you will try next.',
+          '- Never invent file contents, window titles, test results or page text.',
+          '- When the task is done, state what was created, where it is (full path), and',
+          '  which verification confirmed it.',
+          '',
+          '## Editing code',
+          '',
+          'propose_file_patch computes a diff without writing; apply_approved_patch writes',
+          'it after approval. Never claim a file changed unless that tool reports success.'
+        ].join('\n')
+      )
+    }
+
     if (input.projectId) {
       try {
         const project = projects.resolveProject(input.projectId)
-        lines.push(`The user has opened the project "${project.name}". Work only inside it using the provided tools.`)
+        lines.push(`The user has opened the coding project "${project.name}". You may work inside it; the authorized folders are separate and also available.`)
         try {
           const tree = projects.listTree(input.projectId, '', 1)
           const names = tree.slice(0, 60).map((n) => (n.type === 'directory' ? n.name + '/' : n.name))
@@ -587,6 +871,47 @@ function describeApproval(
   ctx: ToolContext
 ): { title: string; detail: string } | null {
   const args = (call.arguments ?? {}) as Record<string, unknown>
+  if (call.name === 'find_and_launch_app') {
+    return {
+      title: `Open ${String(args.query ?? 'an application')}`,
+      detail: `Application: ${String(args.query ?? '')}\nThis starts a program on your desktop.`
+    }
+  }
+  if (call.name === 'close_window') {
+    const label = args.window ?? args.processId ?? 'a window'
+    return {
+      title: `Close ${String(label)}`,
+      detail: `Target: ${String(label)}\nThe app is asked to exit first; it is only forced after four seconds. Unsaved work may be lost.`
+    }
+  }
+  if (call.name === 'delete_file') {
+    return {
+      title: `Delete ${String(args.path ?? 'a file')}`,
+      detail: `File: ${String(args.path ?? '')}\nThis removes the file from disk. There is no checkpoint for files outside a project.`
+    }
+  }
+  if (call.name === 'create_or_edit_office_document') {
+    return {
+      title: `Create ${String(args.app ?? 'word') === 'excel' ? 'spreadsheet' : 'document'} ${String(args.path ?? '')}`,
+      detail: `Writes ${String(args.path ?? '')} and opens ${String(args.app ?? 'word') === 'excel' ? 'Excel' : 'Word'} on your desktop so you can see it.`
+    }
+  }
+  if (call.name === 'interact_with_window_element') {
+    return {
+      title: `${String(args.action ?? 'Interact with')} element ${String(args.elementId ?? '')}`,
+      detail: `Window: ${String(args.window ?? args.processId ?? '')}\nElement: [${String(args.elementId ?? '')}]${
+        typeof args.value === 'string' ? `\nValue: ${args.value.slice(0, 200)}` : ''
+      }\nThis sends input to another application.`
+    }
+  }
+  if (call.name === 'run_approved_command') {
+    const command = String(args.command ?? '')
+    const cwd = ctx.projectId ? ctx.projects.resolveRoot(ctx.projectId) : 'an authorized folder'
+    return {
+      title: 'Run command',
+      detail: `Command: ${command}\nDirectory: ${cwd}\nThis executes a shell command and may change files or use the network.`
+    }
+  }
   if (call.name === 'apply_approved_patch') {
     const proposal = ctx.edits.describeProposal(String(args.proposalId ?? ''))
     if (!proposal) return { title: 'Apply proposed file change', detail: 'The proposed change is unavailable or expired.' }
@@ -595,14 +920,6 @@ function describeApproval(
       ? 'This removes the project file. A checkpoint is created first.'
       : 'This writes the proposed content to the project file. A checkpoint is created first.'
     return { title: `Apply ${action} to ${proposal.path}`, detail: `Target: ${proposal.path}\n${consequence}` }
-  }
-  if (call.name === 'run_approved_command') {
-    const command = String(args.command ?? '')
-    const cwd = ctx.projectId ? ctx.projects.resolveRoot(ctx.projectId) : 'No project selected'
-    return {
-      title: 'Run command in project',
-      detail: `Command: ${command}\nDirectory: ${cwd}\nThis executes a shell command and may change project files or use network access.`
-    }
   }
   return null
 }

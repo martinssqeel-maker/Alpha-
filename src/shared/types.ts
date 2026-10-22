@@ -4,7 +4,7 @@ export const APP_NAME = 'Alpha AI Workspace'
 export const APP_ID = 'com.alpha.aiworkspace'
 // Display/telemetry constant. The authoritative runtime version is read from the
 // packaged app itself via `app.getVersion()` (see `app:info` diagnostics).
-export const APP_VERSION = '1.0.5'
+export const APP_VERSION = '1.0.7'
 export const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434'
 
 export const MODES = ['chat', 'assist', 'agent'] as const
@@ -20,6 +20,131 @@ export interface PermissionSettings {
   gitCommit: PermissionLevel
   githubPush: PermissionLevel
   sensitiveFiles: PermissionLevel
+  /**
+   * Launching / focusing / closing Windows applications.
+   * Added with desktop control; kept separate from `terminal` because starting
+   * Word is a materially different risk from running an arbitrary command.
+   */
+  appLaunch: PermissionLevel
+  /** Driving another app's UI (UIA patterns, clipboard, keyboard, mouse). */
+  desktopControl: PermissionLevel
+  /** Navigating and interacting with the embedded Browser panel. */
+  browserControl: PermissionLevel
+}
+
+/**
+ * Result of the automatic post-execution check.
+ *
+ * The model's prose is never evidence: every consequential tool re-probes the
+ * filesystem or the OS afterwards and reports what it actually observed. A tool
+ * that cannot be checked says so (`verified: false`) rather than claiming success.
+ */
+export interface ToolVerification {
+  verified: boolean
+  note: string
+  /** Which probe produced the answer, e.g. `fs.stat`, `process`, `uia`, `dom`. */
+  check?: string
+  checkedAt?: number
+}
+
+/** A folder the agent may read and write, resolved at runtime. */
+export type AuthorizedRootKind = 'project' | 'documents' | 'desktop' | 'downloads' | 'custom'
+
+export interface AuthorizedLocation {
+  id: string
+  label: string
+  path: string
+  kind: AuthorizedRootKind
+  exists: boolean
+  writable: boolean
+}
+
+/** A visible top-level Windows application window. */
+export interface DesktopWindowInfo {
+  processId: number
+  windowHandle: string
+  title: string
+  processName?: string
+  bounds?: { x: number; y: number; width: number; height: number }
+  isForeground: boolean
+}
+
+export interface AppLaunchResult {
+  ok: boolean
+  query: string
+  appName?: string
+  executablePath?: string
+  processId?: number
+  windowTitle?: string
+  windowHandle?: string
+  /** How the app was located, for the audit trail. */
+  discoveredVia?: 'running' | 'start-app' | 'shortcut' | 'registry' | 'path' | 'shell'
+  alreadyRunning?: boolean
+  message?: string
+}
+
+/** One numbered interactive element from the UI Automation tree ("set-of-mark"). */
+export interface WindowElement {
+  id: number
+  controlType: string
+  name: string
+  automationId?: string
+  className?: string
+  value?: string
+  enabled: boolean
+  bounds?: { x: number; y: number; width: number; height: number }
+  patterns: string[]
+}
+
+export interface WindowInspection {
+  ok: boolean
+  windowTitle: string
+  processId: number
+  windowHandle?: string
+  elements: WindowElement[]
+  totalElements: number
+  truncated: boolean
+  message?: string
+}
+
+export interface BrowserPageElement {
+  id: number
+  tag: string
+  type?: string
+  name?: string
+  text?: string
+  selector: string
+  visible: boolean
+}
+
+export interface BrowserPageSnapshot {
+  ok: boolean
+  url: string
+  title: string
+  text: string
+  elements: BrowserPageElement[]
+  truncated: boolean
+  message?: string
+}
+
+export interface ScreenshotResult {
+  ok: boolean
+  path?: string
+  width?: number
+  height?: number
+  /** Element map drawn onto the image when annotation was requested. */
+  annotated?: boolean
+  message?: string
+}
+
+/** State pushed to the always-on-top mini control pill. */
+export interface HudState {
+  visible: boolean
+  phase: 'idle' | 'working' | 'approval'
+  title: string
+  detail?: string
+  approvalId?: string
+  canStop: boolean
 }
 
 export type PermissionLevel = 'allow' | 'ask' | 'deny'
@@ -93,7 +218,7 @@ export type ActivityState =
 
 export interface ActivityItem {
   id: string
-  kind: 'tool' | 'command' | 'edit' | 'git' | 'status'
+  kind: 'tool' | 'command' | 'edit' | 'git' | 'status' | 'desktop' | 'browser'
   title: string
   detail?: string
   state: ActivityState
@@ -103,6 +228,10 @@ export interface ActivityItem {
   error?: string
   requiresApproval?: boolean
   approvalId?: string
+  /** Result of the automatic proof-of-work probe, when the tool ran. */
+  verification?: ToolVerification
+  /** Set when this activity was saved as a reusable skill. */
+  savedSkillId?: string
   startedAt: number
   endedAt?: number
 }
@@ -157,6 +286,26 @@ export interface AppSettings {
   defaultProviderId?: string | null
   defaultModelId?: string | null
   ollamaUrl: string
+  /**
+   * Folders the desktop agent may touch outside the open coding project.
+   *
+   * The standard user folders (Documents/Desktop/Downloads) can be switched off,
+   * and extra folders are opt-in by absolute path. Everything is confined by
+   * `pathGuard` — these are *widened* roots, never an escape from root checks.
+   */
+  agent: {
+    enabled: boolean
+    workspace: {
+      documents: boolean
+      desktop: boolean
+      downloads: boolean
+    }
+    extraPaths: string[]
+    /** Raise the tool loop ceiling for long desktop workflows. */
+    maxToolIterations: number
+    /** Allow the agent to drive the mouse as a last resort. */
+    allowMouseFallback: boolean
+  }
   platform: {
     enabled: boolean
     apiBaseUrl: string
@@ -273,7 +422,7 @@ export interface ToolDefinition {
   name: string
   description: string
   parameters: Record<string, unknown>
-  category: 'read' | 'write' | 'execute' | 'git'
+  category: 'read' | 'write' | 'execute' | 'git' | 'desktop' | 'browser'
   requiresApproval: boolean
   permissionKey: keyof PermissionSettings | 'read'
 }

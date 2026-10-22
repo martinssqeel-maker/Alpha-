@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Splash from './components/Splash'
 import Inspector from './components/Inspector'
 import Toasts from './components/Toasts'
+import UpdateBanner from './components/UpdateBanner'
 import ApprovalDialog from './components/ApprovalDialog'
 import ErrorBoundary from './components/ErrorBoundary'
 import ChatPage from './pages/ChatPage'
@@ -135,6 +136,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <TitleBar />
+      <UpdateBanner />
       <div className="workspace">
         <Sidebar />
         <div className="main-area">

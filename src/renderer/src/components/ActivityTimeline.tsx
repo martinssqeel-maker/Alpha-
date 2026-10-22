@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import {
   AlertTriangle,
+  BookmarkPlus,
+  CheckCircle2,
   ChevronRight,
   FileEdit,
   FilePlus2,
@@ -8,12 +10,14 @@ import {
   GitBranch,
   Globe2,
   ListChecks,
+  ShieldAlert,
   SquareTerminal,
   Wrench,
   X
 } from 'lucide-react'
 import type { ActivityItem } from '@shared/types'
 import { redactSensitiveText, redactSensitiveValue } from '@shared/redactSensitive'
+import { api } from '../lib/api'
 
 export interface RunStatus {
   label: string
@@ -116,6 +120,15 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
         </span>
         <span className="activity-title mono">{activity.title}</span>
         <span className={`activity-pill ${activity.state}`}>{STATE_LABEL[activity.state]}</span>
+        {activity.verification && (
+          <span
+            className={`activity-pill verification ${activity.verification.verified ? 'ok' : 'bad'}`}
+            title={activity.verification.note}
+          >
+            {activity.verification.verified ? <CheckCircle2 size={11} /> : <ShieldAlert size={11} />}
+            {activity.verification.verified ? 'Verified' : 'Unverified'}
+          </span>
+        )}
         <span className="flex-1" />
         {duration && <span className="activity-duration mono">{duration}</span>}
         {activity.state === 'awaiting-approval' && <AlertTriangle size={13} style={{ color: 'var(--warning)' }} />}
@@ -131,6 +144,16 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
       {open && (
         <div className="activity-body">
           {detail && <pre className="activity-pre">{redactSensitiveText(detail)}</pre>}
+          {activity.verification && (
+            <p
+              className="activity-verification"
+              style={{ color: activity.verification.verified ? 'var(--success, #34d399)' : 'var(--warning, #fbbf24)' }}
+            >
+              {activity.verification.verified ? '✓ ' : '! '}
+              {redactSensitiveText(activity.verification.note)}
+            </p>
+          )}
+          {activity.state === 'completed' && activity.toolName && <SaveAsSkill activity={activity} />}
           {activity.args !== undefined && (
             <details>
               <summary className="activity-summary">Inputs</summary>
@@ -154,5 +177,86 @@ function formatActivityValue(value: unknown): string {
     return JSON.stringify(redactSensitiveValue(value), null, 2).slice(0, 4000)
   } catch {
     return '[Output could not be displayed]'
+  }
+}
+
+
+/**
+ * Turn one completed action into a reusable skill.
+ *
+ * The instructions are generated from what actually happened — the tool, its
+ * arguments and the verified outcome — not from the model's description of it.
+ * That way a saved "skill" is a factual recipe the next run can follow.
+ */
+function SaveAsSkill({ activity }: { activity: ActivityItem }) {
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [message, setMessage] = useState<string | null>(null)
+
+  async function onSave(): Promise<void> {
+    setStatus('saving')
+    setMessage(null)
+    try {
+      const id = skillIdFor(activity)
+      const result = await api.skills.save({
+        id,
+        name: activity.title.slice(0, 100) || activity.toolName || 'Saved workflow',
+        description: (activity.detail ?? `Runs ${activity.toolName}`).slice(0, 180),
+        category: 'Saved workflows',
+        instructions: describeAsInstructions(activity)
+      })
+      setStatus('saved')
+      setMessage(result.path)
+    } catch (error) {
+      setStatus('error')
+      setMessage((error as Error).message)
+    }
+  }
+
+  return (
+    <div className="activity-save">
+      <button type="button" onClick={onSave} disabled={status === 'saving' || status === 'saved'}>
+        <BookmarkPlus size={13} />
+        {status === 'saved' ? 'Saved as skill' : status === 'saving' ? 'Saving…' : 'Save as Skill'}
+      </button>
+      {message && (
+        <span className="activity-save-note" title={message}>
+          {status === 'error' ? message : 'Added to Skills'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function skillIdFor(activity: ActivityItem): string {
+  const base = `saved-${activity.toolName ?? 'workflow'}-${activity.title}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 58)
+  // Must match the skills parser: starts alphanumeric, 2–64 chars.
+  return base.length >= 2 ? base : 'saved-workflow'
+}
+
+function describeAsInstructions(activity: ActivityItem): string {
+  const lines = [
+    `Use this workflow when the task looks like: "${activity.title}".`,
+    '',
+    `1. Call \`${activity.toolName ?? 'the tool'}\` with these arguments:`,
+    '```json',
+    safeJson(activity.args),
+    '```',
+    `2. The verified outcome was: ${activity.verification?.note ?? activity.detail ?? 'completed'}.`,
+    '',
+    'Adapt the arguments to the current request. Confirm the result with the tool\'s',
+    'verification field before reporting success.'
+  ]
+  return lines.join('\n')
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(redactSensitiveValue(value), null, 2).slice(0, 1500)
+  } catch {
+    return '{}'
   }
 }

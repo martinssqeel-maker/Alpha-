@@ -2,6 +2,7 @@ import { CH } from './channels'
 import type {
   ActivityItem,
   AppSettings,
+  AuthorizedLocation,
   AttachmentRef,
   BrowserPreviewState,
   ChatMessage,
@@ -108,6 +109,12 @@ export interface IpcContract {
 
   [CH.skillsList]: { req: void; res: ProductSkill[] }
   [CH.skillsSetEnabled]: { req: { id: string; enabled: boolean }; res: ProductSkill[] }
+  [CH.skillsSave]: {
+    req: { id: string; name: string; description?: string; category?: string; instructions: string }
+    res: { skills: ProductSkill[]; path: string }
+  }
+  [CH.agentLocations]: { req: void; res: AuthorizedLocation[] }
+  [CH.agentPickLocation]: { req: void; res: { path: string | null } }
 
   [CH.providersList]: { req: void; res: ProviderConfig[] }
   [CH.providersSave]: { req: unknown; res: ProviderConfig }

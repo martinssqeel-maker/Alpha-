@@ -3000,3 +3000,135 @@ html[data-animated-gradients="true"] .btn.primary { background-size: 180% 180%; 
   font-size: 11px;
   color: var(--text-disabled);
 }
+
+/* ---------------------------------------------------------------------------
+   Proof-of-work badges and "Save as Skill"
+   ---------------------------------------------------------------------------
+   Verified / Unverified is deliberately not colour-only: the pill carries an
+   icon and a word, so it survives a colour-blind palette and a screenshot. */
+
+.activity-pill.verification {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-transform: none;
+}
+.activity-pill.verification.ok {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 8%, var(--surface-1));
+}
+.activity-pill.verification.bad {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+}
+
+.activity-verification {
+  margin: 6px 0 0;
+  font-size: var(--primitive-font-11);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.activity-save {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.activity-save button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: var(--primitive-font-11);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--duration-standard) var(--easing-standard),
+    border-color var(--duration-standard) var(--easing-standard);
+}
+.activity-save button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.activity-save button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.activity-save-note {
+  font-size: var(--primitive-font-11);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+/* Desktop-agent settings: folder chips and the resolved-root list. */
+.agent-folder-toggles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.agent-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--primitive-font-11);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.agent-extra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.agent-paths {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--primitive-font-11);
+  color: var(--text-tertiary);
+  text-align: right;
+  max-width: 280px;
+}
+.agent-paths li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Update banner: sits between the title bar and the workspace. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-1));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text-primary);
+  font-size: var(--primitive-font-12);
+  flex: none;
+}
+.update-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.update-banner-hint {
+  color: var(--text-tertiary);
+}
+.update-banner .btn {
+  flex: none;
+  padding: 3px 10px;
+  font-size: var(--primitive-font-11);
+}

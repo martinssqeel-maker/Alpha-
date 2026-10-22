@@ -19,6 +19,27 @@ function setText(selector, value) {
   });
 }
 
+/**
+ * Point a link at the exact tagged release.
+ *
+ * The site never hardcodes a version: the release published on GitHub is the
+ * source of truth, so a v1.0.7 publish makes every page show v1.0.7 with no code
+ * change. Elements carry a static fallback href (the releases page) that stays
+ * in place if this lookup fails, which is what an offline or rate-limited
+ * visitor sees.
+ */
+function setReleaseLinks(tag) {
+  if (!tag) return;
+  const href = `https://github.com/${REPO}/releases/tag/${encodeURIComponent(tag)}`;
+  document.querySelectorAll("[data-release-link]").forEach((el) => {
+    el.setAttribute("href", href);
+    el.setAttribute("rel", "noopener");
+  });
+  document.querySelectorAll("[data-release-tag]").forEach((el) => {
+    el.textContent = `v${String(tag).replace(/^v/i, "")}`;
+  });
+}
+
 async function resolveReleaseVersion() {
   try {
     const res = await fetch(RELEASE_API, {
@@ -26,8 +47,10 @@ async function resolveReleaseVersion() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const release = await res.json();
-    const version = String(release.tag_name || "").replace(/^v/i, "");
+    const tag = String(release.tag_name || "");
+    const version = tag.replace(/^v/i, "");
     if (version) setText("[data-version]", version);
+    setReleaseLinks(tag || `v${version}`);
   } catch (err) {
     console.warn("Could not resolve the current release version:", err && err.message);
   }

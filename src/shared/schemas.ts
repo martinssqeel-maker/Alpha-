@@ -78,7 +78,13 @@ export const zChatSend = z.object({
   projectId: z.string().nullable().optional(),
   text: z.string().min(0).max(200_000),
   attachments: z.array(z.any()).max(20).optional(),
-  allowTools: z.boolean().optional()
+  allowTools: z.boolean().optional(),
+  /**
+   * Use the `<tool_call>` JSON protocol instead of native tool calling.
+   * The automatic switch covers models that reject tools outright; this is for
+   * a model that accepts the array and then ignores it.
+   */
+  forceToolFallback: z.boolean().optional()
 })
 
 export const zApproval = z.object({
@@ -105,6 +111,21 @@ export const zConversationUpdate = z.object({
 export const zConversationSearch = z.object({ query: z.string().min(1).max(500) })
 export const zProjectRename = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(100) })
 export const zSkillEnable = z.object({ id: z.string().min(2).max(64), enabled: z.boolean() })
+
+/**
+ * Saving a workflow as a skill.
+ *
+ * The id is the file name, so it is held to the same rule the skills parser
+ * enforces — a bad id would be discovered and silently ignored at next launch,
+ * which would look like the save had failed.
+ */
+export const zSkillSave = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/, 'Use lower-case letters, numbers and dashes'),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(300).optional(),
+  category: z.string().trim().max(60).optional(),
+  instructions: z.string().trim().min(1).max(20_000)
+})
 
 export const zId = z.object({ id: z.string().min(1) })
 

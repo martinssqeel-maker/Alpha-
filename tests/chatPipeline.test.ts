@@ -239,7 +239,10 @@ describe('tool orchestration', () => {
     expect(isParallelSafeTool('get_git_status')).toBe(true)
     expect(isParallelSafeTool('apply_approved_patch')).toBe(false)
     expect(isParallelSafeTool('run_approved_command')).toBe(false)
-    expect(isParallelSafeTool('propose_file_patch')).toBe(false)
+    // A proposal writes nothing — it diffs against the file's current hash and
+    // returns an id — so several may be computed together. Approving one is
+    // still serial, because `apply_approved_patch` does mutate the disk.
+    expect(isParallelSafeTool('propose_file_patch')).toBe(true)
     expect(isParallelSafeTool('not_a_tool')).toBe(false)
   })
 

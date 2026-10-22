@@ -28,6 +28,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProviderId: null,
   defaultModelId: null,
   ollamaUrl: DEFAULT_OLLAMA_URL,
+  agent: {
+    enabled: true,
+    workspace: { documents: true, desktop: true, downloads: true },
+    extraPaths: [],
+    maxToolIterations: 15,
+    allowMouseFallback: true
+  },
   layout: {
     inspectorOpen: true,
     inspectorWidth: 420,
